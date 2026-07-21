@@ -1,0 +1,66 @@
+name: daily-monitor
+
+on:
+  schedule:
+    # 03:43 UTC = 05:43 nyáron / 04:43 télen (Europe/Budapest).
+    # A "ferde" perc szándékos: a kerek órák zsúfoltak az Actions sorában.
+    # Cél-SLA: email a postaládában 7:00 (Budapest) előtt.
+    - cron: "43 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # állapot-DB visszacommit (F1-től)
+  pages: write      # Pages deploy
+  id-token: write   # Pages deploy
+
+concurrency:
+  group: daily-monitor
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Napi futás (jelentés + email)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: node src/run.js
+
+      # F1-től: állapot-DB visszacommit a main ágra
+      # - name: Állapot commit
+      #   run: |
+      #     git config user.name "monitor-bot"
+      #     git config user.email "actions@github.com"
+      #     git add state/ && git diff --cached --quiet || git commit -m "state: $(date -u +%F)"
+      #     git push
+
+      - name: Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Pages deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Hiba-email (ha a futás elhasalt)
+        if: failure()
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: node src/email.js --failure "A mai monitor-futás hibával leállt. Részletek az Actions logban."

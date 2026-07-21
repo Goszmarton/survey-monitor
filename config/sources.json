@@ -1,0 +1,39 @@
+{
+  "_comment": "v1 forrásregiszter. Az url/feed mezők F1-ben, tényleges lekérdezéssel verifikálva töltendők ki — URL-t nem találunk ki. kaszt: A = determinisztikus fetcher, B = agentikus ellenőrzés.",
+  "sources": [
+    { "id": "ksh",      "name": "KSH",                "kaszt": "A", "kind": "hivatalos", "napi": true,  "feed": null },
+    { "id": "eurostat", "name": "Eurostat",           "kaszt": "A", "kind": "hivatalos", "napi": true,  "feed": null },
+    { "id": "mnb",      "name": "MNB",                "kaszt": "A", "kind": "hivatalos", "napi": true,  "feed": null },
+
+    { "id": "telex",    "name": "Telex",              "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "444",      "name": "444",                "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "hvg",      "name": "HVG",                "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "24hu",     "name": "24.hu",              "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "portfolio","name": "Portfolio",          "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "economx",  "name": "Economx",            "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "infostart","name": "Infostart",          "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "nepszava", "name": "Népszava",           "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "szabadeu", "name": "Szabad Európa",      "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+    { "id": "valaszonline", "name": "Válasz Online",  "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": null },
+
+    { "id": "median",     "name": "Medián",            "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "zavecz",     "name": "Závecz Research",   "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "republikon", "name": "Republikon",        "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "publicus",   "name": "Publicus",          "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "idea",       "name": "IDEA Intézet",      "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "21kutato",   "name": "21 Kutatóközpont",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "nezopont",   "name": "Nézőpont Intézet",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "szazadveg",  "name": "Századvég",         "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "iranytu",    "name": "Iránytű Intézet",   "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "realpr93",   "name": "Real-PR 93",        "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "opinio",     "name": "Europion / Opinio", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "tarskutato", "name": "Magyar Társadalomkutató", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "minerva",    "name": "Minerva",           "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+
+    { "id": "pew",          "name": "Pew Research Center", "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },
+    { "id": "eurobarometer","name": "Eurobarometer",       "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },
+    { "id": "ipsos",        "name": "Ipsos",               "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },
+    { "id": "europeelects", "name": "Europe Elects",       "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },
+    { "id": "politico_pop", "name": "Politico Poll of Polls", "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null }
+  ]
+}

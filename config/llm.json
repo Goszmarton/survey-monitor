@@ -1,0 +1,19 @@
+{
+  "_comment": "Szerep → provider-lánc. A konkrét modellnevek és free tier kvóták az F2 implementálás napján ellenőrizendők és frissítendők — gyorsan változnak. A fallback triggere: 402 / 429 / 5xx / ismételt hiba vagy sémahibás JSON retry után.",
+  "roles": {
+    "triage": {
+      "chain": ["gemini:flash-free", "groq:llama-free", "anthropic:claude-haiku-4-5"],
+      "batch_size": 15
+    },
+    "agentic_check": {
+      "chain": ["anthropic:claude-haiku-4-5", "anthropic:claude-sonnet-4-6"]
+    },
+    "audit": {
+      "chain": ["anthropic:claude-sonnet-4-6", "gemini:pro", "openrouter:free-large"]
+    },
+    "synthesis": {
+      "chain": ["anthropic:claude-sonnet-4-6", "gemini:pro", "SKIP"],
+      "_skip": "SKIP = a jelentés szintézis-bekezdés nélkül megy ki; a jelentés sosem marad el."
+    }
+  }
+}
