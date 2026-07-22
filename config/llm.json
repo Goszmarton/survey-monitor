@@ -1,19 +1,45 @@
 {
-  "_comment": "Szerep → provider-lánc. A konkrét modellnevek és free tier kvóták az F2 implementálás napján ellenőrizendők és frissítendők — gyorsan változnak. A fallback triggere: 402 / 429 / 5xx / ismételt hiba vagy sémahibás JSON retry után.",
+  "_comment": "F2 LLM-réteg konfig. A provider-absztrakció (src/llm/complete.js) ezt olvassa: providers = elérési mód + env-kulcs, roles = szerep → fallback-lánc konkrét modellekkel. Fallback-trigger: 402/429/5xx/hiba vagy sémahibás JSON 1 retry után → következő láncszem. Hiányzó env-kulcs → a láncszem némán kimarad (providers_used: SKIPPED_NO_KEY). A free-tier modellnevek 2026-07-22-én ellenőrizve (web); élő működés API-kulccsal igazolandó. SKIP láncszem = a szerep kimarad, a jelentés e nélkül megy ki (sosem hasal el).",
+
+  "providers": {
+    "anthropic":  { "type": "anthropic",     "env": "ANTHROPIC_API_KEY" },
+    "gemini":     { "type": "gemini_rest",    "env": "GEMINI_API_KEY",     "endpoint": "https://generativelanguage.googleapis.com/v1beta" },
+    "groq":       { "type": "openai_compat",  "env": "GROQ_API_KEY",       "endpoint": "https://api.groq.com/openai/v1" },
+    "openrouter": { "type": "openai_compat",  "env": "OPENROUTER_API_KEY", "endpoint": "https://openrouter.ai/api/v1", "note": "Nincs kulcs egyelőre → SKIPPED_NO_KEY; adapter megírva, kulccsal aktiválható." }
+  },
+
   "roles": {
     "triage": {
-      "chain": ["gemini:flash-free", "groq:llama-free", "anthropic:claude-haiku-4-5"],
-      "batch_size": 15
-    },
-    "agentic_check": {
-      "chain": ["anthropic:claude-haiku-4-5", "anthropic:claude-sonnet-4-6"]
+      "_role": "releváns-e (spec 1. pont) + jelentőség (KIEMELT/FONTOS/FIGYELENDO) + kind-pontosítás, batch-elt JSON",
+      "batch_size": 15,
+      "chain": [
+        { "provider": "gemini",    "model": "gemini-2.5-flash" },
+        { "provider": "groq",      "model": "llama-3.3-70b-versatile" },
+        { "provider": "anthropic", "model": "claude-haiku-4-5" }
+      ]
     },
     "audit": {
-      "chain": ["anthropic:claude-sonnet-4-6", "gemini:pro", "openrouter:free-large"]
+      "_role": "mély audit KIEMELT/új tételekre (F3-tól élesedik; a lánc már itt áll)",
+      "chain": [
+        { "provider": "anthropic",  "model": "claude-sonnet-5" },
+        { "provider": "gemini",     "model": "gemini-2.5-pro" },
+        { "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct:free" }
+      ]
     },
     "synthesis": {
-      "chain": ["anthropic:claude-sonnet-4-6", "gemini:pro", "SKIP"],
-      "_skip": "SKIP = a jelentés szintézis-bekezdés nélkül megy ki; a jelentés sosem marad el."
+      "_role": "napi összefoglaló bekezdés(ek); végső fallback = SKIP (a jelentés bekezdés nélkül megy ki)",
+      "chain": [
+        { "provider": "anthropic", "model": "claude-sonnet-5" },
+        { "provider": "gemini",    "model": "gemini-2.5-flash" },
+        { "provider": "SKIP" }
+      ]
+    },
+    "agentic_check": {
+      "_role": "B-kaszt intézet-ellenőrzés web searchcsel (F3) — a lánc előre rögzítve",
+      "chain": [
+        { "provider": "anthropic", "model": "claude-haiku-4-5" },
+        { "provider": "anthropic", "model": "claude-sonnet-5" }
+      ]
     }
   }
 }

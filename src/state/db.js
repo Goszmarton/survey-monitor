@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 `;
 
+/** Oszlop hozzáadása, ha még nincs (idempotens migráció commitolt DB-hez). */
+function ensureColumn(db, table, name, decl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${decl}`);
+}
+
 /** DB megnyitása/létrehozása; a séma idempotensen alkalmazva. */
 export function openDb(path) {
   const db = new DatabaseSync(path);
@@ -57,6 +63,8 @@ export function openDb(path) {
   // Kompaktságért később megfontolható időnkénti `db.exec("VACUUM")` (nem F1).
   db.exec("PRAGMA journal_mode = DELETE; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  // F2 migráció: a triázs relevancia-jelzője (0/1). A significance/triage_json már a sémában van.
+  ensureColumn(db, "items", "relevant", "INTEGER");
   return db;
 }
 
@@ -152,4 +160,12 @@ export function finalizeFreshness(db, { now, runStartedAt, windowStart }) {
 export function countNewInRun(db, { runStartedAt }) {
   const row = db.prepare("SELECT COUNT(*) AS n FROM items WHERE first_seen_at = ?").get(runStartedAt);
   return row.n;
+}
+
+/** Triázs-verdiktek visszaírása (F2): significance, relevant, triage_json. */
+export function applyTriage(db, verdicts) {
+  const stmt = db.prepare("UPDATE items SET significance = ?, relevant = ?, triage_json = ? WHERE canonical_key = ?");
+  for (const [key, v] of verdicts) {
+    stmt.run(v.significance ?? null, v.relevant ? 1 : 0, JSON.stringify(v), key);
+  }
 }
