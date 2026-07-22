@@ -7,10 +7,13 @@ const PF = {
   exclude_patterns: ["sport", "foci"],
 };
 
-test("prefilter: Eurostat dataset-kód churn → DROP (bármely doménben)", () => {
+test("prefilter: Eurostat dataset-kód churn → DROP (pontos éles title-ek)", () => {
   assert.equal(prefilter({ source_id: "eurostat", kind: "hivatalos_adat", title: "APRO_MK_COLA - Dataset: updated data" }, PF), "DROP");
-  // az allowlist megszűnt: a 'prc_' churn is DROP (spec 25: ne váljon adattemetővé)
+  // a 14:29-es futásban átcsúszott (örökölt) pontos érték idézőjelekkel:
   assert.equal(prefilter({ source_id: "eurostat", kind: "hivatalos_adat", title: 'EI_ISBR_M - "Dataset: updated data"' }, PF), "DROP");
+  // a másik éles variáns: "updated structure and data"
+  assert.equal(prefilter({ source_id: "eurostat", kind: "hivatalos_adat", title: 'EI_ISBR_M - "Dataset: updated structure and data"' }, PF), "DROP");
+  // az allowlist megszűnt: a 'prc_' churn is DROP (spec 25: ne váljon adattemetővé)
   assert.equal(prefilter({ source_id: "eurostat", kind: "hivatalos_adat", title: "prc_hicp_midx - Dataset: updated data" }, PF), "DROP");
 });
 

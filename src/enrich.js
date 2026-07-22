@@ -3,7 +3,7 @@
 // hívja, injektált completeFn-nel (offline). Degradáció: ha minden provider
 // kiesik, triageDegraded=true → a jelentés F1-módban (nyersen) megy ki.
 
-import { triageItems } from "./triage.js";
+import { triageItems, prefilter } from "./triage.js";
 import { synthesize } from "./synthesis.js";
 import { applyTriage } from "./state/db.js";
 
@@ -20,6 +20,16 @@ export async function enrichWithTriage({ db, items, completeFn, prefilterCfg, pr
   // Csak a még nem triázolt tételeket adjuk az LLM-nek (új + korábban kimaradt).
   const candidates = items.filter((it) => !it.triage_json);
   const { verdicts, degraded } = await triageItems(candidates, { completeFn, prefilterCfg, log: providersUsed });
+
+  // Kód-szintű DROP MINDEN tételre — felülír bármely (akár korábbi futásból örökölt)
+  // LLM-ítéletet. A prefilter DROP determinisztikus szabály, ezért erősebb a stale
+  // verdiktnél (spec 25.): önjavító, a régi FONTOS-os dataset-churn kiesik. Nincs
+  // plusz LLM-hívás — pusztán a kód-szabály újraérvényesítése.
+  for (const it of items) {
+    if (prefilter(it, prefilterCfg) === "DROP") {
+      verdicts.set(it.canonical_key, { relevant: false, significance: null, kind: it.kind, reason: "prefilter: dataset-churn (kód-DROP, felülírva)" });
+    }
+  }
 
   applyTriage(db, verdicts);
 

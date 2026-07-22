@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDb, upsertItems } from "../src/state/db.js";
+import { openDb, upsertItems, applyTriage } from "../src/state/db.js";
 import { enrichWithTriage } from "../src/enrich.js";
 
-const PF = { keywords: ["párt", "infláció"], exclude_patterns: ["sport"], eurostat_allow_prefixes: ["prc_"] };
+const PF = { keywords: ["párt", "infláció"], exclude_patterns: ["sport"] };
 
 function tempDb() {
   const dir = mkdtempSync(join(tmpdir(), "monitor-enrich-"));
@@ -77,6 +77,34 @@ test("enrich: minden provider kiesik → degraded, nincs szintézis, tételek me
     assert.equal(r.triageDegraded, true);
     assert.equal(r.synthesisText, null);
     assert.equal(r.items.length, 1); // adat nem vész el
+    cleanup();
+  } catch (e) { cleanup(); throw e; }
+});
+
+test("enrich: örökölt FONTOS-os eurostat dataset-tétel felülíródik relevant=0-ra (kód-DROP autoritatív)", async () => {
+  const { db, cleanup } = tempDb();
+  try {
+    // korábbi (fix előtti) futás: a tétel triázsolt, FONTOS-t kapott
+    upsertItems(db, [{ canonicalKey: "eurostat:ei", sourceId: "eurostat", kind: "hivatalos_adat", title: 'EI_ISBR_M - "Dataset: updated data"', url: "u", publishedAt: null }], { seenAt: "2026-07-22T09:38:00Z" });
+    applyTriage(db, new Map([["eurostat:ei", { relevant: true, significance: "FONTOS", kind: "hivatalos_adat", reason: "régi LLM-ítélet (magyar adatot hallucinált)" }]]));
+
+    // a report-tétel a stale állapotot tükrözi (triage_json set → NEM untriázolt jelölt)
+    const items = [{ canonical_key: "eurostat:ei", source_id: "eurostat", kind: "hivatalos_adat", title: 'EI_ISBR_M - "Dataset: updated data"', freshness: "UJ_24H", triage_json: '{"relevant":true,"significance":"FONTOS"}', significance: "FONTOS", relevant: 1 }];
+
+    let called = false;
+    const completeFn = async () => { called = true; return null; };
+    const r = await enrichWithTriage({ db, items, completeFn, prefilterCfg: PF, providersUsed: [] });
+
+    assert.equal(called, false, "nincs új LLM-hívás (nem untriázolt jelölt)");
+    // memóriában felülírva
+    assert.equal(r.items[0].relevant, 0);
+    assert.equal(r.items[0].significance, null);
+    // DB-be perzisztálva
+    const dbRow = db.prepare("SELECT relevant, significance FROM items WHERE canonical_key='eurostat:ei'").get();
+    assert.equal(dbRow.relevant, 0);
+    assert.equal(dbRow.significance, null);
+    // nem számít KIEMELT-nek
+    assert.equal(r.kiemeltCount, 0);
     cleanup();
   } catch (e) { cleanup(); throw e; }
 });
