@@ -1,3 +1,9 @@
 node_modules/
 dist/
 .env
+
+# Az állapot-DB (state/monitor.db) SZÁNDÉKOSAN a repóba kerül — NE ignoráld.
+# Csak az átmeneti SQLite-sidecar fájlokat zárjuk ki:
+state/*.db-journal
+state/*.db-wal
+state/*.db-shm

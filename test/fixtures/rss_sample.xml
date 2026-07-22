@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Telex</title>
+    <link>https://telex.hu</link>
+    <item>
+      <title>Első cikk címe</title>
+      <link>https://telex.hu/cikk/1</link>
+      <guid isPermaLink="false">telex-1</guid>
+      <pubDate>Tue, 22 Jul 2026 05:00:00 +0200</pubDate>
+      <description>Rövid leírás egy.</description>
+    </item>
+    <item>
+      <title><![CDATA[Második & harmadik]]></title>
+      <link>https://telex.hu/cikk/2</link>
+      <guid isPermaLink="false">telex-2</guid>
+      <pubDate>Tue, 22 Jul 2026 04:00:00 +0200</pubDate>
+      <description><![CDATA[<p>HTML-es leírás</p>]]></description>
+    </item>
+  </channel>
+</rss>

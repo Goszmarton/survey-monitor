@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24   # beépített node:sqlite flag nélkül, warning nélkül
           cache: npm
 
       - run: npm ci
@@ -41,13 +41,17 @@ jobs:
           MAIL_TO: ${{ secrets.MAIL_TO }}
         run: node src/run.js
 
-      # F1-től: állapot-DB visszacommit a main ágra
-      # - name: Állapot commit
-      #   run: |
-      #     git config user.name "monitor-bot"
-      #     git config user.email "actions@github.com"
-      #     git add state/ && git diff --cached --quiet || git commit -m "state: $(date -u +%F)"
-      #     git push
+      - name: Állapot-DB visszacommit (main)
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/monitor.db
+          if git diff --cached --quiet; then
+            echo "Nincs állapotváltozás — nincs mit commitolni."
+          else
+            git commit -m "state: napi futás $(date -u +%F)"
+            git push
+          fi
 
       - name: Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Példa</title>
+  <link rel="self" href="https://example.org/feed"/>
+  <entry>
+    <title>Atom tétel egy</title>
+    <link rel="alternate" href="https://example.org/a1"/>
+    <id>urn:atom-1</id>
+    <updated>2026-07-22T05:00:00Z</updated>
+    <published>2026-07-22T04:30:00Z</published>
+    <summary>Összefoglaló szöveg.</summary>
+  </entry>
+</feed>
