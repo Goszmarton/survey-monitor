@@ -63,13 +63,26 @@ A feed-URL-eket **felderítéssel** találtuk meg, nem tippeléssel:
   Kiválasztva: **/rss/15 (Sajtószoba)** elsődleges + **/rss/7 (Legfrissebb
   kiadványok)** — az architektúra „közlemények, kamatdöntés, kiemelt
   jelentések" igényére.
-- **Eurostat** — ⚠️ **nincs verifikált RSS.** A `web/rss/about-rss` oldal csak a
-  portál-hubra (`web/rss`) és egy Liferay control-panelre mutat, tényleges
-  feed-endpoint nélkül; a news-oldalak RSS-ikonja nem ad kinyerhető feed-URL-t.
-  Az Eurostat RSS célzott újralekérése a fejlesztői session-t egyszer beragasztotta,
-  ezért **nem tippelünk további endpointot.** A config a `euro-indicators`
-  listaoldalt rögzíti (`list_url`, HTTP 200-nal elérhető) **„HTML-parse szükséges"**
-  megjegyzéssel — F1-ben célzott HTML-lekérés, vagy F2/B-kaszt.
+- **Eurostat** — ✅ **verifikált katalógus-RSS**, több lépcsőben:
+  1. A weboldal átfésülése zsákutca volt: a `web/rss/about-rss` csak a
+     portál-hubra és egy Liferay control-panelre mutat, tényleges feed-endpoint
+     nélkül; a news-oldalak RSS-ikonja nem ad kinyerhető feed-URL-t. (Az egyik
+     ilyen weboldal-lekérés a fejlesztői session-t egyszer be is ragasztotta.)
+  2. A gépi **dissemination API** első jelölt-URL-jei **404**-esek voltak —
+     mert **rossz fájlnevet** tippeltünk: `…/catalogue/rss/en/all.rss`,
+     `…/data.rss`, `…/all`, `…/data` mind 404, 9 bájtos HTML.
+  3. A **hivatalos Eurostat-dokumentáció** szerint a Catalogue API RSS-feedjének
+     neve **`statistics-update.rss`**. Ezt lekérve:
+     `…/api/dissemination/catalogue/rss/en/statistics-update.rss` →
+     **HTTP 200, application/xml, 352 KB, valós RSS, 1118 tétel**, channel
+     „ESTAT - Data and Data Structure updates" (pl. `APRO_MK_COLA – Dataset:
+     updated data`).
+
+  **Jellege:** ez **dataset-szintű frissítés-folyam** EU-szinten (naponta
+  kétszer, 11:00/23:00 épül, az elmúlt 7 nap dataset-változásai), **nem
+  sajtóközlemény-folyam** — kulcsszó-/relevancia-szűrés kell rá (F2 triázs).
+  A config a feedet rögzíti, a `euro-indicators` hír-listaoldal `list_url`-ként
+  marad mellette (HTML-parse a szöveges közleményekhez).
 
 ### Híroldalak
 
@@ -93,7 +106,7 @@ felderítéssel kaptuk meg:
 | Forrás | Verifikált URL | HTTP | Tétel | Státusz |
 |---|---|---|---|---|
 | KSH | `https://www.ksh.hu/rss/gyorstajekoztatok` (+ `/rss/hirek`) | 200 | 10 (+5) | ✅ OK (iso-8859-2) |
-| Eurostat | `https://ec.europa.eu/eurostat/web/main/news/euro-indicators` (list_url) | 200 | — | ⚠️ NINCS_FEED (HTML-parse) |
+| Eurostat | `https://ec.europa.eu/eurostat/api/dissemination/catalogue/rss/en/statistics-update.rss` (+ list_url) | 200 | 1118 | ✅ OK (dataset-frissítések) |
 | MNB | `https://www.mnb.hu/rss/15` (+ `/rss/7`) | 200 | 79 (+5) | ✅ OK |
 | Telex | `https://telex.hu/rss` | 200 | 50 | ✅ OK |
 | 444 | `https://444.hu/feed` | 200 | 30 | ✅ OK |
@@ -106,9 +119,9 @@ felderítéssel kaptuk meg:
 | Szabad Európa | `https://www.szabadeuropa.hu/api/zipymtl-vomx-tpemjtmt` | 200 | 0 | ⚠️ RÉSZLEGES (üres feed) |
 | Válasz Online | `https://www.valaszonline.hu/feed/` | 200 | 25 | ✅ OK |
 
-**Összegzés:** 13 A-kasztú forrásból **11 tartalmas feed** (✅ OK),
-**1 részleges** (Szabad Európa — üres, de verifikált struktúra),
-**1 feed nélkül** (Eurostat — HTML-parse szükséges).
+**Összegzés:** 13 A-kasztú forrásból **12 tartalmas feed** (✅ OK, köztük az
+Eurostat katalógus-feed), **1 részleges** (Szabad Európa — üres, de verifikált
+struktúra). Feed nélküli forrás nincs.
 
 > A tételszámok a 2026-07-22-i lekérés pillanatképei; napról napra változnak.
 > A cél nem a szám, hanem hogy a feed él és valós tartalmat ad.
