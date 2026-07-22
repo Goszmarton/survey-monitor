@@ -1,9 +1,13 @@
-// Triázs (F2). Kétlépcsős: (1) olcsó kód-előszűrő zajra (Eurostat dataset-kód
-// allowlist + sajtó exclude-minták), (2) LLM-ítélet a maradékon: releváns-e
-// (spec 1. pont: magyar közélet/gazdaság/társadalom/kutatás), jelentőség
-// (KIEMELT/FONTOS/FIGYELENDO), kind-pontosítás — batch-elt JSON-hívásban.
+// Triázs (F2). Kétlépcsős: (1) olcsó kód-előszűrő zajra (Eurostat katalógus
+// dataset-kód churn + sajtó exclude-minták), (2) LLM-ítélet a maradékon:
+// relevancia (spec 1.), jelentőség (spec 15.), kind — batch-elt JSON-hívásban.
 // A séma a szerződés; a complete() validálja és a láncon fallbacköl.
-// Minden provider kiesésekor degraded=true → a hívó F1-módban rendereli.
+//
+// Robusztusság (F2 hibajavítás):
+// - EGY bukott batch NEM dönti el az egész triázst: tételei „hiányzó ítélet"-et
+//   kapnak, a többi batch fut tovább; degraded csak ha EGYETLEN batch sem sikerült.
+// - Prioritás + cap: hivatalos (KSH/MNB) + friss tételek előre → a cap sosem
+//   vágja le a fontosat; a maradék a következő futásra halasztódik (logolva).
 
 const TRIAGE_SCHEMA = {
   type: "array",
@@ -21,18 +25,17 @@ const TRIAGE_SCHEMA = {
   },
 };
 
-const DATASET_CODE = /^[A-Z][A-Z0-9_]{2,}\b.*\bDataset\b/i; // pl. "APRO_MK_COLA - Dataset: updated data"
+const DATASET_CODE = /^[A-Z][A-Z0-9_]{2,}\b.*\bDataset\b/i; // pl. 'EI_ISBR_M - "Dataset: updated data"'
+const DEFAULT_MAX_ITEMS = 600; // cap = 40 batch × 15 (backstop; a prioritás védi a fontosat)
 
 /** @returns {"DROP"|"LLM"} — DROP: kódból eldöntött irreleváns (nincs LLM-hívás). */
 export function prefilter(item, cfg) {
   const title = (item.title ?? "").toLowerCase();
 
-  // Eurostat katalógus dataset-kódok: csak engedélyezett domének mennek tovább.
-  if (item.source_id === "eurostat" && DATASET_CODE.test(item.title ?? "")) {
-    const code = (item.title ?? "").trim().toLowerCase();
-    const allowed = (cfg.eurostat_allow_prefixes ?? []).some((p) => code.startsWith(p.toLowerCase()));
-    return allowed ? "LLM" : "DROP";
-  }
+  // Eurostat katalógus dataset-kód churn ("CODE - Dataset: updated data") → DROP:
+  // nincs konkrét magyar érték (spec 25.: ne váljon adattemetővé). Az euro-indicators
+  // news headline-ok nem matchelnek a regexre → LLM-ítéletre mennek.
+  if (item.source_id === "eurostat" && DATASET_CODE.test(item.title ?? "")) return "DROP";
 
   // Sajtó: kizáró rovatminták — de releváns kulcsszó felülírja.
   if (item.kind === "sajto") {
@@ -57,6 +60,7 @@ function buildPrompt(batch) {
     "- KIEMELT — CSAK ha: trendforduló, rendkívüli/történelmi érték, EU-s/nemzetközi szélső pozíció, nagy pártpreferencia-változás, vagy jelentős inflációs/szegénységi/demográfiai/GDP-/bér-/foglalkoztatási/lakhatási változás, vagy váratlan eredmény. Rutinszerű új kutatás vagy havi adat ÖNMAGÁBAN NEM KIEMELT.",
     "- FONTOS — érdemi új országos adat rendkívüli változás nélkül.",
     "- FIGYELENDO — releváns, de háttérjellegű.",
+    "ADATTEMETŐ-SZŰRÉS (spec 25. pont): egy puszta katalógus/dataset-frissítés konkrét magyar érték vagy szám nélkül (pl. 'X - Dataset: updated data') NEM érdemi tétel — alapesetben relevant=false, legfeljebb FIGYELENDO. Ezzel szemben egy VALÓDI statisztikai közlés konkrét adattal/számmal (KSH-gyorstájékoztató, Eurostat news release konkrét értékkel) legalább FONTOS, ha releváns.",
     "Válaszolj KIZÁRÓLAG egy JSON-tömbbel, elemenként {id, relevant, significance, kind, reason}. Az id a lenti sorszám.",
     "",
     ...lines,
@@ -69,16 +73,26 @@ function chunk(arr, n) {
   return out;
 }
 
+// Prioritás: hivatalos (KSH/MNB) előre, azon belül a frissebb előre.
+function priority(it) {
+  const official = it.kind === "hivatalos_adat" ? 0 : 1;
+  const fresh = it.freshness === "UJ_24H" ? 0 : it.freshness === "H24_48" ? 1 : 2;
+  return official * 3 + fresh;
+}
+
+const missingVerdict = (it, reason) => ({ relevant: true, significance: null, kind: it.kind, reason });
+
 /**
- * @param {Array} items  DB-tételek (canonical_key, source_id, kind, title, summary?)
+ * @param {Array} items
  * @param {object} opts
  * @param {function} opts.completeFn  (role, prompt, {schema, log}) → {data}|null
  * @param {object} opts.prefilterCfg
  * @param {Array}  [opts.log]
  * @param {number} [opts.batchSize]
+ * @param {number} [opts.maxItems]    cap az LLM-nek küldött tételekre
  * @returns {Promise<{verdicts:Map<string,object>, degraded:boolean}>}
  */
-export async function triageItems(items, { completeFn, prefilterCfg, log = [], batchSize = 15 }) {
+export async function triageItems(items, { completeFn, prefilterCfg, log = [], batchSize = 15, maxItems = DEFAULT_MAX_ITEMS }) {
   const verdicts = new Map();
   const llmItems = [];
 
@@ -90,13 +104,27 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
     }
   }
 
-  let degraded = false;
-  for (const batch of chunk(llmItems, batchSize)) {
+  // Prioritás + cap: a fontos (hivatalos + friss) tételek biztosan beleférnek.
+  llmItems.sort((a, b) => priority(a) - priority(b));
+  const toTriage = llmItems.slice(0, maxItems);
+  const deferred = llmItems.length - toTriage.length;
+  if (deferred > 0) {
+    log.push({ role: "triage", status: "DEFERRED", detail: `${deferred} tétel a következő futásra (cap ${maxItems})` });
+  }
+
+  let okBatches = 0;
+  let llmBatches = 0;
+  for (const batch of chunk(toTriage, batchSize)) {
+    llmBatches++;
     const res = await completeFn("triage", buildPrompt(batch), { schema: TRIAGE_SCHEMA, log });
+
     if (res == null) {
-      degraded = true;
-      break; // ha egy batch teljesen kiesik, a többi is várhatóan → F1-fallback
+      // Bukott batch: a tételek megmaradnak, ítélet nélkül — a többi batch fut tovább.
+      for (const it of batch) verdicts.set(it.canonical_key, missingVerdict(it, "triázs: hiányzó ítélet (batch kihagyva)"));
+      continue;
     }
+
+    okBatches++;
     const byId = new Map(res.data.map((r) => [r.id, r]));
     batch.forEach((it, i) => {
       const r = byId.get(i + 1);
@@ -106,11 +134,12 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
           kind: r.kind ?? it.kind, reason: r.reason ?? "", triage_provider: res.provider, triage_model: res.model,
         });
       } else {
-        // az LLM kihagyta ezt az id-t → óvatosan releváns-ismeretlen (megtartjuk)
-        verdicts.set(it.canonical_key, { relevant: true, significance: "FIGYELENDO", kind: it.kind, reason: "triázs: hiányzó ítélet" });
+        verdicts.set(it.canonical_key, missingVerdict(it, "triázs: hiányzó ítélet"));
       }
     });
   }
 
+  // Degradált CSAK akkor, ha volt LLM-tétel, de EGYETLEN batch sem sikerült.
+  const degraded = llmBatches > 0 && okBatches === 0;
   return { verdicts, degraded };
 }

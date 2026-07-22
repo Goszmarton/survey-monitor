@@ -13,7 +13,7 @@
       "_role": "releváns-e (spec 1. pont) + jelentőség (KIEMELT/FONTOS/FIGYELENDO) + kind-pontosítás, batch-elt JSON",
       "batch_size": 15,
       "chain": [
-        { "provider": "gemini",    "model": "gemini-2.5-flash" },
+        { "provider": "gemini",    "model": "gemini-flash-latest" },
         { "provider": "groq",      "model": "llama-3.3-70b-versatile" },
         { "provider": "anthropic", "model": "claude-haiku-4-5" }
       ]
@@ -22,7 +22,7 @@
       "_role": "mély audit KIEMELT/új tételekre (F3-tól élesedik; a lánc már itt áll)",
       "chain": [
         { "provider": "anthropic",  "model": "claude-sonnet-5" },
-        { "provider": "gemini",     "model": "gemini-2.5-pro" },
+        { "provider": "gemini",     "model": "gemini-pro-latest" },
         { "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct:free" }
       ]
     },
@@ -30,7 +30,7 @@
       "_role": "napi összefoglaló bekezdés(ek); végső fallback = SKIP (a jelentés bekezdés nélkül megy ki)",
       "chain": [
         { "provider": "anthropic", "model": "claude-sonnet-5" },
-        { "provider": "gemini",    "model": "gemini-2.5-flash" },
+        { "provider": "gemini",    "model": "gemini-flash-latest" },
         { "provider": "SKIP" }
       ]
     },

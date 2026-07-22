@@ -63,7 +63,9 @@ export async function complete(role, prompt, opts = {}) {
       continue;
     }
 
-    const apiKey = env[pdef.env];
+    // .trim(): a beillesztett secret gyakran hordoz szóközt/újsort → 401. A trim
+    // csak whitespace-t szed le; a whitespace-only kulcs továbbra is SKIPPED_NO_KEY.
+    const apiKey = (env[pdef.env] ?? "").trim();
     if (!apiKey) {
       log.push({ role, provider: link.provider, model: link.model, status: "SKIPPED_NO_KEY" });
       continue;

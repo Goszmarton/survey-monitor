@@ -1,5 +1,5 @@
 {
-  "_comment": "Triázs-előszűrő (F2, kódban). Cél: az LLM-hívások előtti olcsó zajszűrés. eurostat_allow_prefixes: csak ezekbe a dataset-kód-doménekbe eső Eurostat-katalógustételek jutnak LLM-hez (a többi EU-szintű adatfrissítés kódból kiesik). keywords/exclude_patterns: a sajtótételeknél a nyilvánvalóan irreleváns rovatokat (sport, bulvár, időjárás) kiszűri, kivéve ha releváns kulcsszó is szerepel. A hivatalos (KSH/MNB) tételek mindig LLM-ítéletre mennek. A listák bővíthetők/finomhangolhatók.",
+  "_comment": "Triázs-előszűrő (F2, kódban). Cél: az LLM-hívások előtti olcsó zajszűrés. Az Eurostat KATALÓGUS dataset-kód churn ('CODE - Dataset: updated data') kódból DROP-olódik (spec 25.: nincs konkrét magyar érték, ne váljon adattemetővé); az euro-indicators news headline-ok (valódi közlések) NEM esnek DROP alá, LLM-ítéletre mennek — a kettőt a dataset-kód regex különbözteti meg, nem a source_id. keywords/exclude_patterns: a sajtótételeknél a nyilvánvalóan irreleváns rovatokat (sport, bulvár, időjárás) kiszűri, kivéve ha releváns kulcsszó is szerepel. A hivatalos (KSH/MNB) tételek mindig LLM-ítéletre mennek. A listák bővíthetők/finomhangolhatók.",
 
   "keywords": [
     "közvélemény", "kutatás", "felmérés", "közvélemény-kutatás", "párt", "választ",
@@ -14,9 +14,5 @@
   "exclude_patterns": [
     "sport", "foci", "meccs", "bajnok", "gól", "olimpi", "bulvár", "celeb",
     "sztár", "horoszkóp", "időjárás", "recept", "life", "kvíz", "programaján"
-  ],
-  "eurostat_allow_prefixes": [
-    "prc_", "nama_", "namq_", "une_", "lfsi", "lfsa", "demo_", "hlth_", "gov_",
-    "irt_", "ei_", "teina", "tips", "tepsr", "tps", "tessi", "ilc_", "sts_", "earn_"
   ]
 }
