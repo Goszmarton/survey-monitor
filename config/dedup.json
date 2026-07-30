@@ -1,0 +1,40 @@
+{
+  "_comment": "Cross-source story-dedup (spec 13., F2 javító kör). Determinisztikus, LLM nélkül. A forrásonkénti canonical_key marad (first_seen stabilitása); e fölé csoportosítunk story-szinten, a többi tétel press_urls-be, a reprezentáns a leghitelesebb forrás. Precízió-fókusz: egy hamis összevonás fontos tételt REJT (csendes infóvesztés, ARCHITEKTURA.md 2–3.), egy megmaradt duplikátum viszont látható — ezért az intézet-guard KEMÉNY szabály a küszöbök FÖLÖTT. A küszöbök 47 KIEMELT tételen hangolva; ha később 500-on újra kell nézni, ITT állítható, nem kódban.",
+
+  "containment_min": 0.5,
+  "containment_min_tokens": 2,
+  "trigram_dice_min": 0.55,
+  "trigram_min_shared_tokens": 1,
+
+  "stopwords": [
+    "a", "az", "egy", "es", "s", "hogy", "is", "nem", "meg", "mar", "csak", "de",
+    "ki", "be", "el", "fel", "le", "van", "volt", "lesz", "ha", "vagy", "sem",
+    "majd", "ez", "on", "nel", "nal", "ban", "ben", "bol", "tol", "rol", "nak",
+    "nek", "val", "vel", "ra", "re", "ig", "tobb", "mint", "most", "utan", "elott",
+    "kozott", "szerint", "ele", "mogott", "korul", "ellen", "ota", "felol", "at",
+    "mas", "ilyen", "olyan", "azt", "aki", "ami", "amit", "meg"
+  ],
+
+  "institute_generic_tokens": [
+    "intezet", "research", "kutatokozpont", "kozpont", "kutato", "magyar",
+    "tarsadalomkutato", "center"
+  ],
+  "institutes": {
+    "median": ["median"],
+    "zavecz": ["zavecz"],
+    "republikon": ["republikon"],
+    "publicus": ["publicus"],
+    "nezopont": ["nezopont"],
+    "szazadveg": ["szazadveg"],
+    "idea": ["idea"],
+    "iranytu": ["iranytu"],
+    "realpr93": ["realpr93", "real-pr"],
+    "opinio": ["opinio", "europion"],
+    "minerva": ["minerva"],
+    "pew": ["pew"],
+    "ipsos": ["ipsos"],
+    "eurobarometer": ["eurobarometer", "eurobarometesr"],
+    "europeelects": ["europeelects"],
+    "politico": ["politico"]
+  }
+}

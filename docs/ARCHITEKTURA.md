@@ -38,7 +38,7 @@ architektúra épül:
 
 ```mermaid
 flowchart TD
-    CRON["GitHub Actions cron\n43 3 * * * UTC"] --> RUN[run.js — napi futás]
+    CRON["GitHub Actions cron\n43 0 * * * UTC"] --> RUN[run.js — napi futás]
 
     subgraph GYUJTES["1. Gyűjtőréteg"]
         A["A-kaszt: determinisztikus fetcherek\nRSS · KSH · Eurostat · MNB"]
@@ -78,12 +78,21 @@ flowchart TD
 
 **GitHub Actions, ütemezett workflow.** Nincs saját szerver.
 
-- **Cron:** `43 3 * * *` (UTC). Nyáron 5:43, télen 4:43 budapesti
+- **Cron:** `43 0 * * *` (UTC). Nyáron 2:43, télen 1:43 budapesti
   indulás. A "ferde" perc szándékos: a kerek órák a legzsúfoltabbak az
-  Actions megosztott sorában (10–40 perc késés is előfordulhat). A
-  puffer garantálja a cél-SLA-t: **email a postaládában 7:00
-  Europe/Budapest előtt.** Mellékhatás: a jelentés az előző nap teljes
-  termését fedi; az aznap reggeli KSH-közlés a másnapi levélben lesz.
+  Actions megosztott sorában. **A cron-időt a mérés vezérli, nem becslés:**
+  8 nap adatából (runs tábla) az ütemezett futások ténylegesen 142–188
+  perccel a cron után indultak (nem a korábban feltételezett 10–40 perccel)
+  — az Actions ütemezett sora ennyit csúszik. A régi `43 3 * * *` emiatt
+  06:04–06:51 UTC-re csúszott, a levél ~08:15-re érkezett, átbillenve a
+  nyári **05:00 UTC (=7:00 Budapest) SLA-n**. A `43 0 * * *` a mért 188
+  perces maximummal is ~1h tartalékot ad (00:43 + 3:08 ≈ 03:51 UTC = 05:51
+  Budapest nyáron; télen +1h tartalék). Cél-SLA változatlan: **email a
+  postaládában 7:00 Europe/Budapest előtt.** Mellékhatás: a jelentés az
+  előző nap termését fedi; az aznap hajnali forrás a másnapi levélben lesz.
+  A "since last run" ablak a tényleges előző futás `started_at`-jához kötött
+  (nem a cron-időhöz), ezért a cron korábbra hozása nem hagy ki és nem
+  duplikál tartalmat — az átállás napján egy egyszeri, folytonos ~19h ablak.
 - **Manuális trigger** (`workflow_dispatch`) fejlesztéshez és pótfutáshoz.
 - **Timeout:** a workflow-ra 30 perc; forrásonkénti fetch-timeout 20 s.
 - **Hibaértesítés:** ha a futás elhasal, arról is megy email ("a mai
@@ -118,7 +127,8 @@ items(
   kind TEXT,                   -- 'kutatas' | 'hivatalos_adat' | 'sajto' | 'nemzetkozi'
   title TEXT,
   url TEXT,                    -- eredeti, elsődleges forrás URL-je
-  press_urls TEXT,             -- JSON: sajtófeldolgozások
+  press_urls TEXT,             -- JSON: sajtófeldolgozások (F2 javító kör: report-időben
+                               -- töltjük, lásd lent; DB-perzisztálás F3-ig üres)
   published_at TEXT,           -- ISO; NULL ha nem ismert → "pontos publikációs idő nem elérhető"
   fieldwork_period TEXT,       -- adatfelvétel / referencia-időszak
   first_seen_at TEXT,          -- mikor látta először a monitor
@@ -151,6 +161,18 @@ kódban képezve, normalizálás után. Ugyanazon kutatás második
 sajtócikke így nem új tétel, hanem a meglévő `press_urls` bővítése.
 A "Korábbi jelentésben szerepelt: Igen/Nem/Nem megállapítható" mező
 determinisztikus: a kulcs megléte a DB-ben.
+
+**F2 javító kör — cross-source story-dedup (spec 13.):** a forrásonkénti
+canonical_key marad az igazságforrás (dedup + `first_seen_at` stabilitás); e
+fölé a jelentés generálásakor determinisztikus, LLM nélküli story-csoportosítás
+fut (`src/lib/storygroup.js`, küszöbök `config/dedup.json`): azonos hír több
+forrásból → egy reprezentáns (leghitelesebb forrás: hivatalos_adat > kutatas >
+sajto), a többi a reprezentáns `press_urls`-ébe kerül **a jelentésben,
+memóriában**. KEMÉNY intézet-guard a küszöbök fölött: külön intézetet (Závecz vs
+Medián) SOHA nem von össze. A `press_urls` DB-oszlop **report-időben nem íródik
+vissza** (churn-kerülés; a csoportosítás futásonként újraszámolható) — a
+perzisztálás F3, addig az oszlop üres. Minden összevonás naplózva (ellenőrzési
+napló + `providers_used`).
 
 ### Frissesség (spec 14. pont) — tisztán kód
 
@@ -243,7 +265,10 @@ szövegét írja:
 6. 📅 Következő figyelendő publikációk — a KSH közzétételi naptárából
    és MNB-naptárból **gépileg beolvasva**, sosem kitalálva
 7. Teljes ellenőrzési napló — a `source_checks` táblából
-8. Lábléc: futási idő, használt modellek, becsült költség
+8. Lábléc: futási idő, használt modellek. (Becsült költség: token-számlálás
+   nélkül nem adható álpontosság nélküli szám — a valós token-alapú
+   költségbecslés F3, addig a lábléc nem ígéri. A `runs.cost_estimate` oszlop
+   ezért kikerült a sémából, lásd `src/state/db.js`.)
 
 **Kimenetek:**
 
@@ -331,7 +356,9 @@ keretében is bőven elfér.
 3. **F2 — LLM-réteg:** provider-absztrakció + fallback-lánc, batch-elt
    triázs JSON-sémával, jelentőségi besorolás, digest + KIEMELT email.
 4. **F3 — B-kaszt + rejtett magyar adat:** agentikus
-   intézet-ellenőrzések, PDF/grep pipeline, mély audit.
+   intézet-ellenőrzések, PDF/grep pipeline, mély audit, token-alapú
+   költségbecslés a lábléchez (a 8. pont ígérete ide kötve), a story-dedup
+   press_urls-perzisztálása (lásd 4. pont).
 5. **F4 — teljesítés a spec felé:** forrásbővítés v2-listákról,
    következő-publikációk naptár, revíziókezelés, finomhangolás.
 

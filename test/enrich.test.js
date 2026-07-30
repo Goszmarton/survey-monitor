@@ -33,7 +33,7 @@ test("enrich: triázs + prefilter + szintézis + KIEMELT-szám (nem degradált)"
         // csak a telex:1 megy LLM-be (eurostat DROP kódból, telex:2 sport DROP)
         assert.match(prompt, /pártpreferencia/);
         assert.ok(!prompt.includes("APRO_MK") && !prompt.includes("focimeccs"));
-        return { data: [{ id: 1, relevant: true, significance: "KIEMELT", kind: "kutatas", reason: "friss kutatás" }], provider: "gemini", model: "gemini-2.5-flash" };
+        return { data: [{ id: 1, relevant: true, significance: "KIEMELT", data_backed: true, kind: "kutatas", reason: "friss kutatás" }], provider: "gemini", model: "gemini-2.5-flash" };
       }
       return { text: "Ma friss pártpreferencia-kutatás jelent meg.", provider: "anthropic", model: "claude-sonnet-5" };
     };

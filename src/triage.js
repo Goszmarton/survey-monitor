@@ -18,7 +18,12 @@ const TRIAGE_SCHEMA = {
     properties: {
       id: { type: "integer" },
       relevant: { type: "boolean" },
-      significance: { type: "string", enum: ["KIEMELT", "FONTOS", "FIGYELENDO"] },
+      // relevant=false esetén a modellek null-t adnak — engedjük meg (nem bukhat séma).
+      significance: { type: ["string", "null"], enum: ["KIEMELT", "FONTOS", "FIGYELENDO", null] },
+      // Kétkapus relevancia (a) kapuja: a tétel MAGA konkrét kutatás/felmérés/
+      // hivatalos adatközlés-e konkrét számmal. Nem kötelező (régi/más modell
+      // kihagyhatja) → hiány = false = konzervatív (nem lehet KIEMELT).
+      data_backed: { type: "boolean" },
       kind: { type: "string" },
       reason: { type: "string" },
     },
@@ -55,13 +60,16 @@ function buildPrompt(batch) {
   return [
     "Magyar közéleti/gazdasági/társadalmi kutatás- és adatmonitor triázsa vagy.",
     "RELEVANCIA (spec 1. pont) — RELEVÁNS-e a magyar közélet szempontjából: magyar belpolitika, pártpreferencia, választások, közvélemény, társadalmi attitűdök; gazdaság, megélhetés, szegénység, jövedelmek, foglalkoztatás, lakhatás; egészségügy, oktatás, demográfia. Rejtett magyar adat: egy NEMZETKÖZI kutatás is releváns, ha külön magyar minta/adat szerepel benne.",
-    "Minden tételhez add meg: relevant (true/false), significance (KIEMELT | FONTOS | FIGYELENDO), kind (kutatas | hivatalos_adat | sajto | nemzetkozi), rövid reason.",
-    "JELENTŐSÉG (spec 15. pont):",
-    "- KIEMELT — CSAK ha: trendforduló, rendkívüli/történelmi érték, EU-s/nemzetközi szélső pozíció, nagy pártpreferencia-változás, vagy jelentős inflációs/szegénységi/demográfiai/GDP-/bér-/foglalkoztatási/lakhatási változás, vagy váratlan eredmény. Rutinszerű új kutatás vagy havi adat ÖNMAGÁBAN NEM KIEMELT.",
-    "- FONTOS — érdemi új országos adat rendkívüli változás nélkül.",
-    "- FIGYELENDO — releváns, de háttérjellegű.",
-    "ADATTEMETŐ-SZŰRÉS (spec 25. pont): egy puszta katalógus/dataset-frissítés konkrét magyar érték vagy szám nélkül (pl. 'X - Dataset: updated data') NEM érdemi tétel — alapesetben relevant=false, legfeljebb FIGYELENDO. Ezzel szemben egy VALÓDI statisztikai közlés konkrét adattal/számmal (KSH-gyorstájékoztató, Eurostat news release konkrét értékkel) legalább FONTOS, ha releváns.",
-    "Válaszolj KIZÁRÓLAG egy JSON-tömbbel, elemenként {id, relevant, significance, kind, reason}. Az id a lenti sorszám.",
+    "Minden tételhez add meg: relevant (true/false), significance (KIEMELT | FONTOS | FIGYELENDO | null), data_backed (true/false), kind (kutatas | hivatalos_adat | sajto | nemzetkozi), rövid reason.",
+    "KÉTKAPUS RELEVANCIA — a jelentőség KÉT független feltételtől függ, MINDKETTŐ kell:",
+    "  (a) TÉTEL-TÍPUS (data_backed): a tétel MAGA konkrét kutatás, közvélemény-kutatás, felmérés vagy hivatalos adatközlés-e, KONKRÉT SZÁMMAL/ARÁNNYAL/mérési eredménnyel? Ha igen → data_backed=true. Ha csak politikai/közéleti HÍR, esemény, bejelentés, nyilatkozat, botrány, kinevezés, jogszabály konkrét kutatási adat NÉLKÜL → data_backed=false, még ha szerepel is benne pénzösszeg vagy szám (pl. egy szerződés értéke, egy beruházás kerete NEM kutatási adat).",
+    "  (b) TÉMA: a fenti relevancia-témák valamelyike.",
+    "JELENTŐSÉG (spec 15. pont) — CSAK data_backed=true tételre adható KIEMELT vagy FONTOS:",
+    "- KIEMELT — CSAK ha data_backed ÉS: trendforduló, rendkívüli/történelmi érték, EU-s/nemzetközi szélső pozíció, nagy pártpreferencia-változás, vagy jelentős inflációs/szegénységi/demográfiai/GDP-/bér-/foglalkoztatási/lakhatási változás, vagy váratlan mérési eredmény. Rutinszerű új kutatás vagy havi adat ÖNMAGÁBAN NEM KIEMELT.",
+    "- FONTOS — data_backed, érdemi új országos adat rendkívüli változás nélkül.",
+    "- FIGYELENDO — releváns, de háttérjellegű, VAGY adat nélküli releváns politikai hír (data_backed=false). PUSZTA POLITIKAI HÍR ADAT NÉLKÜL: legfeljebb FIGYELENDO, KIEMELT SOHA.",
+    "ADATTEMETŐ-SZŰRÉS (spec 25. pont): egy puszta katalógus/dataset-frissítés konkrét magyar érték vagy szám nélkül (pl. 'X - Dataset: updated data') NEM érdemi tétel — relevant=false vagy data_backed=false. Ezzel szemben egy VALÓDI statisztikai közlés konkrét adattal/számmal (KSH-gyorstájékoztató, Eurostat news release konkrét értékkel) data_backed=true, legalább FONTOS, ha releváns.",
+    "Válaszolj KIZÁRÓLAG egy JSON-tömbbel, elemenként {id, relevant, significance, data_backed, kind, reason}. Az id a lenti sorszám.",
     "",
     ...lines,
   ].join("\n");
@@ -80,7 +88,24 @@ function priority(it) {
   return official * 3 + fresh;
 }
 
-const missingVerdict = (it, reason) => ({ relevant: true, significance: null, kind: it.kind, reason });
+// Hiányzó ítélet (bukott/hiányos batch): NEM végleges verdikt, csak jelzés.
+// A `missing` flag miatt az applyTriage NEM ír triage_json-t → a tétel a
+// következő futásban újra bekerül a triázs-jelöltek közé (enrich: !it.triage_json).
+const missingVerdict = (it, reason) => ({ relevant: true, significance: null, kind: it.kind, reason, missing: true });
+
+/**
+ * Determinisztikus kétkapus kapu (spec 1./15.): a KIEMELT/FONTOS csak data_backed
+ * tételre adható. Adat nélküli (data_backed=false) releváns tétel — puszta politikai
+ * hír — legfeljebb FIGYELENDO, KIEMELT SOHA. A modell (a) kapu-válaszát (data_backed)
+ * a kód érvényesíti, nem csak a prompt reményli. relevant=false → null.
+ * @returns {"KIEMELT"|"FONTOS"|"FIGYELENDO"|null}
+ */
+function gatedSignificance(r) {
+  if (!r.relevant) return null;
+  const sig = r.significance ?? "FIGYELENDO";
+  if (r.data_backed !== true && (sig === "KIEMELT" || sig === "FONTOS")) return "FIGYELENDO";
+  return sig;
+}
 
 /**
  * @param {Array} items
@@ -130,7 +155,8 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
       const r = byId.get(i + 1);
       if (r) {
         verdicts.set(it.canonical_key, {
-          relevant: r.relevant, significance: r.relevant ? r.significance : null,
+          relevant: r.relevant, significance: gatedSignificance(r),
+          data_backed: r.data_backed === true,
           kind: r.kind ?? it.kind, reason: r.reason ?? "", triage_provider: res.provider, triage_model: res.model,
         });
       } else {

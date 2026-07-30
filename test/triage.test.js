@@ -87,7 +87,7 @@ test("triageItems: részleges batch-hiba → NEM degraded, a sikeres verdiktek m
   const completeFn = async () => {
     n++;
     if (n === 3) return null; // az utolsó batch elbukik
-    return { data: [{ id: 1, relevant: true, significance: "FONTOS", kind: "sajto" }], provider: "gemini", model: "m" };
+    return { data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "sajto" }], provider: "gemini", model: "m" };
   };
   const r = await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1 });
 
@@ -110,7 +110,7 @@ test("triageItems: cap + prioritás — hivatalos és UJ_24H előre, a többi ha
   const seen = [];
   const completeFn = async (role, prompt) => {
     seen.push(prompt);
-    return { data: [{ id: 1, relevant: true, significance: "FONTOS", kind: "hivatalos_adat" }], provider: "gemini", model: "m" };
+    return { data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "hivatalos_adat" }], provider: "gemini", model: "m" };
   };
   const log = [];
   const r = await triageItems(items, { completeFn, prefilterCfg: PF, log, batchSize: 1, maxItems: 2 });

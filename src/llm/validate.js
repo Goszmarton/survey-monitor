@@ -17,9 +17,14 @@ function typeOk(value, type) {
 }
 
 function check(value, schema, path, errors) {
-  if (schema.type && !typeOk(value, schema.type)) {
-    errors.push(`${path || "root"}: várt ${schema.type}`);
-    return;
+  // A type lehet egy típus vagy típusok tömbje (pl. ["string","null"]) — utóbbinál
+  // elég, ha bármelyik illik. Így a significance megengedheti a null-t relevant=false-nál.
+  if (schema.type) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    if (!types.some((t) => typeOk(value, t))) {
+      errors.push(`${path || "root"}: várt ${types.join("|")}`);
+      return;
+    }
   }
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path || "root"}: enum-on kívüli érték (${JSON.stringify(value)})`);

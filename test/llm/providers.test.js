@@ -18,11 +18,20 @@ test("openai_compat: chat/completions → message.content", async () => {
   assert.match(seen.init.headers.Authorization, /^Bearer k$/);
 });
 
-test("openai_compat: séma esetén json_object mód", async () => {
+test("openai_compat: OBJECT-gyökerű séma → json_object mód", async () => {
   let body;
   const fetchImpl = async (_u, init) => { body = JSON.parse(init.body); return resp({ choices: [{ message: { content: "{}" } }] }); };
-  await openaiCompat({ apiKey: "k", model: "m", prompt: "p", schema: { type: "array" }, endpoint: "e", fetchImpl });
+  await openaiCompat({ apiKey: "k", model: "m", prompt: "p", schema: { type: "object" }, endpoint: "e", fetchImpl });
   assert.equal(body.response_format.type, "json_object");
+});
+
+test("openai_compat: TÖMB-gyökerű séma → NINCS json_object (különben 'root: várt array'-jel bukna)", async () => {
+  // Regresszió (#5): a json_object objektum-gyökeret kényszerít; a TRIAGE_SCHEMA gyökere
+  // tömb → 8 nap alatt 2/2 Groq-hívás így hasalt el. Tömb-gyökérnél nem küldünk response_format-ot.
+  let body;
+  const fetchImpl = async (_u, init) => { body = JSON.parse(init.body); return resp({ choices: [{ message: { content: "[]" } }] }); };
+  await openaiCompat({ apiKey: "k", model: "m", prompt: "p", schema: { type: "array" }, endpoint: "e", fetchImpl });
+  assert.equal(body.response_format, undefined);
 });
 
 test("openai_compat: HTTP-hiba → dobás státuszkóddal", async () => {

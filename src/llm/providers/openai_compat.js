@@ -10,7 +10,12 @@ export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fe
     messages: [{ role: "user", content: prompt }],
     temperature: 0,
   };
-  if (schema) body.response_format = { type: "json_object" };
+  // json_object CSAK object-gyökerű sémánál: a mód objektum-gyökeret kényszerít,
+  // egy TÖMB-gyökerű séma (pl. TRIAGE_SCHEMA) esetén a modell kénytelen objektumba
+  // csomagolni → validáció "root: várt array"-jel bukik (8 nap alatt 2/2 Groq-hívás
+  // így hasalt el). Tömb-gyökérnél a response_format-ot elhagyjuk, a prompt utasítja
+  // a JSON-tömböt, a complete() extractJson-je pedig a szövegből is kinyeri.
+  if (schema && schema.type !== "array") body.response_format = { type: "json_object" };
 
   const res = await fetchImpl(`${endpoint}/chat/completions`, {
     method: "POST",

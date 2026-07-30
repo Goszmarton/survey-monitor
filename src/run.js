@@ -5,12 +5,13 @@
 // provider-kiesés degradált, de működő jelentést ad (triázs kimarad, nyers lista).
 
 import { mkdir, writeFile, readFile } from "node:fs/promises";
-import { renderReport, renderDigest, renderKiemelt, digestSubject } from "./report.js";
+import { renderReport, renderDigest, renderKiemelt, digestSubject, storyGroups } from "./report.js";
 import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt } from "./state/db.js";
 import { collect } from "./collect.js";
 import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
+import { deriveInstitutes } from "./lib/storygroup.js";
 
 const TZ = "Europe/Budapest";
 const DB_PATH = "state/monitor.db";
@@ -39,7 +40,7 @@ async function main() {
   const runId = now.ymd;
 
   const db = openDb(DB_PATH);
-  startRun(db, { runId, startedAt: now.iso });
+  const attemptId = startRun(db, { runId, startedAt: now.iso });
 
   const since = getLastRunStartedAt(db, { excludeRunId: runId }) ?? now.ms - FALLBACK_WINDOW_MS;
   const sources = await loadSources();
@@ -52,6 +53,21 @@ async function main() {
   const { items, synthesisText, kiemeltCount, triageDegraded } = await enrichWithTriage({
     db, items: collected.items, completeFn: complete, prefilterCfg, providersUsed,
   });
+
+  // Cross-source story-dedup config (spec 13.). Betöltési hiba ÉLES futásban NE legyen
+  // csendes (mint a régi silent dedup-kiesés): WARN a naplóba + console, a dedup kimarad
+  // (a jelentés megy, csak nem csoportosít). Ugyanaz az alakzat, mint a finishRun-fallback.
+  let dedupCfg = null;
+  let institutes = null;
+  try {
+    dedupCfg = await loadJson("../config/dedup.json");
+    const { sources: allSources } = await loadJson("../config/sources.json");
+    institutes = deriveInstitutes(allSources, dedupCfg);
+  } catch (err) {
+    dedupCfg = null; institutes = null;
+    providersUsed.push({ role: "dedup", status: "WARN", detail: `dedup-config hiba: ${String(err?.message ?? err).slice(0, 80)} — story-dedup kimarad` });
+    console.warn("Story-dedup config betöltése sikertelen, a dedup kimarad:", err?.message ?? err);
+  }
 
   const run = {
     runId,
@@ -67,6 +83,8 @@ async function main() {
     kiemeltCount,
     triageDegraded,
     providersUsed,
+    dedupCfg,
+    institutes,
     notCovered: [
       "Intézeti agentikus ellenőrzés (B-kaszt), rejtett magyar adat (F3)",
       "Mély audit KIEMELT tételekre (F3)",
@@ -78,6 +96,14 @@ async function main() {
 
   // ---- Jelentés: index + dátumozott archív példány (teljes Pages-változat) ----
   const html = renderReport(run);
+
+  // A story-dedup EGYSZER fut (memoizált a run-on); explicit hívjuk a merges-ért, hogy
+  // a naplóbejegyzés ne egy render-mellékhatás sorrendjén múljon → összegzés a
+  // providers_used-be (runs-ba perzisztálva), hogy egy hamis összevonás visszakövethető legyen.
+  const { merges } = storyGroups(run);
+  if (merges.length) {
+    providersUsed.push({ role: "dedup", status: "OK", detail: `${merges.length} sztori összevonva (${merges.reduce((a, m) => a + m.members.length, 0)} további forrás)` });
+  }
   const [y, m, d] = now.ymd.split("-");
   await mkdir(`dist/${y}/${m}`, { recursive: true });
   await writeFile("dist/index.html", html);
@@ -96,6 +122,7 @@ async function main() {
 
   finishRun(db, {
     runId,
+    attemptId,
     finishedAt: new Date().toISOString(),
     providersUsed,
     reportUrl: `${y}/${m}/${d}.html`,

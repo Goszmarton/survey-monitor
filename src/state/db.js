@@ -43,10 +43,32 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at     TEXT,
   finished_at    TEXT,
   providers_used TEXT,
-  cost_estimate  REAL,
   report_url     TEXT,
   email_status   TEXT
 );
+-- Megj.: a cost_estimate oszlop kikerült (token-számlálás nélkül üresen maradna;
+-- ARCHITEKTURA.md 7. már nem ígéri). A régi, commitolt DB-ben fizikailag még ott
+-- lehet egy inert cost_estimate oszlop — a kód nem írja/olvassa; eldobása külön,
+-- destruktív migráció (VACUUM/rebuild) lenne, nem F2.
+
+-- Append-only futásnapló. A runs.run_id a dátum (PK) → egy aznapi újrafutás
+-- felülírja az előző providers_used-et; napi egy futásnál ez rendben, de
+-- fejlesztés/pótfutás közben bizonyítékot törölne. A run_attempts MINDEN futást
+-- megőriz, autoincrement kulccsal — a runs marad a napi „legutolsó állapot"
+-- összegzés (getLastRunStartedAt is erre épül). A startRun beszúr (finished_at
+-- NULL), a finishRun UPDATE-el id szerint: egy elhasalt futás finished_at=NULL
+-- sort hagy — ez maga a jelzés. (cost_estimate szándékosan NINCS itt: token-
+-- számlálás nélkül üres maradna, lásd ARCHITEKTURA.md 7. — nem visszük tovább a hiányt.)
+CREATE TABLE IF NOT EXISTS run_attempts (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id         TEXT NOT NULL,
+  started_at     TEXT,
+  finished_at    TEXT,
+  providers_used TEXT,
+  report_url     TEXT,
+  email_status   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_attempts_run ON run_attempts(run_id);
 `;
 
 /** Oszlop hozzáadása, ha még nincs (idempotens migráció commitolt DB-hez). */
@@ -105,24 +127,47 @@ export function getSourceChecks(db, runId) {
   return db.prepare("SELECT * FROM source_checks WHERE run_id = ? ORDER BY source_id").all(runId);
 }
 
+/**
+ * Futás indítása. Frissíti a runs napi összegzőt, ÉS beszúr egy append-only
+ * run_attempts sort (finished_at NULL). Visszaadja az attempt id-t, amit a
+ * finishRun UPDATE-hez használ — így a started_at nem a runs-ból olvasódik
+ * vissza (amit egy második startRun felülírhat), hanem közvetlen.
+ * @returns {number} attemptId
+ */
 export function startRun(db, { runId, startedAt }) {
   db.prepare(
     "INSERT INTO runs (run_id, started_at) VALUES (?, ?) ON CONFLICT(run_id) DO UPDATE SET started_at = excluded.started_at",
   ).run(runId, startedAt);
+  const res = db.prepare("INSERT INTO run_attempts (run_id, started_at) VALUES (?, ?)").run(runId, startedAt);
+  return Number(res.lastInsertRowid);
 }
 
-export function finishRun(db, { runId, finishedAt, providersUsed, costEstimate, reportUrl, emailStatus }) {
+export function finishRun(db, { runId, attemptId, finishedAt, providersUsed, reportUrl, emailStatus }) {
+  // Az append-only sor azonosítása ELŐBB: attemptId híján (régi hívó) hangos
+  // fallback + WARN a naplóba — hogy a WARN belekerüljön a lentebb serializált
+  // providers_used-be (mindkét UPDATE ugyanazt a naplót írja). A stringify ezért a
+  // fallback UTÁN történik; különben a WARN elpárologna (CLAUDE.md 2.). NORMÁL
+  // futásban ez az ág nem fut (run.js átadja az attemptId-t), épp ezért hangos.
+  let id = attemptId;
+  if (id == null) {
+    console.warn("finishRun: hiányzó attemptId — a runId legutolsó nyitott run_attempts sorát zárom (fallback). Ellenőrizd a hívót.");
+    if (Array.isArray(providersUsed)) providersUsed.push({ role: "run", status: "WARN", detail: "finishRun attemptId nélkül hívva (fallback)" });
+    id = db.prepare(
+      "SELECT id FROM run_attempts WHERE run_id = ? AND finished_at IS NULL ORDER BY id DESC LIMIT 1",
+    ).get(runId)?.id;
+  }
+
+  const providersJson = providersUsed == null ? null : JSON.stringify(providersUsed);
   db.prepare(`
-    UPDATE runs SET finished_at = ?, providers_used = ?, cost_estimate = ?, report_url = ?, email_status = ?
+    UPDATE runs SET finished_at = ?, providers_used = ?, report_url = ?, email_status = ?
     WHERE run_id = ?
-  `).run(
-    finishedAt ?? null,
-    providersUsed == null ? null : JSON.stringify(providersUsed),
-    costEstimate ?? null,
-    reportUrl ?? null,
-    emailStatus ?? null,
-    runId,
-  );
+  `).run(finishedAt ?? null, providersJson, reportUrl ?? null, emailStatus ?? null, runId);
+
+  if (id != null) {
+    db.prepare(
+      "UPDATE run_attempts SET finished_at = ?, providers_used = ?, report_url = ?, email_status = ? WHERE id = ?",
+    ).run(finishedAt ?? null, providersJson, reportUrl ?? null, emailStatus ?? null, id);
+  }
 }
 
 /** A legutóbbi futás kezdete ms-ben (az aktuálisat kizárva), vagy null. */
@@ -162,10 +207,31 @@ export function countNewInRun(db, { runStartedAt }) {
   return row.n;
 }
 
-/** Triázs-verdiktek visszaírása (F2): significance, relevant, triage_json. */
+/**
+ * Egyszeri, idempotens tisztítás: a korábbi hibából „hiányzó ítélet"-tel beragadt
+ * tételeknél nullázza a triage_json/significance/relevant mezőket, hogy a normál
+ * folyam (enrich: !it.triage_json) újra triázsra küldje őket. A reason-szöveg
+ * ("hiányzó ítélet") azonosítja őket. Idempotens: nullázás után a LIKE 0 sort
+ * talál, ismételt futtatás no-op. NEM az openDb auto-útján fut — külön, kézzel
+ * indított migráció (scripts/reset-stuck-verdicts.mjs), a commitolt DB-t csak
+ * jóváhagyással érinti.
+ * @returns {number} az érintett (visszaállított) tételek száma
+ */
+export function resetStuckMissingVerdicts(db) {
+  const res = db
+    .prepare("UPDATE items SET triage_json = NULL, significance = NULL, relevant = NULL WHERE triage_json LIKE '%hiányzó ítélet%'")
+    .run();
+  return res.changes;
+}
+
+/** Triázs-verdiktek visszaírása (F2): significance, relevant, triage_json.
+ * Hiányzó ítéletet (v.missing — bukott batch) NEM perzisztálunk: a sor érintetlen
+ * marad (triage_json NULL), így a következő futás újra triázsra küldi. Így a komment
+ * eredeti szándéka (újrapróbálás) tényleg teljesül, nem ragad be a tétel. */
 export function applyTriage(db, verdicts) {
   const stmt = db.prepare("UPDATE items SET significance = ?, relevant = ?, triage_json = ? WHERE canonical_key = ?");
   for (const [key, v] of verdicts) {
+    if (v.missing) continue; // hiányzó ítélet → ne írjuk felül, maradjon újrapróbálható
     stmt.run(v.significance ?? null, v.relevant ? 1 : 0, JSON.stringify(v), key);
   }
 }

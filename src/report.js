@@ -4,8 +4,33 @@
 // megjelenítésből (a DB-ben maradnak); degradált (LLM nélküli) módban minden
 // tétel nyersen látszik. Stílus: email-barát, beágyazott CSS.
 
+import { groupStories } from "./lib/storygroup.js";
+
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Cross-source story-dedup (spec 13.): a látható tételeket EGYSZER csoportosítjuk
+// run-szinten, és a run objektumon memoizáljuk — így a report + digest + KIEMELT
+// render mind UGYANAZT az egy csoportosítást használja (nem fut szekciónként/
+// levelenként újra), és a merges-napló egységes. Config híján (pl. régi teszt vagy
+// betöltési hiba) érintetlen a lista; ÉLES futásban a run.js WARN-t naplóz erről.
+export function storyGroups(run) {
+  if (run.__storyGroups) return run.__storyGroups;
+  const src = visibleItems(run);
+  const res = (!run?.dedupCfg || !run?.institutes)
+    ? { representatives: src, merges: [] }
+    : groupStories(src, { cfg: run.dedupCfg, institutes: run.institutes });
+  try { Object.defineProperty(run, "__storyGroups", { value: res, enumerable: false, configurable: true }); } catch { /* fagyasztott run: memo nélkül */ }
+  return res;
+}
+
+// „+N forrás" a reprezentáns mellé, a press_urls-ből linkelve (spec 13.).
+function pressUrlsHtml(it) {
+  const p = it._pressUrls ?? [];
+  if (!p.length) return "";
+  const links = p.map((u) => (u.url ? `<a href="${esc(u.url)}">${esc(u.source_id)}</a>` : esc(u.source_id))).join(", ");
+  return ` <span class="empty">+${p.length} forrás: ${links}</span>`;
+}
 
 const FRESHNESS = {
   UJ_24H: { label: "🟢 ÚJ (24h)", rank: 0 },
@@ -51,11 +76,20 @@ const sortItems = (items) =>
 
 const titleLink = (it) => (it.url ? `<a href="${esc(it.url)}">${esc(it.title)}</a>` : esc(it.title));
 
+// Jelentőség-címke: az ítélet nélküli (bukott batch) tétel külön megjelölve — nem
+// keveredik a triázsolt tételek jelentőségi soraiba (becsületes részlegesség).
+const sigLabel = (it) => (it.triage_missing ? "⏳ ítélet nélkül (köv. futásra halasztva)" : SIGNIF[it.significance]?.label ?? "—");
+
+// Forrás-címke a reprezentánson: „Telex +4" ha több forrás áll a sztori mögött —
+// becsületes részlegesség: látszódjon, hogy többen is lehozták (KIEMELT-nél megerősítés-jel).
+const srcLabel = (it, sourceNames) =>
+  esc(sourceNames[it.source_id] ?? it.source_id) + (it._groupSize > 1 ? ` <span class="empty">+${it._groupSize - 1}</span>` : "");
+
 function renderRow(it, sourceNames) {
-  const src = esc(sourceNames[it.source_id] ?? it.source_id);
-  const sig = SIGNIF[it.significance]?.label ?? "—";
+  const src = srcLabel(it, sourceNames);
+  const sig = sigLabel(it);
   const fresh = FRESHNESS[it.freshness]?.label ?? esc(it.freshness ?? "—");
-  return `<tr><td>${src}</td><td>${titleLink(it)}</td><td>${sig}</td><td>${esc(fmtTime(it.published_at))}</td><td>${fresh}</td></tr>`;
+  return `<tr><td>${src}</td><td>${titleLink(it)}${pressUrlsHtml(it)}</td><td>${sig}</td><td>${esc(fmtTime(it.published_at))}</td><td>${fresh}</td></tr>`;
 }
 
 function itemRows(items, sourceNames) {
@@ -122,21 +156,47 @@ const STYLE = `
 export function renderReport(run) {
   const sourceNames = run.sourceNames ?? {};
   const checks = run.sourceChecks ?? [];
-  const visible = visibleItems(run);
+  // Story-dedup EGYSZER, run-szinten: minden szekció a reprezentánsokból válogat,
+  // így a groupStories nem fut szekciónként újra, és a merges-napló egységes.
+  const visibleRaw = visibleItems(run);
+  const { representatives: visible, merges } = storyGroups(run);
 
   const hivatalos = visible.filter((i) => i.kind === "hivatalos_adat");
   const sajto = visible.filter((i) => i.kind === "sajto");
   const latestHivatalos = sortItems(hivatalos)[0];
   const uj24 = visible.filter((i) => i.freshness === "UJ_24H");
-  const newItems = visible.filter((i) => i.first_seen_at === run.runStartedAt);
+  // Új sztori: a csoport LEGKORÁBBI tagja most jelent meg (egyetlen tagját sem
+  // láttuk a mai futás előtt). A _groupFirstSeen a csoport-min; singletonnál a saját.
+  const newStories = visible.filter((i) => (i._groupFirstSeen ?? i.first_seen_at) === run.runStartedAt);
+  // Releváns új tétel (nyers, összevonás ELŐTT) — a mondat őszinteségéhez elkülönítve
+  // a countNewInRun-tól (ami a teljes DB-t számolja, a kód-DROP-olt churnnel együtt).
+  const newRelevant = visibleRaw.filter((i) => i.first_seen_at === run.runStartedAt).length;
 
   const naploRows = checks.length
     ? checks.map((c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`).join("\n")
     : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`;
 
-  const changeList = newItems.length
-    ? `<ul>${newItems.slice(0, 20).map((i) => `<li>${esc(sourceNames[i.source_id] ?? i.source_id)}: ${esc(i.title)}</li>`).join("")}</ul>`
+  const changeList = newStories.length
+    ? `<ul>${newStories.slice(0, 20).map((i) => `<li>${esc(sourceNames[i.source_id] ?? i.source_id)}: ${esc(i.title)}${pressUrlsHtml(i)}</li>`).join("")}</ul>`
     : `<p class="empty">nincs új tétel az előző futás óta</p>`;
+
+  const unjudged = visible.filter((i) => i.triage_missing).length;
+  const unjudgedNote = unjudged > 0
+    ? `<p class="empty">⏳ ${unjudged} tétel ítélet nélkül maradt (bukott triázs-batch) — a következő futás újrapróbálja, addig megjelölve szerepel.</p>`
+    : "";
+
+  // Összevonás-napló (spec 13.): összegzés + részletes lista, hogy egy esetleges
+  // hamis összevonás felfedezhető legyen (nem csak „eltűnt egy tétel"). A providers_used
+  // részletes bejegyzését a run.js írja a runs-ba; itt a jelentésbe kerül.
+  let mergeNote = "";
+  if (merges.length) {
+    const totalMembers = merges.reduce((a, m) => a + m.members.length, 0);
+    const byRule = {};
+    for (const m of merges) for (const mem of m.members) { const k = mem.rule.split(" ")[0]; byRule[k] = (byRule[k] ?? 0) + 1; }
+    const rules = Object.entries(byRule).map(([k, v]) => `${esc(k)}: ${v}`).join(", ");
+    const list = merges.map((m) => `<li><strong>${esc(m.story)}</strong> ← ${m.members.map((x) => esc(sourceNames[x.source_id] ?? x.source_id)).join(", ")}</li>`).join("");
+    mergeNote = `<p class="empty">🔗 ${merges.length} sztori összevonva ${totalMembers} további forrásból (${rules}) — cross-source dedup (spec 13.):</p><ul>${list}</ul>`;
+  }
 
   const notCovered = (run.notCovered ?? []).map((s) => `<li>${esc(s)}</li>`).join("\n");
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
@@ -181,12 +241,16 @@ export function renderReport(run) {
 
   <section id="valtozas">
     <h2>Mi változott az előző jelentéshez képest?</h2>
-    <p>${(run.newCount ?? newItems.length) > 0 ? `<strong>${run.newCount ?? newItems.length}</strong> új tétel az előző futás óta.` : "Nincs új tétel az előző futás óta."}</p>
+    <p>${newRelevant > 0 || newStories.length > 0
+      ? `${run.newCount != null ? `<strong>${run.newCount}</strong> új tétel begyűjtve, ebből ` : ""}<strong>${newRelevant}</strong> releváns${newStories.length ? `, <strong>${newStories.length}</strong> sztoriban` : ""} az előző futás óta.`
+      : "Nincs új tétel az előző futás óta."}</p>
     ${changeList}
   </section>
 
   <section id="naplo">
     <h2>Ellenőrzési napló</h2>
+    ${unjudgedNote}
+    ${mergeNote}
     <table>
       <tr><th>Forrás</th><th>Státusz</th><th>Részlet</th></tr>
       ${naploRows}
@@ -212,19 +276,25 @@ function digestItemList(items, sourceNames) {
   const grouped = sortItems(items);
   if (!grouped.length) return `<p class="empty">nincs friss tétel az elmúlt 24 órában.</p>`;
   return `<ul>${grouped.map((it) =>
-    `<li>${SIGNIF[it.significance]?.label ?? "—"} <strong>${esc(sourceNames[it.source_id] ?? it.source_id)}</strong>: ${titleLink(it)}</li>`,
+    `<li>${sigLabel(it)} <strong>${srcLabel(it, sourceNames)}</strong>: ${titleLink(it)}${pressUrlsHtml(it)}</li>`,
   ).join("")}</ul>`;
 }
 
+// A friss (UJ_24H) reprezentánsok — a memoizált story-dedupból (egyszer collapse-olva).
+const freshRepresentatives = (run) =>
+  storyGroups(run).representatives.filter((i) => i.freshness === "UJ_24H");
+
 export function digestSubject(run) {
-  const fresh = visibleItems(run).filter((i) => i.freshness === "UJ_24H");
-  const kiemelt = run.kiemeltCount ?? fresh.filter((i) => i.significance === "KIEMELT").length;
+  // Mindkét szám a story-dedup UTÁNi halmazból — konzisztens a levél törzsével
+  // (a nyers kiemeltCount-ot NEM keverjük ide, az a küldés-döntéshez van).
+  const fresh = freshRepresentatives(run);
+  const kiemelt = fresh.filter((i) => i.significance === "KIEMELT").length;
   return `Survey Monitor — ${fresh.length} új (24h), ebből ${kiemelt} kiemelt`;
 }
 
 export function renderDigest(run) {
   const sourceNames = run.sourceNames ?? {};
-  const fresh = visibleItems(run).filter((i) => i.freshness === "UJ_24H");
+  const fresh = freshRepresentatives(run);
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
@@ -246,7 +316,9 @@ export function renderDigest(run) {
 // ---- 🔴 KIEMELT e-mail: csak a kiemelt tételek (csak ha van ilyen) ----
 export function renderKiemelt(run) {
   const sourceNames = run.sourceNames ?? {};
-  const kiemelt = visibleItems(run).filter((i) => i.significance === "KIEMELT");
+  // Story-dedup UTÁN (memoizált): egy sztori egyszer szerepel (a groupSig a legerősebb
+  // tagé → egy KIEMELT framing felhozza a sztorit); a többi forrás a reprezentáns +N / press_urls.
+  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
   return `<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🔴 KIEMELT — ${esc(run.runId)}</title><style>${STYLE}</style></head>

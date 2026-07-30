@@ -40,11 +40,15 @@ export async function enrichWithTriage({ db, items, completeFn, prefilterCfg, pr
       it.significance = v.significance;
       it.relevant = v.relevant ? 1 : 0;
       it.triage_reason = v.reason;
+      it.triage_missing = v.missing === true; // ítélet nélküli (bukott batch) — külön jelölve
     }
   }
 
-  // Szintézis csak nem-degradált esetben, a friss + jelentős tételekből.
-  const relevantFresh = items.filter((it) => it.relevant === 1 && it.freshness === "UJ_24H");
+  // Szintézis csak nem-degradált esetben, a friss + jelentős tételekből. Az ítélet
+  // nélküli (triage_missing) tétel NEM folyik a szintézisbe — becsületes részlegesség
+  // (ARCHITEKTURA.md 1. vezérelv): ítélet nélkül nem állítunk róla semmit, a jelentésben
+  // külön, megjelölve szerepel, a következő futás triázsolja.
+  const relevantFresh = items.filter((it) => it.relevant === 1 && it.freshness === "UJ_24H" && !it.triage_missing);
   const synth = degraded ? null : await synthesize(relevantFresh, { completeFn, log: providersUsed });
 
   const kiemeltCount = items.filter((it) => it.relevant === 1 && it.significance === "KIEMELT").length;

@@ -2,10 +2,13 @@ name: daily-monitor
 
 on:
   schedule:
-    # 03:43 UTC = 05:43 nyáron / 04:43 télen (Europe/Budapest).
+    # 00:43 UTC = 02:43 nyáron / 01:43 télen (Europe/Budapest).
     # A "ferde" perc szándékos: a kerek órák zsúfoltak az Actions sorában.
-    # Cél-SLA: email a postaládában 7:00 (Budapest) előtt.
-    - cron: "43 3 * * *"
+    # A korábbi 03:43 UTC-t a mért Actions-sorállás (142–188 perc, 8 napból)
+    # átbillentette a nyári 05:00 UTC (=7:00 Budapest) SLA-n → most 00:43-ra
+    # hozva, ~1h tartalékkal a mért maximumra is. Cél-SLA: email a postaládában
+    # 7:00 (Budapest) előtt. Lásd ARCHITEKTURA.md 3.
+    - cron: "43 0 * * *"
   workflow_dispatch: {}
 
 permissions:
