@@ -65,6 +65,22 @@ function visibleItems(run) {
 }
 
 // Rendezés: jelentőség (ha van), majd frissesség, majd publikációs idő.
+//
+// TUDATOS DÖNTÉS — ne „javítsd" reflexből: az ítélet nélküli (triage_missing)
+// tétel significance-e MINDIG null (missingVerdict → triage.js), amit a SIGNIF-
+// lookup rank 9-re képez → a lista LEGALJÁRA kerül, MINDEN ítélt tétel alá, a
+// régebbi ítélt tételek alá is. Ez szándékolt: a missing csak ÁTMENETI állapot —
+// a verdikt nem perzisztál (applyTriage: `if (v.missing) continue`), így a
+// triage_json NULL marad és a következő futás újratriázsolja. Egy „még
+// feldolgozandó" faroknak a lista alján a helye; ítélet nélküli tétel ne
+// kerüljön egy ítélt FONTOS hír fölé a reggeli levélben.
+//
+// Ezért NINCS külön „missing-utolsó" tiebreaker: a jelenlegi adatmodellben
+// megfigyelhetetlen no-op lenne (a missing sig=9 és az ítélt sig=0–2 már az
+// első kulcsnál szétválik). A freshness elsődleges kulccsá tétele (ami a
+// missinget a saját frissességi csoportjában tartaná) az EGÉSZ jelentést
+// átrendezné (FONTOS/KORABBI a FIGYELENDO/UJ_24H alá esne) — az termék-szintű
+// döntés, F3-ra halasztva (lásd run.js notCovered).
 const sortItems = (items) =>
   [...items].sort((a, b) => {
     const s = (SIGNIF[a.significance]?.rank ?? 9) - (SIGNIF[b.significance]?.rank ?? 9);
