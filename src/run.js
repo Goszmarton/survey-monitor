@@ -88,7 +88,7 @@ async function main() {
     notCovered: [
       "Intézeti agentikus ellenőrzés (B-kaszt), rejtett magyar adat (F3)",
       "Mély audit KIEMELT tételekre (F3)",
-      "Dedup stoplista újramérése produkciós korpuszon — a 360k pár Eurostat-churnből jött, amit az éles futás DROP után nem lát; a „data/dataset" angol forrásoknál tartalmi szó (F3)",
+      "Dedup stoplista újramérése produkciós korpuszon — a 360k pár Eurostat-churnből jött, amit az éles futás DROP után nem lát; a data/dataset angol forrásoknál tartalmi szó (F3)",
       "Containment metrika stopszó-érzékenysége felfelé is — mérlegelendő abszolút min. közös token, hogy a stopszó-metszet ne emelje a hasonlóságot (F3)",
       "Rendezési sorrend felülvizsgálata — freshness vs significance mint elsődleges kulcs; ma tudatosan significance-primary (a missing átmeneti, ezért a lista aljára kerül) (F3)",
       "Forrásbővítés v2-listákról, publikációs naptár (F4)",
