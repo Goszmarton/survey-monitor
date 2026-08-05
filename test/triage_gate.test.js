@@ -38,3 +38,31 @@ test("triázs-kapu: relevant=false → significance null (a modell null-ja is el
   assert.equal(v.relevant, false);
   assert.equal(v.significance, null);
 });
+
+// 3a — AUDITÁLHATÓSÁG (CLAUDE.md 2): a kapu csak LEFELÉ ír (data_backed=false →
+// KIEMELT/FONTOS => FIGYELENDO). A kapu ELŐTTI significance-t menteni kell, különben a
+// lehúzás visszafejthetetlen: egy FIGYELENDO&data_backed=false tételről nem tudható, a
+// modell FIGYELENDO-t vagy egy lehúzott KIEMELT-et mondott — minden futás egy napnyi
+// auditálhatatlan (offline A/B-re alkalmatlan) adatot termelne. A significance_raw a
+// data_backed-plafon ELŐTTI érték (a relevancia-null és a null→FIGYELENDO már benne),
+// így raw≠significance PONTOSAN a data_backed-lehúzást jelzi, nem a null-normalizálást.
+test("3a: kapu-lehúzáskor a nyers érték MEGVAN és KÜLÖNBÖZIK (data_backed=false KIEMELT)", async () => {
+  const v = await triageOne({ relevant: true, significance: "KIEMELT", data_backed: false, kind: "sajto" });
+  assert.equal(v.significance, "FIGYELENDO");           // kapuzott (report ezt látja)
+  assert.equal(v.significance_raw, "KIEMELT");           // nyers, kapu előtti
+  assert.notEqual(v.significance, v.significance_raw);   // a lehúzás láthatóvá válik
+});
+
+test("3a: FONTOS lehúzásnál is megvan mindkettő és különbözik (data_backed=false)", async () => {
+  const v = await triageOne({ relevant: true, significance: "FONTOS", data_backed: false, kind: "sajto" });
+  assert.equal(v.significance, "FIGYELENDO");
+  assert.equal(v.significance_raw, "FONTOS");
+  assert.notEqual(v.significance, v.significance_raw);
+});
+
+test("3a: kapu NEM húz le (data_backed=true) → raw == kapuzott, nincs hamis eltérés", async () => {
+  const v = await triageOne({ relevant: true, significance: "KIEMELT", data_backed: true, kind: "kutatas" });
+  assert.equal(v.significance, "KIEMELT");
+  assert.equal(v.significance_raw, "KIEMELT");
+  assert.equal(v.significance, v.significance_raw);
+});

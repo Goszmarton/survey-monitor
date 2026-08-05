@@ -94,15 +94,27 @@ function priority(it) {
 const missingVerdict = (it, reason) => ({ relevant: true, significance: null, kind: it.kind, reason, missing: true });
 
 /**
+ * Kapu ELŐTTI (nem-kapuzott) jelentőség: a relevancia-nullázás és a null→FIGYELENDO
+ * normalizálás alkalmazva, de a data_backed-plafon MÉG NEM. Ez a modell szándéka,
+ * amit a data_backed-kapu felülírhat — külön mentve (significance_raw), hogy a kapu
+ * hatása auditálható és offline A/B-zhető legyen (CLAUDE.md 2: ne tűnjön el csendben).
+ * @returns {"KIEMELT"|"FONTOS"|"FIGYELENDO"|null}
+ */
+function ungatedSignificance(r) {
+  if (!r.relevant) return null;
+  return r.significance ?? "FIGYELENDO";
+}
+
+/**
  * Determinisztikus kétkapus kapu (spec 1./15.): a KIEMELT/FONTOS csak data_backed
  * tételre adható. Adat nélküli (data_backed=false) releváns tétel — puszta politikai
  * hír — legfeljebb FIGYELENDO, KIEMELT SOHA. A modell (a) kapu-válaszát (data_backed)
- * a kód érvényesíti, nem csak a prompt reményli. relevant=false → null.
+ * a kód érvényesíti, nem csak a prompt reményli. relevant=false → null. A lehúzás
+ * (raw≠kapuzott) így PONTOSAN a data_backed-plafon, nem a null-normalizálás.
  * @returns {"KIEMELT"|"FONTOS"|"FIGYELENDO"|null}
  */
 function gatedSignificance(r) {
-  if (!r.relevant) return null;
-  const sig = r.significance ?? "FIGYELENDO";
+  const sig = ungatedSignificance(r);
   if (r.data_backed !== true && (sig === "KIEMELT" || sig === "FONTOS")) return "FIGYELENDO";
   return sig;
 }
@@ -156,6 +168,7 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
       if (r) {
         verdicts.set(it.canonical_key, {
           relevant: r.relevant, significance: gatedSignificance(r),
+          significance_raw: ungatedSignificance(r), // kapu ELŐTTI érték — auditálhatóság (3a, CLAUDE.md 2)
           data_backed: r.data_backed === true,
           kind: r.kind ?? it.kind, reason: r.reason ?? "", triage_provider: res.provider, triage_model: res.model,
         });

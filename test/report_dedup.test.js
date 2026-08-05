@@ -69,3 +69,19 @@ test("report: a változás-mondat elkülöníti a begyűjtött / releváns / szt
   assert.match(html, /2<\/strong> releváns/);
   assert.match(html, /1<\/strong> sztoriban/);
 });
+
+// --- 3a undefined-safety: a RÉGI sorokban nincs significance_raw (csak mától kerül be).
+// Az olvasó/report oldal a kapuzott `significance` oszlopból dolgozik, a nyers kulcsot
+// SEHOL nem olvassa — egy significance_raw NÉLKÜLI tételen sem szabad eldőlnie. ---
+test("3a: report + KIEMELT-levél significance_raw NÉLKÜLI tételen is rendereldik (régi sorok)", () => {
+  const items = [
+    { canonical_key: "telex:o", source_id: "telex", kind: "sajto", title: "Régi sor, nincs nyers kulcs", url: "t", relevant: 1, significance: "KIEMELT", freshness: "UJ_24H", first_seen_at: NOW },
+  ];
+  assert.ok(!("significance_raw" in items[0]), "a fixture tudatosan nem tartalmazza a kulcsot");
+  const run = makeRun(items, { dedupCfg: cfg, institutes });
+  let report, kiemelt;
+  assert.doesNotThrow(() => { report = renderReport(run); }, "a report nem dől el a hiányzó significance_raw-tól");
+  assert.doesNotThrow(() => { kiemelt = renderKiemelt(run); }, "a KIEMELT-levél sem");
+  assert.match(report, /🔴 KIEMELT/, "a kapuzott jelentőség jelenik meg, változatlanul");
+  assert.match(kiemelt, /Régi sor, nincs nyers kulcs/);
+});

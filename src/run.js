@@ -91,6 +91,8 @@ async function main() {
       "Dedup stoplista újramérése produkciós korpuszon — a 360k pár Eurostat-churnből jött, amit az éles futás DROP után nem lát; a data/dataset angol forrásoknál tartalmi szó (F3)",
       "Containment metrika stopszó-érzékenysége felfelé is — mérlegelendő abszolút min. közös token, hogy a stopszó-metszet ne emelje a hasonlóságot (F3)",
       "Rendezési sorrend felülvizsgálata — freshness vs significance mint elsődleges kulcs; ma tudatosan significance-primary (a missing átmeneti, ezért a lista aljára kerül) (F3)",
+      "Kapu-hatás A/B (data_backed-plafon ki/be ugyanazon korpuszon) — a significance_raw MOSTANTÓL mentődik, de RETROSPEKTÍV nincs: a 2026-07-31–08-05 közti lehúzások visszafejthetetlenek, az A/B csak előre mér (F3, 3b)",
+      "UTC-fix cron (43 0 * * *) DST-csúszása — októbertől a 00:43 UTC egy órával későbbi helyi időt jelent, a levél-érkezés eltolódik; mérlegelendő időzóna-tudatos ütemezés vagy cron-váltás (F3)",
       "Forrásbővítés v2-listákról, publikációs naptár (F4)",
     ],
     durationMs: 0,
