@@ -8,7 +8,7 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { renderReport, renderDigest, renderKiemelt, digestSubject, storyGroups } from "./report.js";
 import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt } from "./state/db.js";
-import { collect } from "./collect.js";
+import { collect, selectActiveSources } from "./collect.js";
 import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
 import { deriveInstitutes } from "./lib/storygroup.js";
@@ -30,8 +30,8 @@ async function loadJson(rel) {
 
 async function loadSources() {
   const { sources } = await loadJson("../config/sources.json");
-  // Kizárólag A-kaszt, aminek van verifikált feed-je vagy list_url-je.
-  return sources.filter((s) => s.kaszt === "A" && (s.feed || s.list_url));
+  // Kizárólag A-kaszt, aminek van verifikált feed-je vagy list_url-je (selectActiveSources).
+  return selectActiveSources(sources);
 }
 
 async function main() {

@@ -16,7 +16,7 @@
     { "id": "szabadeu", "name": "Szabad Európa",      "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": "https://www.szabadeuropa.hu/api/zipymtl-vomx-tpemjtmt", "status": "RESZLEGES", "note": "Napirenden (magyar hír/politika) rovat feedje. A feed struktúrája érvényes RSS, de a lekéréskor (2026-07-22) 0 tétel — mind a 17 RFE/RL rovatfeed üres volt. F1-ben tolerálni kell az üres választ; ha tartósan üres, HTML-fallback vagy B-kaszt kell. A feed-hash az /rssfeeds oldalról verifikálva." },
     { "id": "valaszonline", "name": "Válasz Online",  "kaszt": "A", "kind": "sajto",     "napi": true,  "feed": "https://www.valaszonline.hu/feed/", "status": "OK" },
 
-    { "id": "median",     "name": "Medián",            "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "median",     "name": "Medián",            "kaszt": "A", "kind": "intezet", "napi": false, "feed": "https://median.hu/feed/", "status": "OK", "note": "F3 intézet-aktiválás (2026-08-06 verifikált): head-autodiscovery → /feed/, HTTP 200 application/rss+xml, 9 <item>, legfrissebb 2026-07-31. Primer data_backed-képes forrás." },
     { "id": "zavecz",     "name": "Závecz Research",   "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "republikon", "name": "Republikon",        "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "publicus",   "name": "Publicus",          "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
@@ -24,7 +24,7 @@
     { "id": "21kutato",   "name": "21 Kutatóközpont",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "nezopont",   "name": "Nézőpont Intézet",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "szazadveg",  "name": "Századvég",         "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
-    { "id": "iranytu",    "name": "Iránytű Intézet",   "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "iranytu",    "name": "Iránytű Intézet",   "kaszt": "A", "kind": "intezet", "napi": false, "feed": "https://iranytuintezet.hu/feed/", "status": "OK", "note": "F3 intézet-aktiválás (2026-08-06 verifikált): head-autodiscovery → /feed/, HTTP 200 application/rss+xml, 10 <item>, legfrissebb 2026-04-08. Primer data_backed-képes forrás." },
     { "id": "realpr93",   "name": "Real-PR 93",        "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
     { "id": "opinio",     "name": "Europion / Opinio", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
     { "id": "tarskutato", "name": "Magyar Társadalomkutató", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },

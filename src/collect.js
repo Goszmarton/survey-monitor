@@ -19,6 +19,12 @@ const KIND = { hivatalos: "hivatalos_adat", sajto: "sajto", intezet: "kutatas", 
 
 const WINDOW_DAYS = 14;
 
+// Aktív forrás: A-kaszt, verifikált feed VAGY list_url. A run.js loadSources ezt
+// használja; a collect() KIZÁRÓLAG az így kiválasztott forrásokat kapja meg — ezért
+// tesztelhető külön, hogy egy config-bejegyzés bekerül-e a gyűjtésbe (pl. intézet-aktiválás).
+export const isActiveSource = (s) => s.kaszt === "A" && Boolean(s.feed || s.list_url);
+export const selectActiveSources = (sources) => sources.filter(isActiveSource);
+
 // Egy forrásnak több csatornája is lehet: verifikált RSS ÉS HTML-listaoldal
 // (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
 function channelsOf(source) {
