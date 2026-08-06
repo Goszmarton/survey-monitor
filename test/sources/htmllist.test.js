@@ -43,3 +43,22 @@ test("HIBA: HTTP 500", async () => {
   assert.equal(r.check.status, "HIBA");
   assert.match(r.check.detail, /500/);
 });
+
+// --- 21 Kutatóközpont: dátumozott Bootstrap-collapse accordion (per-source parser) ---
+// A tételek NEM <a>-tagek, hanem <div class="... question" href="#faqNN">ÉÉÉÉ.HH.NN. – Cím<,
+// ezért a generikus <a>-extractor nem látja őket, és dátumot sem von ki. A per-source parser
+// kinyeri a CÍMET, a DÁTUMOT (publishedAt) és a LINKET (base#faqNN). PIROS az implementáció előtt.
+const src21 = { id: "21kutato", name: "21 Kutatóközpont", list_url: "https://21kutatokozpont.hu/" };
+test("21kutato: accordion-tételek — cím + dátum + link kinyerve", async () => {
+  const r = await fetchNew(src21, { fetchImpl: stub(fx("21kutato_accordion.html")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 3, "3 accordion-tétel (a nav-linkek kimaradnak)");
+  const first = r.items[0];
+  assert.equal(first.title, "Kétharmados többség Sulyok távozása mellett", "a dátum-prefix levágva a címről");
+  assert.equal(first.publishedAt, "2026-05-28T00:00:00.000Z", "a dátum kinyerve publishedAt-ba");
+  assert.equal(first.url, "https://21kutatokozpont.hu/#faq76", "a link a base#faqNN anchor");
+  // az identitás a CÍM (a #faqNN renumberálódhat) — guid a címből
+  assert.equal(first.guid, first.title);
+  // mindhárom tételnek van valós dátuma (nem null, mint a generikus HTML-listánál)
+  assert.ok(r.items.every((i) => /^\d{4}-\d{2}-\d{2}T/.test(i.publishedAt)));
+});

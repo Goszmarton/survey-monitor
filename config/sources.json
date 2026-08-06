@@ -21,7 +21,7 @@
     { "id": "republikon", "name": "Republikon",        "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "publicus",   "name": "Publicus",          "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "idea",       "name": "IDEA Intézet",      "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
-    { "id": "21kutato",   "name": "21 Kutatóközpont",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "21kutato",   "name": "21 Kutatóközpont",  "kaszt": "A", "kind": "intezet", "napi": false, "feed": null, "list_url": "https://21kutatokozpont.hu/", "status": "OK", "note": "F3 intézet-aktiválás (2026-08-06 verifikált): HTML-lista, dátumozott Bootstrap-collapse accordion (per-source parser a htmllist.js-ben), 62 keltezett tétel, legfrissebb 2026-05-28. Link = base#faqNN, identitás a cím." },
     { "id": "nezopont",   "name": "Nézőpont Intézet",  "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "szazadveg",  "name": "Századvég",         "kaszt": "?", "kind": "intezet", "napi": false, "feed": null },
     { "id": "iranytu",    "name": "Iránytű Intézet",   "kaszt": "A", "kind": "intezet", "napi": false, "feed": "https://iranytuintezet.hu/feed/", "status": "OK", "note": "F3 intézet-aktiválás (2026-08-06 verifikált): head-autodiscovery → /feed/, HTTP 200 application/rss+xml, 10 <item>, legfrissebb 2026-04-08. Primer data_backed-képes forrás." },

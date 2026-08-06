@@ -34,6 +34,32 @@ function extractLinks(html, baseUrl) {
   return out;
 }
 
+// 21 Kutatóközpont: dátumozott Bootstrap-collapse accordion. A tételek NEM <a>-tagek,
+// hanem <div ... class="... question" href="#faqNN">ÉÉÉÉ.HH.NN. – Cím< — a dátum a címhez
+// fűzve, a link in-page anchor. Identitás a CÍM (guid), mert a #faqNN renumberálódhat.
+function extract21kutato(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const re = /<div\b([^>]*\bclass="[^"]*\bquestion\b[^"]*"[^>]*)>\s*(\d{4})\.(\d{2})\.(\d{2})\.?\s*[–-]\s*([^<]+?)\s*</gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const attrs = m[1];
+    const [, , y, mo, d] = m; // m[2..4] = év/hó/nap
+    const title = m[5].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < MIN_TITLE_LEN || seen.has(title)) continue;
+    seen.add(title);
+    const href = (attrs.match(/href=["']([^"']+)["']/) ?? [])[1];
+    const url = href ? absolutize(href, baseUrl) : baseUrl;
+    out.push({ guid: title, title, url, publishedAt: `${y}-${mo}-${d}T00:00:00.000Z`, summary: null });
+  }
+  return out;
+}
+
+// Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
+// extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
+// forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
+const PARSERS = { "21kutato": extract21kutato };
+
 /**
  * @param {{id:string,name?:string,list_url:string}} source
  * @param {{fetchImpl?:function, timeoutMs?:number}} opts
@@ -46,7 +72,8 @@ export async function fetchNew(source, { fetchImpl, timeoutMs = DEFAULT_TIMEOUT_
       return { items: [], check: { status: "HIBA", detail: `HTTP ${res.status}`, url } };
     }
     const html = await res.text();
-    const items = extractLinks(html, url);
+    const extract = PARSERS[source.id] ?? extractLinks;
+    const items = extract(html, url);
     if (items.length === 0) {
       return { items: [], check: { status: "RESZLEGES", detail: "HTML-parse: nincs kinyerhető cikk-link", url } };
     }

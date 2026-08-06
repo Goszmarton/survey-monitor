@@ -23,12 +23,20 @@ test("intézet-aktiválás: a collect felveszi a median és iranytu forrást (A-
   }
 });
 
-// A többi 11 intézet MARAD inaktív (nem szivárog be A-kasztba a flip mellékhatásaként).
-test("intézet-aktiválás: a másik 11 intézet érintetlen (nem aktív forrás)", () => {
+// 21kutato A(HTML-lista)-ként aktív (list_url + per-source parser), de feed NÉLKÜL.
+test("intézet-aktiválás: 21kutato aktív HTML-listaként (list_url, feed nélkül)", () => {
+  const active = selectActiveSources(sources);
+  const s = active.find((x) => x.id === "21kutato");
+  assert.ok(s, "21kutato aktív forrás (A + list_url) — a collect felveszi");
+  assert.ok(!s.feed && /^https:\/\//.test(s.list_url), "list_url-lel, feed nélkül");
+});
+
+// A többi (még be nem kötött) intézet MARAD inaktív.
+test("intézet-aktiválás: a be nem kötött intézetek érintetlenek (nem aktív forrás)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  const others = ["zavecz", "republikon", "publicus", "idea", "21kutato", "nezopont",
+  const others = ["zavecz", "republikon", "publicus", "idea", "nezopont",
     "szazadveg", "realpr93", "opinio", "tarskutato", "minerva"];
-  for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (ma nem kötjük be)`);
+  for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (még nincs bekötve)`);
 });
 
 // --- 1. pont: az intézet-guard él a median≠iranytu párra (eddig üresben futott) ---
