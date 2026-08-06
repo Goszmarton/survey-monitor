@@ -77,10 +77,36 @@ function filterSince(items, since) {
   });
 }
 
+// Magyar rövidített hónapnevek → hónapszám (a Republikon <span id="date">-jéhez).
+const HU_MONTHS = { jan: 1, feb: 2, márc: 3, marc: 3, ápr: 4, apr: 4, máj: 5, maj: 5, jún: 6, jun: 6, júl: 7, jul: 7, aug: 8, szept: 9, szep: 9, okt: 10, nov: 11, dec: 12 };
+
+// Republikon /elemzesek,-kutatasok.aspx: a FŐ-lista tétele
+// <span id="date">ÉV.<br>hó.<br>NAP.</span><h2><a href="permalink">Cím</a> — a <h2> különbözteti
+// meg a sidebar „Legfrissebb postok" csonka linkjeitől. A dátum magyar rövidített hónappal,
+// NAP-granularitás (dateOnly). A permalink valós URL (identitás), a vessző megőrizve (new URL).
+function extractRepublikon(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const re = /<span id="date">\s*(\d{4})\.\s*<br\s*\/?>\s*([A-Za-zÁ-űá-ű]+)\.?\s*<br\s*\/?>\s*(\d{1,2})\.?\s*<\/span>\s*<h2>\s*<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const mo = HU_MONTHS[m[2].toLowerCase().replace(/\.$/, "")];
+    if (!mo) continue; // ismeretlen hónap-rövidítés → nincs megbízható dátum, kihagyjuk
+    const title = m[5].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < MIN_TITLE_LEN) continue;
+    const url = absolutize(m[4], baseUrl);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const publishedAt = `${m[1]}-${String(mo).padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00.000Z`;
+    out.push({ guid: url, title, url, publishedAt, dateOnly: true, summary: null });
+  }
+  return out;
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source

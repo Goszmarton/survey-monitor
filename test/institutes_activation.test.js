@@ -23,18 +23,19 @@ test("intézet-aktiválás: a collect felveszi a median és iranytu forrást (A-
   }
 });
 
-// 21kutato A(HTML-lista)-ként aktív (list_url + per-source parser), de feed NÉLKÜL.
-test("intézet-aktiválás: 21kutato aktív HTML-listaként (list_url, feed nélkül)", () => {
-  const active = selectActiveSources(sources);
-  const s = active.find((x) => x.id === "21kutato");
-  assert.ok(s, "21kutato aktív forrás (A + list_url) — a collect felveszi");
-  assert.ok(!s.feed && /^https:\/\//.test(s.list_url), "list_url-lel, feed nélkül");
-});
+// HTML-listás intézetek (list_url + per-source parser, feed NÉLKÜL) aktívak.
+for (const id of ["21kutato", "republikon"]) {
+  test(`intézet-aktiválás: ${id} aktív HTML-listaként (list_url, feed nélkül)`, () => {
+    const s = selectActiveSources(sources).find((x) => x.id === id);
+    assert.ok(s, `${id} aktív forrás (A + list_url) — a collect felveszi`);
+    assert.ok(!s.feed && /^https:\/\//.test(s.list_url), "list_url-lel, feed nélkül");
+  });
+}
 
 // A többi (még be nem kötött) intézet MARAD inaktív.
 test("intézet-aktiválás: a be nem kötött intézetek érintetlenek (nem aktív forrás)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  const others = ["zavecz", "republikon", "publicus", "idea", "nezopont",
+  const others = ["zavecz", "publicus", "idea", "nezopont",
     "szazadveg", "realpr93", "opinio", "tarskutato", "minerva"];
   for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (még nincs bekötve)`);
 });

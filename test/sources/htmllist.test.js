@@ -82,6 +82,25 @@ test("21kutato since-szűrés: az előző futás NAPJÁN publikált (dateOnly) t
   assert.equal(r.items.length, 1);
 });
 
+// --- Republikon: <span id="date">ÉV<br>HÓ<br>NAP</span><h2><a> fő-lista (per-source parser) ---
+// A dátum magyar rövidített hónappal, <br>-rel tördelve, NAP-granularitás (dateOnly). A fő-
+// lista tételeit a <h2> különbözteti meg a sidebar "Legfrissebb postok" csonka linkjeitől.
+// A permalink valós URL VESSZŐVEL (/elemzesek,-kutatasok/…) — nem szabad %2C-re kódolódnia.
+const srcRep = { id: "republikon", name: "Republikon", list_url: "https://republikon.hu/elemzesek,-kutatasok.aspx" };
+test("republikon: fő-lista cím + dátum + permalink; sidebar kihagyva, vessző megőrizve", async () => {
+  const r = await fetchNew(srcRep, { fetchImpl: stub(fx("republikon_list.html")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 2, "csak a 2 fő-lista poszt (a sidebar-esemény kimarad)");
+  const first = r.items[0];
+  assert.equal(first.title, "Elérhető a Republikon legújabb, július végi pártpreferencia kutatása");
+  assert.equal(first.publishedAt, "2026-07-30T00:00:00.000Z", "magyar rövidített hónap → ISO dátum");
+  assert.equal(first.url, "https://republikon.hu/elemzesek,-kutatasok/260728_kvk.aspx", "valós permalink, a vessző NEM %2C");
+  assert.ok(!first.url.includes("%2C"), "a vessző nem kódolódott");
+  // NAP-granularitás → dateOnly (a mai since-fix nap-szinten szűri)
+  assert.equal(first.dateOnly, true);
+  assert.ok(!r.items.some((i) => /M\.I\. a helyzet/.test(i.title)), "a sidebar 'Legfrissebb postok' esemény nincs benne");
+});
+
 test("since-szűrés: publishedAt NÉLKÜLI tétel (generikus HTML-lista, pl. Eurostat) since mellett is marad", async () => {
   // dátum nélküli tétel → nem szűrhető → marad (mint az rss-ben); az Eurostat-lista érintetlen.
   const r = await fetchNew(src, { fetchImpl: stub(fx("eurostat_list.html")), since: Date.parse("2026-08-06T03:54:00.000Z") });
