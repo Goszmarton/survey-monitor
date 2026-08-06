@@ -62,3 +62,29 @@ test("21kutato: accordion-tételek — cím + dátum + link kinyerve", async () 
   // mindhárom tételnek van valós dátuma (nem null, mint a generikus HTML-listánál)
   assert.ok(r.items.every((i) => /^\d{4}-\d{2}-\d{2}T/.test(i.publishedAt)));
 });
+
+// --- since-szűrés csapda: dátum-granularitás vs. a since IDŐPONTJA ---
+// A dateOnly tétel publishedAt-je 00:00Z. A since az ELŐZŐ FUTÁS KEZDETE (~03:54Z).
+// Naiv (rss-szerű) publishedAt>=since összehasonlítás az ELŐZŐ FUTÁS NAPJÁN publikált
+// tételt kivágná (00:00 < 03:54), és holnap a since még későbbi → VÉGLEG elveszne
+// (néma adatvesztés, CLAUDE.md 2). A helyes: dateOnly tételnél NAP-szinten hasonlíts.
+const longTitle = (s) => s + " " + "x".repeat(20);
+test("21kutato since-szűrés: az előző futás NAPJÁN publikált (dateOnly) tétel BENT marad", async () => {
+  const html = `<div class="accordion">
+    <div class="question" href="#faq2">2026.08.06. – ${longTitle("Elemzes az elozo futas napjan")}<i></i></div>
+    <div class="question" href="#faq1">2026.08.05. – ${longTitle("Korabbi napi elemzes")}<i></i></div>
+  </div>`;
+  const since = Date.parse("2026-08-06T03:54:00.000Z"); // az előző futás KEZDETE, nem éjfél
+  const r = await fetchNew(src21, { fetchImpl: stub(html), since });
+  const dates = r.items.map((i) => i.publishedAt);
+  assert.ok(dates.includes("2026-08-06T00:00:00.000Z"), "a since NAPJÁN publikált tétel BENT marad (nap-szint, nem 00:00<03:54)");
+  assert.ok(!dates.includes("2026-08-05T00:00:00.000Z"), "az egy nappal korábbi tétel kiesik");
+  assert.equal(r.items.length, 1);
+});
+
+test("since-szűrés: publishedAt NÉLKÜLI tétel (generikus HTML-lista, pl. Eurostat) since mellett is marad", async () => {
+  // dátum nélküli tétel → nem szűrhető → marad (mint az rss-ben); az Eurostat-lista érintetlen.
+  const r = await fetchNew(src, { fetchImpl: stub(fx("eurostat_list.html")), since: Date.parse("2026-08-06T03:54:00.000Z") });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 2, "a dátumtalan lista-tételek since mellett is bent maradnak");
+});
