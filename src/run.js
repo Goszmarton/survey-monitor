@@ -95,6 +95,7 @@ async function main() {
       "Rendezési sorrend felülvizsgálata — freshness vs significance mint elsődleges kulcs; ma tudatosan significance-primary (a missing átmeneti, ezért a lista aljára kerül) (F3)",
       "Kapu-hatás A/B (data_backed) — a kapu a PROMPTBAN érvényesül (a modell öncenzúráz: FONTOS/KIEMELT-et csak data_backed=true mellé ad), a kód-oldali significance-plafon csak BACKSTOP: 2026-08-06-án 0 eltérés 105 triázsolt tételen (raw==kapuzott). A post-gate ki/be kapcsolgatása így ~0-t mér — egy ÉRTELMES A/B-hez a PROMPT A-ágát kell a data_backed-szabály NÉLKÜL lefuttatni UGYANAZON a korpuszon. Ehhez NEM kell napokig raw-t gyűjteni: egyetlen nap ~105 triázsolt tétele elég korpusz a prompt-A/B-hez (F3, 3b)",
       "UTC-fix cron (43 0 * * *) DST-csúszása — októbertől a 00:43 UTC egy órával későbbi helyi időt jelent, a levél-érkezés eltolódik; mérlegelendő időzóna-tudatos ütemezés vagy cron-váltás (F3)",
+      "MAIL_TO több-címzett viselkedése nem tesztelt implicit függés a nodemailer addressparser-étől (vesszős lista, szóköz-trim a címek körül) — a kód a MAIL_TO-t nyersen adja a `to` mezőbe, nincs saját split/trim. Nincs guard elgépelt elválasztóra (pontosvessző NEM működik) vagy a titokban lévő záró newline/szóközre; egy jövőbeli refaktor (pl. tömbre váltás) vagy egy rosszul formázott secret NÉMÁN ronthatja a kézbesítést (CLAUDE.md 2). Regressziós teszt sincs rá (csak import-smoke) (F3/F4)",
       "Forrásbővítés v2-listákról, publikációs naptár (F4)",
     ],
     durationMs: 0,
