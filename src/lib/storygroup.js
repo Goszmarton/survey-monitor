@@ -163,12 +163,18 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
       continue;
     }
 
-    // Reprezentáns: leghitelesebb kind; holtverseny: legkorábbi first_seen, majd canonical_key.
-    const rep = best(
-      [...members].sort((a, b) =>
-        (a.first_seen_at ?? "").localeCompare(b.first_seen_at ?? "") || (a.canonical_key ?? "").localeCompare(b.canonical_key ?? "")),
-      (x) => KIND_RANK[x.kind] ?? 9,
-    );
+    // Reprezentáns: LEGMAGASABB jelentőség (dedup(a)) → azon belül leghitelesebb kind →
+    // legkorábbi first_seen → canonical_key. A significance elsődlegessége azért kell, mert
+    // a groupSig eddig is felhúzta a rep significance-MEZŐJÉT a legerősebbre (a badge KIEMELT
+    // lett), DE a rep IDENTITÁSA (cím/url) a kind-nyertesé maradt → egy KIEMELT sztori egy
+    // FONTOS/FIGYELENDO cím alatt, rutinnak hangzó headline-nal jelent meg a levélben, a valódi
+    // KIEMELT cím a press_urls-be süllyedt (félrekeretezés, ARCHITEKTURA.md 2–3.). A missing
+    // ítéletű tag significance-e null → rank 9 → sose lesz rep, hacsak MINDEN tag az.
+    const rep = [...members].sort((a, b) =>
+      ((SIGNIF_RANK[a.significance] ?? 9) - (SIGNIF_RANK[b.significance] ?? 9)) ||
+      ((KIND_RANK[a.kind] ?? 9) - (KIND_RANK[b.kind] ?? 9)) ||
+      (a.first_seen_at ?? "").localeCompare(b.first_seen_at ?? "") ||
+      (a.canonical_key ?? "").localeCompare(b.canonical_key ?? ""))[0];
     const others = members.filter((m) => m !== rep);
 
     // A story jelentősége/frissessége a legerősebb tagé (bármely framing KIEMELT → a story KIEMELT);

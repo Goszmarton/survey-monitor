@@ -169,6 +169,45 @@ test("storygroup: EGYOLDALI token — a stopszó-eltávolítás NÖVELHETI a has
   assert.ok(sameGroup(after, "A", "B"), "a stopszó-bővítés átbillenti a küszöbön → ÖSSZEVONVA (érzékenység igazolva)");
 });
 
+// --- dedup (a): a reprezentáns IDENTITÁSA a legmagasabb significance-ű tag legyen ---
+// VALÓS eset, verifikálva a commitolt state/monitor.db-ből (2026-07-31): a Paks-
+// energiakrízis összevont (15-tagú) csoportjában a KIEMELT „Le kell állítani a Paksi
+// Atomerőművet" (444) egy FONTOS reprezentáns ALÁ került, mert a rep-választás
+// significance-VAK: kind → first_seen → canonical_key (storygroup.js). A groupSig a rep
+// significance MEZŐJÉT felhúzza KIEMELT-re (így a csoport megjelenik a KIEMELT-levélben),
+// DE a rep IDENTITÁSA (cím/url) a FONTOS tagé marad → a levélben a KIEMELT-sztori
+// félrevezető, rutinnak hangzó cím alatt szerepel, a valódi KIEMELT headline a +N
+// press-linkbe süllyed (nem kihagyás, hanem FÉLREKERETEZÉS — ARCHITEKTURA.md 2–3.).
+// Ez a fixture a 15-tagú csoport minimális, KÖZVETLENÜL összeolvadó valós részhalmaza
+// (a tranzitív láncolódás külön kérdés = dedup(b)); a két cím ≥2 közös salient tokenen
+// (paks, atomeromuv, kell, allitan) merge-öl. A teszt MOST PIROS: a rep a korábbi
+// first_seen-ű FONTOS tétel, nem a KIEMELT.
+test("storygroup: dedup (a) — a reprezentáns a legmagasabb significance-ű tag (KIEMELT nem rejtőzhet FONTOS rep alá)", () => {
+  const KIEMELT_KEY = "444:https-444-hu-2026-07-30-le-kell-allitani-a-paksi-atomeromuvet";
+  const items = [
+    // FONTOS, KORÁBBI first_seen → a jelenlegi (significance-vak) rep-választás EZT teszi reprezentánssá.
+    { canonical_key: "telex:https-telex-hu-belfold-2026-07-29-magyar-peter-hoseg-aszaly-vizallas-paks-bejelentes",
+      source_id: "telex", kind: "sajto",
+      title: "Magyar Péter szerint akkor sincs veszélyben az energiaellátás, ha le kell állítani a Paksi Atomerőművet",
+      url: "https://telex.hu/belfold/2026/07/29/paks", significance: "FONTOS", freshness: "UJ_24H",
+      first_seen_at: "2026-07-30T06:11:39.722Z" },
+    // KIEMELT, későbbi first_seen → MOST a press_urls-be süllyed a rep helyett.
+    { canonical_key: KIEMELT_KEY, source_id: "444", kind: "sajto",
+      title: "Le kell állítani a Paksi Atomerőművet",
+      url: "https://444.hu/2026/07/30/le-kell-allitani-a-paksi-atomeromuvet", significance: "KIEMELT", freshness: "UJ_24H",
+      first_seen_at: "2026-07-31T06:32:34.181Z" },
+  ];
+  const { representatives } = groupStories(items, { cfg, institutes });
+  assert.equal(representatives.length, 1, "a két cím egy sztoriba olvad (≥2 közös salient token)");
+  const rep = representatives[0];
+  assert.equal(rep._groupSize, 2);
+  // A LÉNYEG: a reprezentáns IDENTITÁSA a KIEMELT tag legyen — a levél headline-ja a
+  // KIEMELT cím, ne a FONTOS. (A rep.significance mezője groupSig miatt amúgy is KIEMELT;
+  // itt az identitást — canonical_key/cím/url — állítjuk, az a valódi hibamód.)
+  assert.equal(rep.canonical_key, KIEMELT_KEY,
+    "a reprezentáns a legmagasabb significance-ű (KIEMELT) tag, nem a korábbi first_seen-ű FONTOS");
+});
+
 test("storygroup: intézet-lista NÉLKÜL a guard nem véd — a lista load-bearing (ezért WARN a run.js-ben)", () => {
   // Guard nélkül a Medián a Závecz-cel összevonódna (majdnem azonos szöveg) — ez a
   // hibamód, amit a config/intézet-lista megléte zár ki. Ha a run.js elfelejtené
