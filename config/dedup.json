@@ -15,6 +15,10 @@
     "mas", "ilyen", "olyan", "azt", "aki", "ami", "amit", "meg"
   ],
 
+  "title_generic_tokens": [
+    "euro", "area", "both"
+  ],
+
   "institute_generic_tokens": [
     "intezet", "research", "kutatokozpont", "kozpont", "kutato", "magyar",
     "tarsadalomkutato", "center"

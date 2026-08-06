@@ -104,7 +104,12 @@ const best = (arr, rankOf) => arr.reduce((m, x) => (rankOf(x) < rankOf(m) ? x : 
  *          nem-reprezentáns tagok kimaradnak, de rep._pressUrls-ben elérhetők.
  */
 export function groupStories(items, { cfg = {}, institutes = [], _naive = false } = {}) {
-  const stop = new Set(cfg.stopwords ?? []);
+  // Story-token stopszavak: magyar funkciószavak (stopwords) + tartalmatlan angol
+  // title-boilerplate (title_generic_tokens: 'euro'/'area'/'both'). Ez utóbbit MINDEN
+  // euro-area statisztikai közlemény osztja, ezért hamis bridging-token: e nélkül a 6
+  // különböző Eurostat-közlemény egyetlen blobbá láncolódik (dedup(b)). KÜLÖN config-
+  // kulcsban, hogy a magyar stoplista tiszta maradjon (nem nyelvi funkciószó).
+  const stop = new Set([...(cfg.stopwords ?? []), ...(cfg.title_generic_tokens ?? [])]);
   const nodes = items.map((it) => ({
     it,
     stoks: new Set(rawTokens(it.title, stop).map(stem)),

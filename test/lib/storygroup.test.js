@@ -208,6 +208,58 @@ test("storygroup: dedup (a) — a reprezentáns a legmagasabb significance-ű ta
     "a reprezentáns a legmagasabb significance-ű (KIEMELT) tag, nem a korábbi first_seen-ű FONTOS");
 });
 
+// --- dedup (b): a láncolódó over-merge — az Eurostat-6-blob (VALÓS, 2026-07-22) ---
+// Hat KÜLÖNBÖZŐ Eurostat-közlemény (infláció, termelői ár, kisker, szolgáltatás, ipari
+// termelés, építőipar) egyetlen csoportba olvad, mert a stemmelt salient tokenek közt a
+// "euro"+"are" (az "area" a stemmertől "are") + a százalék-számjegyek (0,2,3) tartalmatlan
+// bridging-tokeneket adnak: 15 párból 7 közvetlen élt húznak, a union-find tranzitív
+// lezárása ebből egy 6-blobbá láncolja. Ez CSENDES INFÓVESZTÉS (ARCHITEKTURA 2–3.): a hat
+// önálló közlemény egyetlen reprezentáns alá bújik. A teszt állítja, hogy ezek NEM egy
+// csoport. MOST PIROS. (A fix iránya külön mérés dönti; a teszt fix-agnosztikus: a
+// nyilvánvalóan független infláció és építőipar nem lehet egy sztori.)
+test("storygroup: dedup (b) — az Eurostat 6 különböző közleménye NEM egy csoport (láncolódó over-merge)", () => {
+  const D = "2026-07-22T06:00:00Z";
+  const mk = (code, title) => ({ canonical_key: `eurostat:https-ec-europa-eu-eurostat-product-code-${code}`, source_id: "eurostat", kind: "hivatalos_adat", title, significance: "FONTOS", freshness: "UJ_24H", first_seen_at: D });
+  const items = [
+    mk("2-17072026-ap", "Annual inflation down to 2.8% in the euro area"),
+    mk("4-06072026-ap", "Industrial producer prices up by 0.2% in both the euro area and the EU"),
+    mk("4-06072026-bp", "Volume of retail trade up by 0.2% in the euro area and by 0.5% in the EU"),
+    mk("4-07072026-ap", "Services production up by 0.7% in the euro area and by 0.3% in the EU"),
+    mk("4-15072026-ap", "Industrial production down by 0.2% in the euro area and by 0.1% in the EU"),
+    mk("4-20072026-ap", "Production in construction up by 0.4% in the euro area and by 0.3% in the EU"),
+  ];
+  const gs = groups(items, { cfg, institutes });
+  // (1) nem szabad EGYETLEN blobba olvadniuk
+  assert.ok(gs.length > 1, `a 6 különböző közlemény nem lehet egyetlen csoport (most: ${gs.length} csoport)`);
+  // (2) a két legnyilvánvalóbban független közlemény külön sztori kell legyen
+  const inflation = "eurostat:https-ec-europa-eu-eurostat-product-code-2-17072026-ap";
+  const construction = "eurostat:https-ec-europa-eu-eurostat-product-code-4-20072026-ap";
+  assert.ok(!sameGroup(gs, inflation, construction), "az infláció és az építőipari termelés NEM ugyanaz a sztori");
+});
+
+// A title_generic_tokens kulcs LOAD-BEARING: nélküle (euro/area salient tokenné válik)
+// a hat közlemény visszaolvad egyetlen blobbá. A teszt védi a kulcsot a néma törléstől
+// (analóg az intézet-lista load-bearing tesztjével), és bizonyítja, hogy PONTOSAN ez a
+// mechanizmus oldja a dedup(b) Eurostat-esetet — nem a küszöb, nem a stoplista.
+test("storygroup: dedup (b) — a title_generic_tokens kulcs LOAD-BEARING (nélküle visszatér a blob)", () => {
+  const D = "2026-07-22T06:00:00Z";
+  const mk = (code, title) => ({ canonical_key: `eurostat:${code}`, source_id: "eurostat", kind: "hivatalos_adat", title, significance: "FONTOS", freshness: "UJ_24H", first_seen_at: D });
+  const items = [
+    mk("infl", "Annual inflation down to 2.8% in the euro area"),
+    mk("ppi", "Industrial producer prices up by 0.2% in both the euro area and the EU"),
+    mk("retail", "Volume of retail trade up by 0.2% in the euro area and by 0.5% in the EU"),
+    mk("services", "Services production up by 0.7% in the euro area and by 0.3% in the EU"),
+    mk("indprod", "Industrial production down by 0.2% in the euro area and by 0.1% in the EU"),
+    mk("constr", "Production in construction up by 0.4% in the euro area and by 0.3% in the EU"),
+  ];
+  // A jelenlegi cfg-vel (title_generic_tokens jelen) NEM egy csoport:
+  assert.ok(groups(items, { cfg, institutes }).length > 1, "generikus-kulccsal szét van választva");
+  // A kulcs KIVÉTELÉVEL (üres title_generic_tokens) viszont egyetlen blobbá olvad
+  // (a services/indprod hidakon át a 6 közlemény tranzitívan egy komponens):
+  const cfgNoGeneric = { ...cfg, title_generic_tokens: [] };
+  assert.equal(groups(items, { cfg: cfgNoGeneric, institutes }).length, 1, "a kulcs nélkül a 6 közlemény egy blob — a kulcs load-bearing");
+});
+
 test("storygroup: intézet-lista NÉLKÜL a guard nem véd — a lista load-bearing (ezért WARN a run.js-ben)", () => {
   // Guard nélkül a Medián a Závecz-cel összevonódna (majdnem azonos szöveg) — ez a
   // hibamód, amit a config/intézet-lista megléte zár ki. Ha a run.js elfelejtené
