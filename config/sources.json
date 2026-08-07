@@ -28,7 +28,7 @@
     { "id": "realpr93",   "name": "Real-PR 93",        "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
     { "id": "opinio",     "name": "Europion / Opinio", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
     { "id": "tarskutato", "name": "Magyar Társadalomkutató", "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
-    { "id": "minerva",    "name": "Minerva",           "kaszt": "B", "kind": "intezet", "napi": false, "feed": null },
+    { "id": "minerva",    "name": "Minerva",           "kaszt": "A", "kind": "intezet", "napi": false, "feed": null, "list_url": "https://minervaintezet.hu/", "status": "OK", "note": "F3 intézet-aktiválás (2026-08-07 verifikált): HTML-lista, homepage research-card-ok (per-source parser a htmllist.js-ben). Horgony a HAVI ÉÉÉÉHH.html statikus permalink, a h3↔permalink kötés kártya-chunk-szinten dől el — 8 keltezett havi kutatás, legfrissebb 2026-04. Dátum a fájlnévből → HAVI granularitás (monthOnly, hó-szintű since-szűrés). RÉSZLEGES: a nem-ÉÉÉÉHH nevű tanulmányok (korfugges_…, mindenadat.html, dátumtalan speciális) kimaradnak; a sajtóemlítés (külső link) és a business-blokk kizárva." },
 
     { "id": "pew",          "name": "Pew Research Center", "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },
     { "id": "eurobarometer","name": "Eurobarometer",       "kaszt": "B", "kind": "nemzetkozi", "napi": false, "feed": null },

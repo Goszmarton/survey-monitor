@@ -101,6 +101,51 @@ test("republikon: fő-lista cím + dátum + permalink; sidebar kihagyva, vessző
   assert.ok(!r.items.some((i) => /M\.I\. a helyzet/.test(i.title)), "a sidebar 'Legfrissebb postok' esemény nincs benne");
 });
 
+// --- Minerva: homepage research-card lista, havi ÉÉÉÉHH.html statikus permalink ---
+// A homepage háromféle research-card-ot kever: (1) havi kutatás anchored ÉÉÉÉHH.html
+// permalinkkel — EZT akarjuk; (2) tematikus tanulmány NEM-ÉÉÉÉHH permalinkkel (korfugges_…);
+// (3) sajtóemlítés KÜLSŐ linkkel — plusz külön business-magyarázó blokk. A megbízható kötés
+// horgonya az ÉÉÉÉHH.html permalink (csak a havi kutatásnak van ilyen): a chunk h3-ja a hónap,
+// a dátum a FÁJLNÉVBŐL (nap nincs a homepage-en → HAVI granularitás, monthOnly). PIROS az
+// extractMinerva előtt.
+const srcMin = { id: "minerva", name: "Minerva", list_url: "https://minervaintezet.hu/" };
+test("minerva: csak a havi ÉÉÉÉHH.html kutatások (tematikus/sajtó/business kizárva)", async () => {
+  const r = await fetchNew(srcMin, { fetchImpl: stub(fx("minerva_home.html")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 2, "csak a 2 havi ÉÉÉÉHH.html kutatás");
+  const first = r.items[0];
+  assert.equal(first.url, "https://minervaintezet.hu/202604.html", "az ÉÉÉÉHH.html permalink abszolutizálva");
+  assert.equal(first.guid, first.url, "az identitás a statikus permalink");
+  assert.equal(first.publishedAt, "2026-04-01T00:00:00.000Z", "a dátum a FÁJLNÉVBŐL (hónap 1-je)");
+  assert.equal(first.monthOnly, true, "havi granularitás → monthOnly (a since-szűrés hónap-szinten kezeli)");
+  assert.match(first.title, /2026\. április/, "a cím tartalmazza a hónapot (h3)");
+  assert.match(first.title, /Ki nyeri a választást/, "a cím tartalmazza a témát");
+  const titles = r.items.map((i) => i.title).join(" | ");
+  assert.ok(!/korfügg|korfugg/i.test(titles), "a tematikus (korfugges_) tanulmány kizárva (nem ÉÉÉÉHH.html)");
+  assert.ok(!/technológia/i.test(titles), "a business-magyarázó blokk kizárva");
+  assert.ok(!/24\.hu/i.test(titles), "a sajtóemlítés (külső link) kizárva");
+  assert.equal(r.items[1].url, "https://minervaintezet.hu/202512.html", "a 2. havi kutatás (permalink az első <p>-n belül)");
+});
+
+// monthOnly csapda: a homepage nem ad NAPOT, csak hónapot. Ha 1-jére dátumoznánk dateOnly-ként,
+// a NAP-szintű since-szűrés a hó közepén publikált friss kutatást a megjelenése napján kivágná
+// (01 < since-nap) → a legértékesebb primer tétel némán elveszne (CLAUDE.md 2, a 21kutato-csapda
+// hónapos rokona). A helyes: monthOnly tételnél HÓNAP-szinten hasonlíts.
+test("minerva since-szűrés: hó közepi since mellett a TÁRGYHAVI kutatás BENT marad (monthOnly)", async () => {
+  const html = `<div class="research-scroll">
+    <div class="research-card"><h3>2026. augusztus</h3>
+      <p>Téma: augusztusi pártpreferencia<br>&#9654; <a href="202608.html">Bővebben</a></p></div>
+    <div class="research-card"><h3>2026. július</h3>
+      <p>Téma: júliusi pártpreferencia<br>&#9654; <a href="202607.html">Bővebben</a></p></div>
+  </div>`;
+  const since = Date.parse("2026-08-20T10:00:00.000Z"); // augusztus 20., jóval a hó 1-je után
+  const r = await fetchNew(srcMin, { fetchImpl: stub(html), since });
+  const urls = r.items.map((i) => i.url);
+  assert.ok(urls.some((u) => /202608\.html/.test(u)), "a tárgyhavi (aug) kutatás BENT marad (hó-szint, nem 01 < aug 20)");
+  assert.ok(!urls.some((u) => /202607\.html/.test(u)), "az előző havi (júl) kutatás kiesik");
+  assert.equal(r.items.length, 1);
+});
+
 test("since-szűrés: publishedAt NÉLKÜLI tétel (generikus HTML-lista, pl. Eurostat) since mellett is marad", async () => {
   // dátum nélküli tétel → nem szűrhető → marad (mint az rss-ben); az Eurostat-lista érintetlen.
   const r = await fetchNew(src, { fetchImpl: stub(fx("eurostat_list.html")), since: Date.parse("2026-08-06T03:54:00.000Z") });

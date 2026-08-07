@@ -58,23 +58,62 @@ function extract21kutato(html, baseUrl) {
   return out;
 }
 
-// since-szűrés (opts.since ms). A dateOnly (nap-granularitású) tételnél a since NAPJÁNAK
-// 00:00 UTC-jéhez hasonlítunk, NEM a since időpontjához: a since az előző futás kezdete
-// (~03:54Z), a dateOnly publishedAt 00:00Z → naiv publishedAt>=since kivágná az előző futás
-// NAPJÁN megjelent tételt, és holnap a since még későbbi → VÉGLEG elveszne (néma adatvesztés,
-// CLAUDE.md 2). Valós időbélyegű (nem-dateOnly) tételnél pontos since — mint az rss-ben.
+// since-szűrés (opts.since ms), granularitás-tudatosan. Három eset:
+//  - valós időbélyeg (nem dateOnly/monthOnly): pontos since — mint az rss-ben;
+//  - dateOnly (NAP-granularitás): a since NAPJÁNAK 00:00 UTC-jéhez hasonlítunk — a since az
+//    előző futás kezdete (~03:54Z), a publishedAt 00:00Z, így a naiv publishedAt>=since az
+//    előző futás NAPJÁN megjelent tételt kivágná, és holnap a since még későbbi → VÉGLEG
+//    elveszne (néma adatvesztés, CLAUDE.md 2);
+//  - monthOnly (HÓNAP-granularitás, pl. Minerva ÉÉÉÉHH): a since HÓNAPJÁNAK 1-jéhez hasonlítunk
+//    — a homepage NAPOT nem ad, a publishedAt a hó 1-je; nap-szintű összevetés a hó közepén
+//    publikált tárgyhavi kutatást a megjelenés napján kivágná (01 < since-nap), ugyanaz a néma
+//    adatvesztés hónapos léptékben. A DB canonical_key-dedupja miatt a hó folyamán ismételten
+//    visszaadott (már látott) tétel nem duplázódik — csak az első megjelenés lesz „új".
 // publishedAt nélküli tétel marad (Eurostat euro-indicators lista érintetlen).
 function filterSince(items, since) {
   const sinceMs = Number(since) || 0;
   if (!sinceMs) return items;
   const s = new Date(sinceMs);
   const sinceDayMs = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate());
+  const sinceMonthMs = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1);
   return items.filter((it) => {
     if (!it.publishedAt) return true;
     const t = Date.parse(it.publishedAt);
     if (Number.isNaN(t)) return true;
-    return t >= (it.dateOnly ? sinceDayMs : sinceMs);
+    const threshold = it.monthOnly ? sinceMonthMs : (it.dateOnly ? sinceDayMs : sinceMs);
+    return t >= threshold;
   });
+}
+
+// Minerva: homepage "research-card" lista, HAVI ÉÉÉÉHH.html statikus permalinkkel. A homepage
+// háromféle research-card-ot kever — (1) havi kutatás anchored ÉÉÉÉHH.html permalinkkel, EZT
+// akarjuk; (2) tematikus tanulmány NEM-ÉÉÉÉHH permalinkkel (korfugges_…); (3) sajtóemlítés
+// KÜLSŐ linkkel — plusz külön business-magyarázó blokk (más osztály). A megbízható horgony a
+// HAVI permalink: csak a havi kutatásnak van anchored `href="ÉÉÉÉHH.html"` linkje. A h3↔permalink
+// kötés a kártya-chunkon belül dől el (nem laza szomszédság): a research-card határon darabolunk,
+// minden chunk EGY kártya, az első h3 + első anchored permalink a sajátja. A dátum a FÁJLNÉVBŐL
+// (a homepage napot nem ad) → HAVI granularitás (monthOnly, lásd filterSince). Identitás=permalink.
+function extractMinerva(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const chunks = html.split(/<div\s+class="research-card">/i).slice(1);
+  for (const chunk of chunks) {
+    const perma = chunk.match(/href="(\d{6})\.html"/i); // anchored ÉÉÉÉHH.html (korfugges_/külső URL kizárva)
+    if (!perma) continue;
+    const ym = perma[1];
+    const url = absolutize(`${ym}.html`, baseUrl);
+    if (!url || seen.has(url)) continue;
+    const month = ((chunk.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i) ?? [])[1] ?? "")
+      .replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    // téma: az első <p> szövege az első <br>/<a>/</p>-ig (a "Bővebben" link + a %-sor nélkül)
+    const tema = ((chunk.match(/<p\b[^>]*>([\s\S]*?)(?:<br|<a\b|<\/p>)/i) ?? [])[1] ?? "")
+      .replace(/<[^>]*>/g, " ").replace(/^\s*Téma:\s*/i, "").replace(/\s+/g, " ").trim();
+    const title = `Minerva – ${month}${tema ? " – " + tema : ""}`.trim();
+    if (title.length < MIN_TITLE_LEN) continue;
+    seen.add(url);
+    out.push({ guid: url, title, url, publishedAt: `${ym.slice(0, 4)}-${ym.slice(4, 6)}-01T00:00:00.000Z`, monthOnly: true, summary: null });
+  }
+  return out;
 }
 
 // Magyar rövidített hónapnevek → hónapszám (a Republikon <span id="date">-jéhez).
@@ -106,7 +145,7 @@ function extractRepublikon(html, baseUrl) {
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source
