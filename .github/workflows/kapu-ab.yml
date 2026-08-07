@@ -1,0 +1,48 @@
+name: kapu-ab
+
+# Egyszeri, KÉZI kapu-A/B mérés (docs/KAPU-AB-KISERLET.md). NINCS schedule — sose fut
+# magától. Csak olvas: nincs DB-visszacommit, nincs email, nincs Pages. A kulcsok az
+# Actions Secretsből jönnek (a mérés a GitHubon fut, mert a kulcsok csak ott érhetők el).
+on:
+  workflow_dispatch: {}
+
+# Csak olvasás — semmilyen write/pages/id-token (szemben a daily-monitorral).
+permissions:
+  contents: read
+
+# KÜLÖN concurrency-csoport — NEM daily-monitor, hogy a hajnali futással sose ütközzön.
+concurrency:
+  group: kapu-ab
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24   # beépített node:sqlite (mint a daily-monitorban)
+          cache: npm
+
+      - run: npm ci
+
+      - name: Kapu-A/B mérés (2026-08-07 korpusz)
+        # A három kulcs env-ből; SMTP/MAIL_TO SZÁNDÉKOSAN nincs → semmi email.
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # A stdout (candidate=183 önellenőrzés, |B'-B|, |A-B|, leszorított lista,
+        # provider-mintázat) a job-logban marad — onnan olvasható ki.
+        run: node scripts/kapu-ab-experiment.mjs 2026-08-07
+
+      - name: Eredmény-JSON artifactként
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kapu-ab-2026-08-07
+          path: state/experiments/kapu-ab-2026-08-07.json
+          if-no-files-found: warn
