@@ -146,6 +146,61 @@ test("minerva since-szűrés: hó közepi since mellett a TÁRGYHAVI kutatás BE
   assert.equal(r.items.length, 1);
 });
 
+// --- Opinio (europion.hu): post-sitemap.xml, CÍM NÉLKÜL — kétlépcsős fetch ---
+// A sitemap 149 <loc>+<lastmod>, cím nincs. A megoldás: a <lastmod> alapján ELŐSZÖR since-
+// szűrünk (dateOnly nap-szint), és CSAK a friss URL-eket kérjük le a headline-ért (<h1>).
+// Egy hibás post-lekérés KIMARAD, nem dönti el a futást. PIROS az extractOpinio + backfill előtt.
+const srcOp = { id: "opinio", name: "Europion / Opinio", list_url: "https://europion.hu/post-sitemap.xml" };
+const POSTS = {
+  "https://europion.hu/energiavalsag/": "<html><head><title>Energiaválság - Opinio</title><meta property=\"og:title\" content=\"Energiaválság - Opinio\"></head><body><h1>Energiaválság</h1><p>...</p></body></html>",
+  "https://europion.hu/juliusi-partpreferenciak/": "<html><head><title>Júliusi pártpreferenciák - Opinio</title></head><body><h1>Júliusi pártpreferenciák</h1></body></html>",
+};
+// URL-routing stub, hívásszámlálóval — a sitemap-URL a fixture-t adja, a post-URL-ek a POSTS-ot.
+function router(extra = {}) {
+  const calls = [];
+  const map = { "https://europion.hu/post-sitemap.xml": fx("opinio_sitemap.xml").toString("utf8"), ...POSTS, ...extra };
+  const impl = async (url) => {
+    calls.push(url);
+    if (map[url] === undefined) return resp("not found", { status: 404 });
+    if (map[url] instanceof Error) throw map[url];
+    if (typeof map[url] === "object" && map[url].status) return resp(map[url].body ?? "", map[url]);
+    return resp(map[url]);
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+test("opinio: sitemap since-szűrés UTÁN backfill headline — csak a friss URL-eket kéri le", async () => {
+  const impl = router();
+  // since = 2026-07-01 → a 2 friss (07-14, 08-05) átmegy, a 2 db 2021-es kiesik
+  const r = await fetchNew(srcOp, { fetchImpl: impl, since: Date.parse("2026-07-01T00:00:00Z") });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 2, "csak a 2 friss post (a 2 db 2021-es lastmod kiesett a since előtt)");
+  const byUrl = Object.fromEntries(r.items.map((i) => [i.url, i]));
+  assert.equal(byUrl["https://europion.hu/energiavalsag/"].title, "Energiaválság", "a cím a <h1>-ből (a ' - Opinio' suffix levágva)");
+  assert.equal(byUrl["https://europion.hu/juliusi-partpreferenciak/"].title, "Júliusi pártpreferenciák");
+  assert.equal(byUrl["https://europion.hu/energiavalsag/"].dateOnly, true, "nap-szintű since-kezelés");
+  // NEM kérte le mind a 149-et: 1 sitemap + 2 friss post = 3 hívás, a 2021-es URL-eket NEM
+  assert.equal(impl.calls.length, 3, "1 sitemap + 2 friss post-lekérés (a régieket NEM kéri le)");
+  assert.ok(!impl.calls.includes("https://europion.hu/elindult-az-opinio/"), "a régi (szűrt) URL-t nem kéri le");
+});
+
+test("opinio: nincs friss lastmod → OK_NINCS_UJ, EGYETLEN post-lekérés sincs", async () => {
+  const impl = router();
+  const r = await fetchNew(srcOp, { fetchImpl: impl, since: Date.parse("2026-09-01T00:00:00Z") });
+  assert.equal(r.check.status, "OK_NINCS_UJ");
+  assert.equal(impl.calls.length, 1, "csak a sitemap; friss URL nincs, post-lekérés nem történik");
+});
+
+test("opinio: egy hibás post-lekérés KIMARAD, nem dönti el a futást", async () => {
+  // az energiavalsag oldala 500-at ad → az a tétel kimarad, a másik friss (júliusi) megmarad
+  const impl = router({ "https://europion.hu/energiavalsag/": { status: 500, body: "err" } });
+  const r = await fetchNew(srcOp, { fetchImpl: impl, since: Date.parse("2026-07-01T00:00:00Z") });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 1, "a hibás post kimaradt, a futás megy tovább");
+  assert.equal(r.items[0].url, "https://europion.hu/juliusi-partpreferenciak/");
+});
+
 test("since-szűrés: publishedAt NÉLKÜLI tétel (generikus HTML-lista, pl. Eurostat) since mellett is marad", async () => {
   // dátum nélküli tétel → nem szűrhető → marad (mint az rss-ben); az Eurostat-lista érintetlen.
   const r = await fetchNew(src, { fetchImpl: stub(fx("eurostat_list.html")), since: Date.parse("2026-08-06T03:54:00.000Z") });

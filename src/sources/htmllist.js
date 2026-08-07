@@ -142,10 +142,43 @@ function extractRepublikon(html, baseUrl) {
   return out;
 }
 
+// Opinio (europion.hu) — post-sitemap.xml: 149 <url><loc>+<lastmod>, CÍM NÉLKÜL. NEM kérjük le
+// mind a 149-et: a <lastmod> alapján ELŐSZÖR since-szűrünk (dateOnly nap-szint — a lastmod valós
+// időbélyeg, de a since NAPJÁHOZ hasonlítunk, hogy a futás-határ előtt módosított post ne vesszen
+// el, a 21kutato-csapda rokona), és a fetchNew CSAK a friss URL-eket kéri le a headline-ért
+// (needsTitle → title-backfill, napi 0-2 lekérés). Identitás = permalink (loc). Lastmod nélküli
+// <url> kimarad (nincs megbízható frissesség).
+function extractOpinio(xml, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const re = /<url>\s*<loc>\s*([^<\s]+)\s*<\/loc>\s*<lastmod>\s*([^<\s]+)\s*<\/lastmod>/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const url = absolutize(m[1], baseUrl);
+    const t = Date.parse(m[2]);
+    if (!url || seen.has(url) || Number.isNaN(t)) continue;
+    seen.add(url);
+    out.push({ guid: url, url, title: null, publishedAt: new Date(t).toISOString(), dateOnly: true, needsTitle: true, summary: null });
+  }
+  return out;
+}
+
+// A backfillelt oldal címe: <h1> > og:title > <title>, a záró oldal-suffix (" - Opinio",
+// " – Europion", " | …") levágva. Rövid intézeti headline (pl. "Energiaválság") megengedett
+// (nem a generikus MIN_TITLE_LEN alá esik) — csak a teljesen üres/csonka címet ejtjük.
+function extractPageTitle(html) {
+  const clean = (s) => (s ? s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().replace(/\s*[-–|]\s*(Opinio|Europion)\s*$/i, "").trim() : "");
+  const h1 = clean((html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) ?? [])[1]);
+  const og = clean((html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ?? [])[1]);
+  const tt = clean((html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) ?? [])[1]);
+  const title = h1 || og || tt;
+  return title.length >= 3 ? title : null;
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source
@@ -169,6 +202,25 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
     const fresh = filterSince(items, since);
     if (fresh.length === 0) {
       return { items: [], check: { status: "OK_NINCS_UJ", detail: `${items.length} tétel, egyik sem újabb`, url } };
+    }
+    // Title-backfill (Opinio-sitemap-eset): a cím nélküli (needsTitle) tételekhez lekérjük az
+    // oldalt a headline-ért — CSAK a since UTÁNi friss URL-ekre (napi 0-2, nem mind a 149-et).
+    // Egy hibás/cím nélküli lekérés KIMARAD, nem dönti el a futást (best-effort, spec 5.).
+    if (fresh.some((it) => it.needsTitle)) {
+      const ready = [];
+      for (const it of fresh) {
+        if (!it.needsTitle) { ready.push(it); continue; }
+        try {
+          const pres = await httpGet(it.url, { fetchImpl, timeoutMs });
+          if (!pres.ok) continue;
+          const title = extractPageTitle(await pres.text());
+          if (title) ready.push({ ...it, title, needsTitle: undefined });
+        } catch { /* egy hibás post-lekérés kimarad, a futás megy tovább */ }
+      }
+      if (ready.length === 0) {
+        return { items: [], check: { status: "RESZLEGES", detail: `${fresh.length} friss URL, de egyik headline sem kérhető le`, url } };
+      }
+      return { items: ready, check: { status: "OK_UJ", detail: `sitemap: ${ready.length} friss headline-backfill (${items.length} a listában)`, url } };
     }
     return { items: fresh, check: { status: "OK_UJ", detail: `HTML-parse: ${fresh.length} friss (${items.length} a listában)`, url } };
   } catch (err) {
