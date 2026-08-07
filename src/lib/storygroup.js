@@ -95,6 +95,73 @@ function edgeRule(a, b, cfg) {
 
 const best = (arr, rankOf) => arr.reduce((m, x) => (rankOf(x) < rankOf(m) ? x : m), arr[0]);
 
+// ---- C-star: a tranzitív closure korlátozása a patológiás mega-blobon (dedup(b)) ----
+// A nagy gyakoriságú hub-tokenek (szereplőnevek: 'magyar péter', 'orbán viktor'; 'paks'/'duna')
+// a containment-ágon KÜLÖNBÖZŐ sztorik közt hamis éleket húznak, a union-find tranzitív closure-je
+// egy blobbá láncolja őket (mért: 318-tagú, 1.88% élsűrűség — nem klikk, hanem vékony hidak). A
+// naiv C-star (tag csak közvetlen éllel a rephez) a blobot szétveri, DE valódi parafrázisokat is
+// árvává tesz (mért: 38 dice>=0.55 pár megtörve). Ezért KÉT lépés:
+//   (1) star-dekompozíció REKURZÍVAN: a rep köré a közvetlen szomszédok; a leszakadt tagokat nem
+//       árvázzuk, hanem összefüggő al-komponensenként ÚJRACSOPORTOSÍTJUK (rekurzió);
+//   (2) dice-repair: bármely két al-csoportot, ami közt van valódi parafrázis-él (trigram-dice >=
+//       trigram_dice_min), visszaEGYESÍTÜNK (fixpont). Ez GARANTÁLJA, hogy egyetlen dice-kohézív
+//       VALÓDI sztori se szakadjon szét (akár nagy is): a Paks-leállás 22 parafrázisa egyben marad,
+//       csak a hamis, containment-hídon lógó rész válik le. Mért a 2026-08-07 korpuszon: 318→22,
+//       0 megtört dice-jogos pár, 10 erős-containment (>=0.75) pár leválik. Utóbbi becsületes
+//       részlegesség (CLAUDE.md 5): egy hamis blob egy fontos tételt REJT (drága, ARCHITEKTURA 2–3.),
+//       egy megmaradó duplikátum LÁTHATÓ (olcsó) → a szétbontás a helyes irányú hiba. Csak a
+//       decompose_min_component-nél NAGYOBB komponensre fut (a kis csoportok containment-merge-ei
+//       érintetlenek); a küszöb config-ból, nem kódból.
+function starCenter(idxs, nodes) {
+  return [...idxs].sort((a, b) =>
+    ((SIGNIF_RANK[nodes[a].it.significance] ?? 9) - (SIGNIF_RANK[nodes[b].it.significance] ?? 9)) ||
+    ((KIND_RANK[nodes[a].it.kind] ?? 9) - (KIND_RANK[nodes[b].it.kind] ?? 9)) ||
+    ((nodes[a].it.first_seen_at ?? "").localeCompare(nodes[b].it.first_seen_at ?? "")) ||
+    ((nodes[a].it.canonical_key ?? "").localeCompare(nodes[b].it.canonical_key ?? "")))[0];
+}
+function connectedSubgroups(idxs, adj) {
+  const set = new Set(idxs), seen = new Set(), out = [];
+  for (const s of idxs) {
+    if (seen.has(s)) continue;
+    const comp = [], stack = [s]; seen.add(s);
+    while (stack.length) {
+      const x = stack.pop(); comp.push(x);
+      for (const y of (adj.get(x) ?? [])) if (set.has(y) && !seen.has(y)) { seen.add(y); stack.push(y); }
+    }
+    out.push(comp);
+  }
+  return out;
+}
+function starDecompose(comp, nodes, adj, depth = 0) {
+  if (comp.length <= 2 || depth > 60) return [comp];
+  const center = starCenter(comp, nodes);
+  const centerAdj = adj.get(center) ?? new Set();
+  const star = [center, ...comp.filter((i) => i !== center && centerAdj.has(i))];
+  const starSet = new Set(star);
+  const rest = comp.filter((i) => !starSet.has(i));
+  const out = [star];
+  for (const sub of connectedSubgroups(rest, adj)) out.push(...starDecompose(sub, nodes, adj, depth + 1));
+  return out;
+}
+function diceRepair(groups, nodes, cfg) {
+  const thr = cfg.trigram_dice_min ?? 0.55;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let a = 0; a < groups.length; a++) {
+      for (let b = a + 1; b < groups.length; b++) {
+        let merge = false;
+        for (const i of groups[a]) { for (const j of groups[b]) { if (dice(nodes[i].tri, nodes[j].tri) >= thr) { merge = true; break; } } if (merge) break; }
+        if (merge) { groups[a] = groups[a].concat(groups[b]); groups.splice(b, 1); changed = true; b--; }
+      }
+    }
+  }
+  return groups;
+}
+function decomposeComponent(comp, nodes, adj, cfg) {
+  return diceRepair(starDecompose(comp, nodes, adj), nodes, cfg);
+}
+
 /**
  * Story-csoportosítás a report-ablak tételein.
  * @param {Array} items  snake_case tétel-sorok (canonical_key, source_id, kind, title, url, first_seen_at, significance, freshness, triage_missing)
@@ -121,10 +188,21 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
   const parent = nodes.map((_, i) => i);
   const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
   const rule = new Map(); // gyerek-index -> a szülőhöz kötő szabály (naplóhoz)
+  // Teljes él-lista (adjacency) — NEM csak az union-t létrehozó élek: a C-star dekompozíció
+  // (lásd lentebb) a komponens BELSŐ gráfját járja, ezért a már összekötött komponensen belüli
+  // éleket is rögzíteni kell (különben a háromszögek harmadik éle hiányozna). A find===find
+  // csak az UNION-t hagyja ki, az él-rögzítést nem.
+  const adj = new Map();
+  const addAdj = (i, j) => {
+    if (!adj.has(i)) adj.set(i, new Set());
+    if (!adj.has(j)) adj.set(j, new Set());
+    adj.get(i).add(j); adj.get(j).add(i);
+  };
   const tryEdge = (i, j) => {
-    if (find(i) === find(j)) return;
     const r = edgeRule(nodes[i], nodes[j], cfg);
-    if (r) { parent[find(j)] = find(i); rule.set(j, { r, anchor: i }); }
+    if (!r) return;
+    addAdj(i, j);
+    if (find(i) !== find(j)) { parent[find(j)] = find(i); rule.set(j, { r, anchor: i }); }
   };
 
   // Inverz index: él CSAK legalább 1 közös stemmelt salient tokent osztó pár között
@@ -157,9 +235,18 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
   const groups = new Map();
   nodes.forEach((n, i) => { const root = find(i); if (!groups.has(root)) groups.set(root, []); groups.get(root).push(i); });
 
+  // C-star: a decompose_min_component-nél NAGYOBB komponens (patológiás mega-blob) rekurzív
+  // star-dekompozíció + dice-repair; a kisebbek érintetlenek (teljes closure). Küszöb config-ból.
+  const gate = cfg.decompose_min_component ?? 30;
+  const finalGroups = [];
+  for (const idxs of groups.values()) {
+    if (idxs.length > gate) finalGroups.push(...decomposeComponent(idxs, nodes, adj, cfg));
+    else finalGroups.push(idxs);
+  }
+
   const representatives = [];
   const merges = [];
-  for (const idxs of groups.values()) {
+  for (const idxs of finalGroups) {
     const members = idxs.map((i) => nodes[i].it);
     // Egytagú sztori is kap _groupSize/_groupFirstSeen mezőt — hogy a mező jelenléte
     // ne függjön a csoport méretétől, és egy későbbi hívó ne felejtse el a fallbackot.

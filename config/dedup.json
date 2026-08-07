@@ -5,6 +5,7 @@
   "containment_min_tokens": 2,
   "trigram_dice_min": 0.55,
   "trigram_min_shared_tokens": 1,
+  "decompose_min_component": 30,
 
   "stopwords": [
     "a", "az", "egy", "es", "s", "hogy", "is", "nem", "meg", "mar", "csak", "de",

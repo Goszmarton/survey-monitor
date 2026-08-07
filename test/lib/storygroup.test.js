@@ -260,6 +260,49 @@ test("storygroup: dedup (b) — a title_generic_tokens kulcs LOAD-BEARING (nélk
   assert.equal(groups(items, { cfg: cfgNoGeneric, institutes }).length, 1, "a kulcs nélkül a 6 közlemény egy blob — a kulcs load-bearing");
 });
 
+// --- dedup(b)/C-star: a láncolódó mega-blob korlátozása same-story-megőrzéssel ---
+// A valós 2026-08-07 korpusz 318-tagú blobjából vett HŰ szelet: egy „Magyar Péter" hub-tétel
+// (rövid, generikus cím) a containment-ágon KÉT KÜLÖNBÖZŐ sztorihoz is kötődik — a Romsics-
+// találkozó hármashoz ÉS a Paks-leállás hármashoz. A tranzitív closure emiatt egyetlen 7-tagú
+// blobba olvasztja a két független sztorit (baseline: 1 csoport). A C-star (rekurzív star-
+// dekompozíció + dice-repair) szétbontja a hamis containment-hidat, de a KÉT valódi parafrázis-
+// hármast EGYBEN tartja (a dice-repair garanciája). A fixture 7 tétel < a produkciós gate (30),
+// ezért a teszt alacsony gate-tel (decompose_min_component:3) hívja — a MECHANIZMUST teszteli,
+// nem a küszöböt. A naiv C-star (repair nélkül) a hármasokat is szétárvázná → ez a regressziós védő.
+function cstarFixture() {
+  const mk = (id, title, sig = "FIGYELENDO") => ({ canonical_key: id, source_id: id.split(":")[0], kind: "sajto", title, first_seen_at: "2026-08-04T06:00:00Z", significance: sig, freshness: "UJ_24H" });
+  return [
+    // Romsics-találkozó sztori — 3 parafrázis (kölcsönös trigram-dice ≥ 0.55)
+    mk("telex:r1", "Romsics Ignác történésszel találkozott Magyar Péter és Ruff Bálint"),
+    mk("444:r2", "Romsics Ignáccal találkozott Magyar Péter és Ruff Bálint"),
+    mk("hvg:r3", "Romsics Ignáccal találkozott Magyar Péter"),
+    // Paks-leállás sztori — 3 parafrázis, KIEMELT primer
+    mk("telex:p1", "Magyar Péter: vasárnap leáll a paksi atomerőmű", "KIEMELT"),
+    mk("444:p2", "Magyar Péter: Vasárnap leáll a Paksi Atomerőmű"),
+    mk("hvg:p3", "Magyar Péter: A Paksi Atomerőmű leállítása semmilyen nukleáris veszélyt nem jelent"),
+    // hub-híd: rövid, generikus „Magyar Péter" cím — magyar+peter-en át MINDKÉT sztorihoz köt
+    mk("24hu:h0", "Magyar Péter leadta a vészjelzést"),
+  ];
+}
+
+test("storygroup: dedup(b)/C-star — a hub-hídon lógó blob szétesik (Romsics ≠ Paks sztori)", () => {
+  const items = cstarFixture();
+  const lowGate = { ...cfg, decompose_min_component: 3 };
+  // baseline (a jelenlegi produkciós gate=30 a 7-tagú komponenst NEM bontja): egyetlen blob
+  assert.equal(groups(items, { cfg, institutes }).length, 1, "gate=30 alatt a 7-tagú komponens érintetlen (egy blob) — a bontás a mega-blobra szabott");
+  // C-star aktív (alacsony gate): a két független sztori KÜLÖN csoport
+  const gs = groups(items, { cfg: lowGate, institutes });
+  assert.ok(gs.length >= 2, `a blob szétesik (most: ${gs.length} csoport)`);
+  assert.ok(!sameGroup(gs, "telex:r1", "telex:p1"), "a Romsics-találkozó és a Paks-leállás NEM ugyanaz a sztori");
+});
+
+test("storygroup: dedup(b)/C-star — a valódi parafrázis-hármasok EGYBEN maradnak (dice-repair, naiv C-star ellen)", () => {
+  const gs = groups(cstarFixture(), { cfg: { ...cfg, decompose_min_component: 3 }, institutes });
+  // regressziós védő: a dice-repair NÉLKÜL (naiv C-star) ezek a hármasok szétárvázódnának
+  assert.ok(sameGroup(gs, "telex:r1", "444:r2") && sameGroup(gs, "444:r2", "hvg:r3"), "a Romsics-hármas egy csoport marad");
+  assert.ok(sameGroup(gs, "telex:p1", "444:p2") && sameGroup(gs, "444:p2", "hvg:p3"), "a Paks-hármas egy csoport marad");
+});
+
 test("storygroup: intézet-lista NÉLKÜL a guard nem véd — a lista load-bearing (ezért WARN a run.js-ben)", () => {
   // Guard nélkül a Medián a Závecz-cel összevonódna (majdnem azonos szöveg) — ez a
   // hibamód, amit a config/intézet-lista megléte zár ki. Ha a run.js elfelejtené
