@@ -1,8 +1,58 @@
-# Kapu-A/B kísérlet — TERV (nem futtatva)
+# Kapu-A/B kísérlet — terv + EREDMÉNY
 
-**Dátum:** 2026-08-07
-**Státusz:** ⚠️ Csak terv. Egyetlen LLM-hívás sem futott. Ez a jegyzet a kísérlet
-*definícióját*, *költségét* és *kiértékelését* rögzíti — a futtatás külön, jóváhagyott lépés.
+**Dátum:** 2026-08-07 (terv) / **lefuttatva:** 2026-08-07 (GitHub `kapu-ab` workflow)
+**Státusz:** ✅ Lefuttatva a 2026-08-07-i korpuszon. Az eredmények lentebb; a terv
+(definíció, költség, kiértékelés) alább változatlanul megmarad referenciának.
+
+---
+
+## 0. EREDMÉNY (2026-08-07)
+
+Korpusz: a 08-07-i futás 154 LLM-triázs tétele, 11 batch — a batch-összetétel
+BIT-AZONOS a produkcióssal (candidate=183 → prefilter → 154 → 11 batch, verifikálva).
+Három sorozat: **B** = tárolt `significance_raw`, **B'** = produkciós prompt újra
+(zajpadló), **A** = a 67–70. sor `data_backed`-előfeltétele nélkül.
+
+**Provider-konfound (kritikus szűrő az érvényességhez):** a fallback-mintázat karonként
+eltért — B=`[gem×7, grq×4]`, B'=`[gem×11]`, A=`[gem×10, grq×1]`. Ezért a teljes 154-es
+számok NEM értékelhetők (providerváltás keveredik a mért eltérésbe). **Csak a
+provider-AZONOS sáv érvényes:** ahol A és B UGYANAZT a providert használta =
+**batch 1–7 (gem/gem) + batch 11 (grq/grq)**. A batch 8, 9, 10 (A=gemini, B=groq) kizárva.
+
+**Vetítési alap: a provider-azonos sáv 109 tétele** (nem a 154).
+
+| mérőszám (provider-azonos sáv, n=109) | érték |
+|---|---|
+| **zaj** (\|B'−B\|, azonos prompt) | **6 (5,5%)** |
+| **kapu** (\|A−B\|, kapu-előfeltétel nélkül) | **21 (19,3%)** — 3,5× a zaj fölött |
+| ebből **KIEMELT→FIGYELENDO** | **0** |
+| ebből **FONTOS→FIGYELENDO** | **12** |
+
+A 12 FONTOS→FIGYELENDO leszorításból **11 hírértékű politikai tétel** (nem
+kutatás/adatközlés) — ezeknél a `data_backed`-plafon HELYES.
+
+**1 anomália — Paks-GDP tétel** (batch 11, ahol a zaj NULLA; azonos **groq** provider
+mindkét karon, tehát konfound-mentes): „Paks még kevésbé fenyegeti a GDP-t, mint az
+ipari áramfogyasztás korlátozása" — `data_backed` **A=true → B=false**.
+- **B indoklása** (tárolt): *„Magyar gazdasági téma, de nincs konkrétabb adat"* → FIGYELENDO.
+- **A indoklása: NEM elérhető** — a szkript nem tárolta a `reason` mezőt (lásd korlát #1).
+
+### Az apparátus két korlátja (a következő méréshez)
+
+1. **`reason`-perzisztálás hiánya** — a szkript karonként csak a `significance`/`data_backed`/
+   providert mentette, a modell indoklását nem. Emiatt az anomália A-karú indoklása
+   visszafejthetetlen. **A következő mérésnél KÖTELEZŐ** a `reason` per-kar mentése
+   (a `state/experiments`-JSON-ba).
+2. **Provider-konfound** — a teljes 154-es `|A−B|=29` és `|B'−B|=14` NEM értékelhető,
+   mert a fallback-mintázat karonként eltért (a gemini-kvóta a futáskor rendben volt, így
+   B'/A gemini-re maradt ott, ahol B groq-ra esett). **Csak a provider-azonos sáv (n=109)
+   számai érvényesek.** A következő méréshez érdemes a providert karonként rögzíteni
+   (megvan) ÉS lehetőleg azonos fallback-feltételek közt futtatni, vagy a sáv-szűrést
+   eleve beépíteni a kiértékelésbe.
+
+**Döntés a kapuról: MÉG NINCS** — a Paks-eset átgondolása után hozzuk meg. Itt csak a tények.
+
+---
 
 ## 1. A kérdés
 
