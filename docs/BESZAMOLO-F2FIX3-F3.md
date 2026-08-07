@@ -142,5 +142,36 @@ deploy-sorát. (A rákövetkező cron `success`, egyszeri eset volt.)
 
 ---
 
+## 8. Holnapi futás — ELŐRE RÖGZÍTETT várt számok (push ELŐTT)
+
+A 7 F3-commit (minerva, C-star, STALE, opinio + 2 doc) holnap, a 08-08 00:43 UTC
+cronnal megy ki. A `since` a legutolsó futás kezdete = **2026-08-07T03:39Z**
+(→ sinceDay 08-07, sinceMonth augusztus). Az alábbi számokat MOST rögzítjük, hogy
+holnap ne legyenek utólag hangolhatók.
+
+| mérőszám | VÁRT érték | HIBÁT jelezne |
+|---|---|---|
+| **minerva** új tétel (1. futás) | **0** — legfrissebb permalink 202604 (április), a `monthOnly` szűrő sinceMonth=augusztus alá esik | **>0** = burst (a monthOnly szűrő nem fog) |
+| **opinio** új tétel (1. futás) | **0** — legfrissebb lastmod 2026-08-05 < sinceDay 08-07 (dateOnly), **0 post-lekérés** | **>2** vagy sok post-lekérés = a lastmod-szűrés kimaradt |
+| **forrásszám** (lábléc/`source_checks`) | **19** (15 feed + 4 HTML/sitemap) | **≠19** = a minerva/opinio nem töltődött be |
+| **C-star max sztori-csoport** | **~15–25** (a 08-07-i kohézív Paks-mag 22 volt, azóta hűl) | **>50** = a blob visszaállt / a C-star nem fut |
+| **C-star összes csoport** | **~1150–1250** (08-07: 1201) | drasztikus eltérés (pl. <900) = grouping-hiba |
+| **KIEMELT-levél** (KIEMELT rep) | **~24–30** (08-07: 28; a blob-szétbontás un-burying-je benne) | **<10** (összeomlás) vagy **>45** (robbanás) = kapu/dedup-hiba |
+| **digest-levél sztori** (UJ_24H) | **~90–125** (08-07: 115; hír-volumen-függő, ~+8 a C-star-tól) | **>200** (≈duplázódás) = a blob-szétbontás túlfut a levélbe |
+
+**Fontos keret:** a C-star számai a 08-07-i ablakon mértek; a holnapi 14-napos
+ablak ~13/14-ben átfed, ezért a számok KÖZELIek, de nem azonosak (a korpusz
+sodródik, a Paks-sztori hűl). A `minerva=0`, `opinio=0`, `forrásszám=19`
+**determinisztikus** (a since-logikából + configból számolt), a C-star-tartomány
+becslés. **A leglényegesebb egyetlen ellenőrzés: nincs 50+ tagú sztori-csoport** —
+ez igazolja, hogy a mega-blob nem tért vissza.
+
+**Amit NEM várunk (hiba-jelek egyben):** (a) burst a minerva/opinio-nál (>2 tétel);
+(b) 50+ tagú csoport a levélben/riportban; (c) forrásszám ≠ 19; (d) KIEMELT
+összeomlás ~0-ra vagy robbanás 45+ fölé; (e) `HIBA` státusz a minerva/opinio
+`source_checks`-ben (opinio: EGY post-lekérés bukása OK, de a sitemap-HIBA nem az).
+
+---
+
 *Készült: 2026-08-07. A számok forrása: `state/monitor.db` (origin/main `74c82fc`),
 a kód (`origin/main` + a lokális F3-commitok), a git-histó­ria és a regressziós tesztek.*
