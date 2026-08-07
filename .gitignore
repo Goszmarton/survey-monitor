@@ -7,3 +7,6 @@ dist/
 state/*.db-journal
 state/*.db-wal
 state/*.db-shm
+
+# Kapu-A/B kísérlet kimenete (nem prod állapot)
+state/experiments/
