@@ -73,7 +73,7 @@ function visibleItems(run) {
 // a verdikt nem perzisztál (applyTriage: `if (v.missing) continue`), így a
 // triage_json NULL marad és a következő futás újratriázsolja. Egy „még
 // feldolgozandó" faroknak a lista alján a helye; ítélet nélküli tétel ne
-// kerüljön egy ítélt FONTOS hír fölé a reggeli levélben.
+// kerüljön egy ítélt FONTOS hír fölé a napi levélben.
 //
 // Ezért NINCS külön „missing-utolsó" tiebreaker: a jelenlegi adatmodellben
 // megfigyelhetetlen no-op lenne (a missing sig=9 és az ítélt sig=0–2 már az

@@ -2,13 +2,19 @@ name: daily-monitor
 
 on:
   schedule:
-    # 00:43 UTC = 02:43 nyáron / 01:43 télen (Europe/Budapest).
-    # A "ferde" perc szándékos: a kerek órák zsúfoltak az Actions sorában.
-    # A korábbi 03:43 UTC-t a mért Actions-sorállás (142–188 perc, 8 napból)
-    # átbillentette a nyári 05:00 UTC (=7:00 Budapest) SLA-n → most 00:43-ra
-    # hozva, ~1h tartalékkal a mért maximumra is. Cél-SLA: email a postaládában
-    # 7:00 (Budapest) előtt. Lásd ARCHITEKTURA.md 3.
-    - cron: "43 0 * * *"
+    # 08:43 UTC = 10:43 nyáron (CEST) / 09:43 télen (CET), Europe/Budapest.
+    # A "ferde" perc (43) szándékos: a kerek órák zsúfoltak az Actions sorában.
+    #
+    # Cél-SLA: az email a postaládában 15:00 (Budapest) ELŐTT. A szűkebb korlát
+    # a NYÁR: 15:00 CEST = 13:00 UTC (télen 15:00 CET = 14:00 UTC, bővebb), ezért
+    # a nyári korlátra méretezünk. A késleltetés domináns tagja a GitHub Actions
+    # ütemező sorállása (a futás maga ~2 perc). Mért sorállás-sáv: 112–218 perc;
+    # a MÉRT MAXIMUMRA tervezünk, nem a kedvező végre:
+    #   08:43 UTC + 218 perc = 12:21 UTC = 14:21 CEST → ~40 perc tartalék 15:00-ig.
+    #   (A 2026-08-08-i 112 perc a kedvező vég; télen a 218 is csak 13:21 CET.)
+    # Korábban 00:43 UTC / 7:00-s SLA volt; az SLA-t 15:00-ra toltuk, a cron 08:43-ra.
+    # Lásd ARCHITEKTURA.md 3.
+    - cron: "43 8 * * *"
   workflow_dispatch: {}
 
 permissions:

@@ -8,7 +8,7 @@
 
 ## 1. Cél és vezérelvek
 
-A rendszer minden reggel 7:00 (Europe/Budapest) előtt kézbesít egy jelentést
+A rendszer minden nap 15:00 (Europe/Budapest) előtt kézbesít egy jelentést
 az előző napi futás óta megjelent magyar és nemzetközi közvélemény-kutatásokról,
 intézeti felmérésekről és hivatalos statisztikai adatközlésekről, a
 specifikáció frissességi és jelentőségi besorolásai szerint.
@@ -38,7 +38,7 @@ architektúra épül:
 
 ```mermaid
 flowchart TD
-    CRON["GitHub Actions cron\n43 0 * * * UTC"] --> RUN[run.js — napi futás]
+    CRON["GitHub Actions cron\n43 8 * * * UTC"] --> RUN[run.js — napi futás]
 
     subgraph GYUJTES["1. Gyűjtőréteg"]
         A["A-kaszt: determinisztikus fetcherek\nRSS · KSH · Eurostat · MNB"]
@@ -78,21 +78,29 @@ flowchart TD
 
 **GitHub Actions, ütemezett workflow.** Nincs saját szerver.
 
-- **Cron:** `43 0 * * *` (UTC). Nyáron 2:43, télen 1:43 budapesti
+- **Cron:** `43 8 * * *` (UTC). Nyáron 10:43, télen 9:43 budapesti
   indulás. A "ferde" perc szándékos: a kerek órák a legzsúfoltabbak az
   Actions megosztott sorában. **A cron-időt a mérés vezérli, nem becslés:**
-  8 nap adatából (runs tábla) az ütemezett futások ténylegesen 142–188
-  perccel a cron után indultak (nem a korábban feltételezett 10–40 perccel)
-  — az Actions ütemezett sora ennyit csúszik. A régi `43 3 * * *` emiatt
-  06:04–06:51 UTC-re csúszott, a levél ~08:15-re érkezett, átbillenve a
-  nyári **05:00 UTC (=7:00 Budapest) SLA-n**. A `43 0 * * *` a mért 188
-  perces maximummal is ~1h tartalékot ad (00:43 + 3:08 ≈ 03:51 UTC = 05:51
-  Budapest nyáron; télen +1h tartalék). Cél-SLA változatlan: **email a
-  postaládában 7:00 Europe/Budapest előtt.** Mellékhatás: a jelentés az
-  előző nap termését fedi; az aznap hajnali forrás a másnapi levélben lesz.
-  A "since last run" ablak a tényleges előző futás `started_at`-jához kötött
-  (nem a cron-időhöz), ezért a cron korábbra hozása nem hagy ki és nem
-  duplikál tartalmat — az átállás napján egy egyszeri, folytonos ~19h ablak.
+  az ütemezett futások ténylegesen 112–218 perccel a cron után indultak
+  (nem a korábban feltételezett 10–40 perccel) — az Actions ütemezett sora
+  ennyit csúszik. **Cél-SLA: email a postaládában 15:00 Europe/Budapest
+  előtt.** A szűkebb korlát a nyár: 15:00 CEST = **13:00 UTC** (télen 15:00
+  CET = 14:00 UTC, bővebb), ezért a nyári korlátra méretezünk. A `43 8 * * *`
+  a MÉRT 218 perces maximummal is tart: 08:43 + 3:38 = 12:21 UTC = 14:21
+  CEST → ~40 perc tartalék 15:00-ig (télen 13:21 CET, ~100 perc). A
+  2026-08-08-i 112 perc a kedvező vég — nem erre tervezünk. A korábbi
+  `43 0 * * *` a 7:00-s SLA-hoz tartozott; az SLA-t 15:00-ra tolva a cron
+  08:43-ra kerül. Mellékhatás: a jelentés az előző futás óta megjelent
+  termést fedi. A "since last run" ablak a tényleges előző futás
+  `started_at`-jához kötött (nem a cron-időhöz), ezért az átállás nem hagy
+  ki és nem duplikál tartalmat: az ablak folytonos marad. Az átállás napján
+  egyszeri, **~30–34h** szélesebb ablak (utolsó futás 2026-08-08 02:35 UTC →
+  következő 08-09 08:43 UTC + sorállás); a szélesebb ablak SZUPERHALMAZ, így
+  nem hiányzik tartalom, a `canonical_key`-dedup pedig a már látott tételek
+  újrabeszúrását zárja ki. A tárgysor "X új (24h)" és az UJ_24H szűrés NEM
+  torzul: a frissesség a `computeFreshness` fix, `now`-hoz mért 24h korán
+  alapul (publikációs idő szerint), nem a since-ablakon — a másnapos átállás
+  ezt nem érinti.
 - **Manuális trigger** (`workflow_dispatch`) fejlesztéshez és pótfutáshoz.
 - **Timeout:** a workflow-ra 30 perc; forrásonkénti fetch-timeout 20 s.
 - **Hibaértesítés:** ha a futás elhasal, arról is megy email ("a mai
@@ -363,7 +371,7 @@ keretében is bőven elfér.
    következő-publikációk naptár, revíziókezelés, finomhangolás.
 
 Minden fázis végén a rendszer önmagában használható — az F1 már
-minden reggel küld valamit, ami igaz.
+minden nap küld valamit, ami igaz.
 
 ## 11. Nyitott döntések induláskor
 
