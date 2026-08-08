@@ -173,5 +173,31 @@ ez igazolja, hogy a mega-blob nem tért vissza.
 
 ---
 
-*Készült: 2026-08-07. A számok forrása: `state/monitor.db` (origin/main `74c82fc`),
-a kód (`origin/main` + a lokális F3-commitok), a git-histó­ria és a regressziós tesztek.*
+## 9. szazadveg + realpr93 feed-aktiválás — ELŐRE RÖGZÍTETT várt számok (2026-08-08, push ELŐTT)
+
+Két A-feed intézet bekötve `rss.js`-en, **0 kód** (csak regiszter + fixture-teszt).
+A forrásszám ezzel **19 → 21**. A `since` holnap a MAI futás kezdetéhez kötött
+(2026-08-08 02:35 UTC), tehát mindkét forrás legfrissebb tétele a since ELŐTTI.
+
+| jel | várt (2026-08-09) | hibajel |
+|---|---|---|
+| **szazadveg** új tétel | **~0** — legfrissebb 2026-08-03 < since (08-08); OK_NINCS_UJ, „10 tétel, egyik sem újabb". (1–2 friss OK, ha közben publikál — élő forrás, NEM hiba.) | **HIBA** vagy **RESZLEGES/üres feed** = rossz URL-t kötöttünk (a `/cikkek/feed/` helyett a fő `/feed/`); **~10 „friss"** = a since/dátum-parse elromlott |
+| **realpr93** új tétel | **0** — legfrissebb 2026-02-09 (180 nap) ≪ since; OK_NINCS_UJ, „10 tétel, egyik sem újabb" | **HIBA** = WordPress-feed leállt; **>0 burst** = dátum-parse hiba (a pubDate nem olvasódik) |
+| **forrásszám** (`source_checks`) | **21** (17 feed + 4 HTML/sitemap) | **≠21** = az aktiválás nem érvényesült (JSON/kaszt) |
+| **KIEMELT / digest** | **változatlan** a két forrástól (mindkettő ~0 új) | érdemi ugrás e két `source_id`-től = váratlan burst |
+
+**A legfontosabb egyetlen ellenőrzés:** mindkét forrás `OK_NINCS_UJ` státusszal, a
+detailben a **10-es feed-tételszámmal** — ez igazolja, hogy a LEKÉRÉS megtörtént
+(a fetch él), csak nincs a since-nél újabb tétel. `HIBA`/`RESZLEGES` bármelyiknél =
+az aktiválás a lekérés szintjén bukott.
+
+**Keret:** holnap EGYSZERRE landol a cron-átállás (08:43 UTC, ~32h egyszeri szélesebb
+since-ablak) ÉS a két új forrás. Szétszálazható: a két forrás 2 új `OK_NINCS_UJ` sor +
+forrásszám 21; a cron a levél KÉSŐBBI (≈14:21 CEST) érkezése. A szélesebb ablak e két
+forrás régi tételeit NEM hozza be (mind jóval a 08-08 02:35-ös ablakkezdet előtti).
+
+---
+
+*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9. szakasz). A számok
+forrása: `state/monitor.db`, a kód, a git-histó­ria, a regressziós tesztek és a
+2026-08-08-i verifikált feed-próbák (mentett fixture-ök a `test/fixtures/` alatt).*

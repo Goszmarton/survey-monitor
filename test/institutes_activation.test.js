@@ -1,13 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { selectActiveSources } from "../src/collect.js";
+import { fetchNew } from "../src/sources/rss.js";
 import { prefilter, triageItems } from "../src/triage.js";
 import { groupStories, deriveInstitutes } from "../src/lib/storygroup.js";
 
 const { sources } = JSON.parse(readFileSync(new URL("../config/sources.json", import.meta.url), "utf8"));
 const cfg = JSON.parse(readFileSync(new URL("../config/dedup.json", import.meta.url), "utf8"));
 const institutes = deriveInstitutes(sources, cfg);
+
+// Fixture-alapú feed-stub (a rss.test.js mintája): a ma lekért valós feed mentett példánya.
+const fx = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)));
+function resp(body, { status = 200, contentType = "application/rss+xml; charset=UTF-8" } = {}) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (n) => (n.toLowerCase() === "content-type" ? contentType : null) },
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    text: async () => buf.toString("utf8"),
+  };
+}
+const stub = (body, opts) => async () => resp(body, opts);
+const latestDay = (items) => new Date(Math.max(...items.map((i) => Date.parse(i.publishedAt)))).toISOString().slice(0, 10);
 
 // --- 3. pont: reprodukció — a collect FELVESZI median + iranytu forrásokat ---
 // A run.js loadSources a selectActiveSources-t hívja, és a collect() KIZÁRÓLAG az így
@@ -23,6 +40,30 @@ test("intézet-aktiválás: a collect felveszi a median és iranytu forrást (A-
   }
 });
 
+// --- feed-intézet aktiválás (2026-08-08): szazadveg + realpr93, rss.js-en, kódírás nélkül ---
+// PIROS a sources.json-flip ELŐTT (szazadveg kaszt="?" / feed=/feed/ üres; realpr93 kaszt="B").
+// ZÖLD, ha A-kasztra + a helyes feed-URL-re állítjuk. A parse a MA lekért valós feed
+// mentett példányán fut (fixture) — a mért tételszám és legfrissebb dátum a szerződés.
+test("feed-aktiválás: szazadveg A-feed a /cikkek/feed/-en (NEM /feed/), a mentett feed 10 tétel / legfr. 2026-08-03", async () => {
+  const s = selectActiveSources(sources).find((x) => x.id === "szazadveg");
+  assert.ok(s, "szazadveg aktív forrás (kaszt A + feed)");
+  assert.equal(s.feed, "https://szazadveg.hu/cikkek/feed/", "a /cikkek/feed/ a helyes — a fő /feed/ ÜRES");
+  const r = await fetchNew(s, { since: 0, fetchImpl: stub(fx("szazadveg_cikkek_feed.xml")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 10, "a mai mentett feed 10 tétele");
+  assert.equal(latestDay(r.items), "2026-08-03", "legfrissebb tétel 2026-08-03");
+});
+
+test("feed-aktiválás: realpr93 B→A WordPress-feed, a mentett feed 10 tétel / legfr. 2026-02-09 (határeset-STALE)", async () => {
+  const s = selectActiveSources(sources).find((x) => x.id === "realpr93");
+  assert.ok(s, "realpr93 aktív forrás (kaszt B→A + feed)");
+  assert.equal(s.feed, "https://realpr93.hu/feed/", "WordPress fő-feed");
+  const r = await fetchNew(s, { since: 0, fetchImpl: stub(fx("realpr93_feed.xml")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 10, "a mai mentett feed 10 tétele");
+  assert.equal(latestDay(r.items), "2026-02-09", "legfrissebb tétel 2026-02-09 — 180 nap, a STALE-határon");
+});
+
 // HTML-listás intézetek (list_url + per-source parser, feed NÉLKÜL) aktívak.
 for (const id of ["21kutato", "republikon", "minerva", "opinio"]) {
   test(`intézet-aktiválás: ${id} aktív HTML-listaként (list_url, feed nélkül)`, () => {
@@ -35,8 +76,7 @@ for (const id of ["21kutato", "republikon", "minerva", "opinio"]) {
 // A többi (még be nem kötött) intézet MARAD inaktív.
 test("intézet-aktiválás: a be nem kötött intézetek érintetlenek (nem aktív forrás)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  const others = ["zavecz", "publicus", "idea", "nezopont",
-    "szazadveg", "realpr93", "tarskutato"];
+  const others = ["zavecz", "publicus", "idea", "nezopont", "tarskutato"];
   for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (még nincs bekötve)`);
 });
 
