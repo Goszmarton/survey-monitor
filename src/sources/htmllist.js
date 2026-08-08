@@ -175,10 +175,54 @@ function extractPageTitle(html) {
   return title.length >= 3 ? title : null;
 }
 
+// Publicus (publicus.hu/blog/category/blog/) — Newspaper (tagDiv) WP-téma. A FEED nem
+// reprezentálja a forrást (a júliusi kutatások egyikben sincsenek), ezért a blog-lista kell.
+// Minden cikk: <h3 class="entry-title td-module-title"><a href title>. VEGYES granularitás:
+// a fő-listás modulok pontos <time class="td-module-date" datetime="ÉÉÉÉ-HH-NN"> dátumot adnak
+// (dateOnly); a lap tetején lévő "td-big-grid" KIEMELTEK viszont dátum NÉLKÜLIEK a markupban —
+// köztük a 3 legfrissebb kutatás, ami CSAK itt szerepel (nincs dátumos párja). Ezekhez az
+// egyetlen in-page jel a kép-útvonal /wp-content/uploads/ÉÉÉÉ/HH/ → HAVI dátum (monthOnly),
+// ami egyezik a címbeli hónappal. Így egy lekéréssel, cikkoldal-backfill nélkül sem vész el a
+// primer tartalom, és a hetes kiemelt júliusi tétel a monthOnly miatt NEM kap hamis UJ_24H-t
+// augusztusban (sinceMonth-szűrés). Identitás = permalink. Dedup URL-re, pontosabb dátum nyer.
+function extractPublicus(html, baseUrl) {
+  const seen = new Map(); // url → { item, rank } ; rank: 2=dateOnly, 1=monthOnly, 0=dátumtalan
+  const re = /<h3 class="entry-title td-module-title">\s*<a\b[^>]*?href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const marks = [];
+  let m;
+  while ((m = re.exec(html)) !== null) marks.push({ href: m[1], inner: m[2], index: m.index, end: re.lastIndex });
+  for (let k = 0; k < marks.length; k++) {
+    const mk = marks[k];
+    const url = absolutize(mk.href, baseUrl);
+    // csak valódi blog-cikk (nem kategória/tag/szerző/lapozó)
+    if (!url || !/\/blog\/(?!category\/|tag\/|author\/|page\/)[^/]+\/?$/i.test(new URL(url).pathname)) continue;
+    const title = mk.inner.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < MIN_TITLE_LEN) continue;
+
+    // dátum: a cím UTÁN, a következő címig (fő-listás modulok pontos időbélyege)
+    const seg = html.slice(mk.end, k + 1 < marks.length ? marks[k + 1].index : html.length);
+    const dm = seg.match(/td-module-date[^>]*datetime="(\d{4})-(\d{2})-(\d{2})/i);
+    let publishedAt = null, dateOnly = false, monthOnly = false, rank = 0;
+    if (dm) {
+      publishedAt = `${dm[1]}-${dm[2]}-${dm[3]}T00:00:00.000Z`; dateOnly = true; rank = 2;
+    } else {
+      // KIEMELT (big-grid): a cím ELŐTTI kép-útvonal /uploads/ÉÉÉÉ/HH/ → havi dátum
+      const before = html.slice(Math.max(0, mk.index - 1500), mk.index);
+      const um = [...before.matchAll(/\/uploads\/(\d{4})\/(\d{2})\//g)].pop();
+      if (um) { publishedAt = `${um[1]}-${um[2]}-01T00:00:00.000Z`; monthOnly = true; rank = 1; }
+    }
+    const prev = seen.get(url);
+    if (!prev || rank > prev.rank) {
+      seen.set(url, { rank, item: { guid: url, title, url, publishedAt, dateOnly, monthOnly, summary: null } });
+    }
+  }
+  return [...seen.values()].map((v) => v.item);
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source

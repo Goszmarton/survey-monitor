@@ -207,3 +207,28 @@ test("since-szűrés: publishedAt NÉLKÜLI tétel (generikus HTML-lista, pl. Eu
   assert.equal(r.check.status, "OK_UJ");
   assert.equal(r.items.length, 2, "a dátumtalan lista-tételek since mellett is bent maradnak");
 });
+
+// Publicus (publicus.hu/blog/category/blog/) — Newspaper WP-téma. A feed NEM reprezentál
+// (a júliusi kutatások kimaradnak belőle), a blog-lista kell. VEGYES granularitás: a fő-listás
+// modulok pontos <time datetime> (dateOnly), a big-grid KIEMELTEK dátumtalanok → a kép-útvonal
+// /uploads/ÉÉÉÉ/HH/ ad HAVI dátumot (monthOnly). A szerződés: 28 tiszta cikk, semmi primer nem vész el.
+const srcPub = { id: "publicus", name: "Publicus", list_url: "https://publicus.hu/blog/category/blog/" };
+test("publicus: 28 keltezett cikk (25 dateOnly + 3 kiemelt monthOnly), semmi primer nem vész el", async () => {
+  const r = await fetchNew(srcPub, { since: 0, fetchImpl: stub(fx("publicus_blog.html")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 28, "28 egyedi blog-cikk (a kategória/nav-linkek kizárva, a duplikátumok összevonva)");
+  const dated = r.items.filter((i) => i.dateOnly);
+  const month = r.items.filter((i) => i.monthOnly);
+  assert.equal(dated.length, 25, "25 fő-listás cikk pontos <time datetime>-mal (dateOnly)");
+  assert.equal(month.length, 3, "3 big-grid KIEMELT, upload-útvonal havi dátummal (monthOnly)");
+  assert.equal(r.items.filter((i) => !i.publishedAt).length, 0, "nincs dátumtalan tétel (semmi nem esik ki datálatlanul)");
+  const latest = r.items.map((i) => i.publishedAt).filter(Boolean).sort().reverse()[0];
+  assert.equal(latest, "2026-07-31T00:00:00.000Z", "legfrissebb 2026-07-31 (fő-listás)");
+  // a 3 legfrissebb PRIMER kutatás CSAK a big-gridben van (nincs dátumos párja) — NEM vész el:
+  const partok = r.items.find((i) => /Pártok támogatottsága.*2026 július/.test(i.title));
+  assert.ok(partok, "a 'Pártok támogatottsága – 2026 július' primer kutatás bent van");
+  assert.equal(partok.monthOnly, true, "kiemelt → monthOnly (nincs listás időbélyege)");
+  assert.equal(partok.publishedAt, "2026-07-01T00:00:00.000Z", "a havi dátum az /uploads/2026/07/ kép-útvonalból");
+  // a kategória-oldal linkje NEM cikk:
+  assert.ok(!r.items.some((i) => /\/blog\/category\//.test(i.url)), "a /blog/category/ nem tétel");
+});

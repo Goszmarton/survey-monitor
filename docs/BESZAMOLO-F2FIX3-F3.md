@@ -198,6 +198,37 @@ forrás régi tételeit NEM hozza be (mind jóval a 08-08 02:35-ös ablakkezdet 
 
 ---
 
-*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9. szakasz). A számok
+## 10. publicus HTML-parser aktiválás — ELŐRE RÖGZÍTETT várt számok (2026-08-08, push ELŐTT)
+
+A publicus feedje NEM reprezentál (a júliusi primer kutatások kimaradnak), ezért a
+`/blog/category/blog/` HTML-lista, új per-source parser (`extractPublicus`). VEGYES
+granularitás: 25 fő-listás cikk pontos dátummal (dateOnly), + 3 big-grid KIEMELT
+(a 3 legfrissebb kutatás, csak itt) HAVI dátummal az upload-útvonalból (monthOnly).
+Forrásszám **21 → 22**. Külön pushol, a hatás a **holnaputáni (≈2026-08-10)** levélben
+látszik, izoláltan a 08-09-i cron+szazadveg/realpr93 verifikációtól.
+
+| jel | várt (≈2026-08-10, az első publicus-os futás) | hibajel |
+|---|---|---|
+| **publicus** új tétel | **~0** — a fixture 28 cikke mind ≤ 2026-07-31 (a 3 kiemelt monthOnly = 2026-07), a since ELŐTTI; `OK_NINCS_UJ`, „28 tétel, egyik sem újabb". (1–2 friss OK, ha közben új kutatást tesz ki — élő forrás, ez a CÉL.) | **RESZLEGES** („nincs kinyerhető cikk-link") = a Newspaper-markup változott / parser tört; **~28 „friss" burst** = a since/dátum-parse elromlott |
+| **forrásszám** (`source_checks`) | **22** (17 feed + 5 HTML/sitemap) | **≠22** = az aktiválás nem érvényesült |
+| **KIEMELT / digest** | **változatlan** a publicustól (~0 új) | érdemi ugrás e `source_id`-től = váratlan burst |
+
+**A legfontosabb egyetlen ellenőrzés:** `OK_NINCS_UJ`, a detailben **28-as
+lista-tételszámmal** — a lekérés+parse megtörtént, csak nincs friss. `RESZLEGES`/`HIBA`
+= a lekérés vagy a parse bukott.
+
+**Ha közben ÚJ kutatás jön:** egy augusztusi *fő-listás* tétel pontos dátummal (dateOnly)
+frissként jelenik meg; egy augusztusi *kiemelt* (monthOnly 2026-08) átmegy a sinceMonth-on,
+DE a hó-eleji dátumozás miatt a frissesség KORABBI-nak látszhat (a monthOnly ismert
+költsége, mint minervánál) — a tétel akkor sem VÉSZ el, csak nem kap UJ_24H-t. Ez nem hiba.
+
+**Napi-egy-változás:** a publicus KÜLÖN pushal a szazadveg/realpr93-tól, hogy a 08-10-i
+levélben a hatása tisztán elváljon. A nezopont ma CSAK felmérve (nincs feed — Joomla-feed
+site-szinten kikapcsolva, mind soft-404; HTML-lista parse-olható, legfrissebb 2026-04-13),
+parser + aktiválás külön menet.
+
+---
+
+*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz). A számok
 forrása: `state/monitor.db`, a kód, a git-histó­ria, a regressziós tesztek és a
-2026-08-08-i verifikált feed-próbák (mentett fixture-ök a `test/fixtures/` alatt).*
+2026-08-08-i verifikált forrás-próbák (mentett fixture-ök a `test/fixtures/` alatt).*
