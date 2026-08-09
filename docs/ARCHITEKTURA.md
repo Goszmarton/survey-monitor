@@ -202,6 +202,15 @@ célzott HTML-lekérés (listaoldal), 20 s timeout, User-Agent beállítva,
 udvarias ütemezés. A `source_checks` sor a modul tényleges eredményéből
 íródik — a napló ettől "magától igaz".
 
+**Megbízhatósági tétel — az RSS-feedek HOSSZ-korlátosak, nem idő-korlátosak.** Egy
+feed a saját ~fix számú legfrissebb tételét adja (pl. sajtófeed ~30–100), a `since`-szűrő
+ebből vág idő szerint. Következmény: **ha valaha kimarad egy futás, a kiesett tételek
+VÉGLEG elvesznek** — a következő futás szélesebb `since`-ablaka NEM pótolja őket, mert a
+pörgő feedek addigra kirotálták azokat a listájukról (a +Nh ablakszélesítés csak akkor
+hozna többet, ha a feed még TARTANÁ a régi tételeket). Ez a napi futás megbízhatóságának
+valódi tétje: a hiányzó nap nem „behozható" később. (Ezért a `source_checks` magától-igaz
+naplója és a „jelentés sosem marad el" vezérelv nem esztétika, hanem adatvesztés-védelem.)
+
 ### B-kaszt — agentikus ellenőrzés
 
 A rendszertelen, scrape-ellenálló forrásoknál (kis intézetek) a Claude

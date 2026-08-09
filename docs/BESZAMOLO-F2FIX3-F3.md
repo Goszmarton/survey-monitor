@@ -141,6 +141,14 @@ deploy-sorát. (A rákövetkező cron `success`, egyszeri eset volt.)
 - **C-star residual:** 10 erős-containment pár leválik; mérlegelendő lokális-IDF
   hub-detekcióval csökkenteni.
 - **3b/3c gate finomítás, a Paks-sztori HU/EN cross-nyelvi dedup** — kisebb tételek.
+- **21kutato — GitHub Actions egress-IP-blokk (BACKLOG, 2026-08-09):** két nap egymás
+  után `HTTP 403` a runnerről (`lista: HTTP 403`), UGYANAZ az URL+produkciós UA lokális
+  IP-ről `200` → nem tranziens, hanem **runner-IP-blokk (Cloudflare)**. A forrás jelenleg
+  **NULLA értéket ad**: be van kötve, számít a forrásszámba (26), de sosem fut le sikeresen
+  → a forrásszám némileg „hazudik". Lehetséges irányok: **(a)** alternatív útvonal a
+  forráson belül (sitemap / feed / más aldomain), **(b)** B-fallback (agentikus), **(c)** ha
+  semmi nem megy, a `status` legyen **`HIBA_TARTOS`**, hogy a forrásszám ne tartalmazza a
+  tartósan halott csatornát. Külön, jóváhagyott menet.
 
 ---
 
