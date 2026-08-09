@@ -30,8 +30,9 @@ export const selectActiveSources = (sources) => sources.filter(isActiveSource);
 // a kulcsszó-lista a FORRÁSRA szűkíti a bevitelt. Szándékosan NEM a triage.json globális
 // kulcsszavai közé kerül — az MINDEN forrásra hatna; ez csak arra, amelyiknek van ilyen mezője.
 // ILLESZTÉS: RÉSZSZÓ (includes), kisbetűsítve, a cím ÉS a leírás (summary) egyesített szövegén —
-// így a "magyar" illeszkedik a "Magyarország"/"magyarok"-ra is (szó-határnál kimaradnának), a
-// "hungary" pedig lefedi a "hungarian"-t. A szűrés a dedup/upsert ELŐTT fut, és a source_check
+// így a "magyar" illeszkedik a "Magyarország"/"magyarok"-ra is (szó-határnál kimaradnának). A
+// "hungary" és a "hungarian" KÜLÖN kell: a "hungary" NEM fedi le a "hungarian"/"Hungarians"-t
+// (a 7. betű i≠y), empirikusan igazolva valós archív Pew-címen. A szűrés a dedup/upsert ELŐTT fut, és a source_check
 // detailjében látható marad ("cím-szűrő: N→M") — nincs csendes eltűnés (CLAUDE.md 2). A cél a
 // CÍM-szintű magyar relevancia; a "rejtett magyar adat" (globális kutatás, ahol Magyarország
 // csak az adattáblában van) NEM ez az ág — az az agentikus/kétlépcsős pipeline dolga.

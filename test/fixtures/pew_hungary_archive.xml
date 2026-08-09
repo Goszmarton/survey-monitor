@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Valós, ARCHÍV Pew-tételek (WP REST API-val verifikálva, 2026-08-09) a cím-szűrő POZITÍV
+  igazolásához: a mai /feed/-ben nincs magyar-releváns Pew-cikk, ezért a 0/100 önmagában nem
+  bizonyítja, hogy a szűrő EGYÁLTALÁN illeszkedik. Ez a fixture 2 valós Hungary-tételt (a
+  címükben Hungarians/Hungary) + 2 valós amerikai tételt tartalmaz — a szűrőnek az előbbi
+  kettőt kell átengednie, az utóbbi kettőt nem. A címek/linkek valódiak.
+-->
+<rss version="2.0">
+  <channel>
+    <title>Pew Research Center — archív minta (teszt-fixture)</title>
+    <link>https://www.pewresearch.org/</link>
+    <item>
+      <title>Poles and Hungarians Differ Over Views of Russia and the U.S.</title>
+      <link>https://www.pewresearch.org/global/2023/10/02/poles-and-hungarians-differ-over-views-of-russia-and-the-us/</link>
+      <guid isPermaLink="true">https://www.pewresearch.org/global/2023/10/02/poles-and-hungarians-differ-over-views-of-russia-and-the-us/</guid>
+      <pubDate>Mon, 02 Oct 2023 12:48:42 +0000</pubDate>
+      <description>People in Hungary and Poland have different views on the future of the economic sanctions that the European Union and the U.S. have imposed on Russia.</description>
+    </item>
+    <item>
+      <title>Support for taking refugees in Poland and Hungary</title>
+      <link>https://www.pewresearch.org/global/2023/10/02/support-for-taking-refugees-in-poland-and-hungary/</link>
+      <guid isPermaLink="true">https://www.pewresearch.org/global/2023/10/02/support-for-taking-refugees-in-poland-and-hungary/</guid>
+      <pubDate>Mon, 02 Oct 2023 12:48:42 +0000</pubDate>
+      <description></description>
+    </item>
+    <item>
+      <title>Confidence in election fairness</title>
+      <link>https://www.pewresearch.org/newsletter/weekly-roundup/confidence-in-election-fairness/</link>
+      <guid isPermaLink="true">https://www.pewresearch.org/newsletter/weekly-roundup/confidence-in-election-fairness/</guid>
+      <pubDate>Fri, 07 Aug 2026 12:00:00 +0000</pubDate>
+      <description>A weekly roundup of U.S. survey findings.</description>
+    </item>
+    <item>
+      <title>Scripps announces digital restructure and layoffs</title>
+      <link>https://www.pewresearch.org/newsletter/the-briefing/scripps-announces-digital-restructure-and-layoffs/</link>
+      <guid isPermaLink="true">https://www.pewresearch.org/newsletter/the-briefing/scripps-announces-digital-restructure-and-layoffs/</guid>
+      <pubDate>Fri, 07 Aug 2026 12:00:00 +0000</pubDate>
+      <description>Newsletter briefing on U.S. media industry news.</description>
+    </item>
+  </channel>
+</rss>
