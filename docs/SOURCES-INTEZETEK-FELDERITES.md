@@ -204,13 +204,15 @@ per-forrás részletek a `config/sources.json` note-jaiban; az ejtési/bekötés
 
 | id | csatorna (2026-08) | miért nem aktivált | melyik ejtési/nyitott-kategória |
 |---|---|---|---|
-| **pew** | WordPress `/feed/` **ÉL**, 100 tétel, NAPI (legfr. 2026-08-06) | van csatorna, de ~minden tétel amerikai; szűretlenül ELÁRASZTANÁ a korpuszt, a magyar-hangolt `triage.json` kulcsszavak angol címekre nem illeszkednek | **NYITOTT: szűrés-mechanizmus** (nem parser) — angol relevancia-szűrő kell |
+| **pew** | WordPress `/feed/` **ÉL**, 100 tétel, NAPI (legfr. 2026-08-07) | ~minden tétel amerikai; szűretlenül elárasztaná a korpuszt | **BEKÖTVE 2026-08-09** forrás-szintű `title_filter`-rel (új képesség a `collect`-ben; részszó-illesztés cím+leírás; NEM a triage.json globális kulcsszavai közé). Vállalja a cím-szintű magyar Pew-t; a rejtett-magyar-adat marad az agentikus ágnak. Ma 0/100 megy át (várt) |
 | **ipsos** | `/hu-hu/rss.xml` **ÉL**, 20 tétel | a magyar (hu-hu) ág LASSÚ: legfr. 2025-11-27 (~255 nap). A STALE-kor és a `kind:nemzetkozi` sem ejtő ok, a csatorna él → A(feed), mint tarskutato | **BEKÖTVE 2026-08-09** (kaszt B→A, `revisit: if-republishes`); a gzip-választ az undici transzparensen kibontja (ellenőrizve, nem hiba) |
 | **eurobarometer** | szándékosan URL nélkül | közvéleménykutatás-riportok (PDF/HTML), determinista feed nélkül; a magyar minta a rejtett-magyar-adat kétlépcsős pipeline-ba tartozik. **NEM azonos az Eurostattal** (az bekötött A) | **agentikus B** (rejtett-magyar-adat) |
 | **europeelects** | HALOTT végpont | nincs élő gépi csatorna | **ejtő ok: csatorna-hiány** |
 | **politico_pop** | `/europe-poll-of-polls/` HTTP 200 (nem blokkol), de INTERAKTÍV HTML | kliens-oldali render, nincs determinista feed / parse-olható lista | **ejtő ok: csatorna-hiány** |
 
-**Összegzés (frissítve 2026-08-09):** az **ipsos BEKÖTVE** (kaszt B→A, `hu-hu/rss.xml`),
-ezzel az ötösből a valódi jövőbeli munka **egy**: pew (angol relevancia-szűrő, NYITOTT
-tervezési kérdés — nem parser). Három determinista úton nem köthető: eurobarometer
-(agentikus B, PDF/HTML), europeelects és politico_pop (csatorna-hiány).
+**Összegzés (frissítve 2026-08-09):** az **ipsos** (kaszt B→A, `hu-hu/rss.xml`) ÉS a **pew**
+(kaszt B→A, `/feed/` + `title_filter`) is **BEKÖTVE** — ezzel az ötösből **nincs több nyitott
+determinista munka**. Három marad az agentikus/rejtett-magyar-adat ágban: eurobarometer
+(PDF/HTML, feed nélkül), europeelects és politico_pop (csatorna-hiány). A pew cím-szűrője a
+CÍM-szintű magyar relevanciát vállalja; a globális kutatások magyar adattábla-részlete (rejtett
+magyar adat) továbbra is az agentikus/kétlépcsős pipeline dolga.

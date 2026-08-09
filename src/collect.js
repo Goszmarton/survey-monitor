@@ -25,6 +25,25 @@ const WINDOW_DAYS = 14;
 export const isActiveSource = (s) => s.kaszt === "A" && Boolean(s.feed || s.list_url);
 export const selectActiveSources = (sources) => sources.filter(isActiveSource);
 
+// Forrás-szintű cím/leírás-szűrő (opcionális `source.title_filter: string[]`). Ahol egy forrás
+// szerkezetileg sok irreleváns tételt ad (pl. Pew Research: ~minden cikk amerikai belpolitika),
+// a kulcsszó-lista a FORRÁSRA szűkíti a bevitelt. Szándékosan NEM a triage.json globális
+// kulcsszavai közé kerül — az MINDEN forrásra hatna; ez csak arra, amelyiknek van ilyen mezője.
+// ILLESZTÉS: RÉSZSZÓ (includes), kisbetűsítve, a cím ÉS a leírás (summary) egyesített szövegén —
+// így a "magyar" illeszkedik a "Magyarország"/"magyarok"-ra is (szó-határnál kimaradnának), a
+// "hungary" pedig lefedi a "hungarian"-t. A szűrés a dedup/upsert ELŐTT fut, és a source_check
+// detailjében látható marad ("cím-szűrő: N→M") — nincs csendes eltűnés (CLAUDE.md 2). A cél a
+// CÍM-szintű magyar relevancia; a "rejtett magyar adat" (globális kutatás, ahol Magyarország
+// csak az adattáblában van) NEM ez az ág — az az agentikus/kétlépcsős pipeline dolga.
+export function matchesTitleFilter(item, keywords) {
+  const hay = `${item.title ?? ""} ${item.summary ?? ""}`.toLowerCase();
+  return keywords.some((k) => hay.includes(String(k).toLowerCase()));
+}
+export function applyTitleFilter(items, keywords) {
+  if (!Array.isArray(keywords) || keywords.length === 0) return items;
+  return items.filter((it) => matchesTitleFilter(it, keywords));
+}
+
 // Egy forrásnak több csatornája is lehet: verifikált RSS ÉS HTML-listaoldal
 // (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
 function channelsOf(source) {
@@ -66,9 +85,15 @@ export async function collect({ db, sources, now, runId, runStartedAt, since, fe
           return { name: c.name, items, check };
         }),
       );
-      const items = results.flatMap((r) => r.items);
+      let items = results.flatMap((r) => r.items);
       const status = combineStatus(results.map((r) => r.check.status));
-      const detail = results.map((r) => `${r.name}: ${r.check.detail}`).join(" · ");
+      let detail = results.map((r) => `${r.name}: ${r.check.detail}`).join(" · ");
+      // Opcionális forrás-szintű cím/leírás-szűrő (a dedup ELŐTT; a napló rögzíti az arányt).
+      if (Array.isArray(source.title_filter) && source.title_filter.length) {
+        const before = items.length;
+        items = applyTitleFilter(items, source.title_filter);
+        detail += ` · cím-szűrő: ${before}→${items.length}`;
+      }
       return { source, items, status, detail };
     }),
   );

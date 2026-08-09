@@ -246,7 +246,7 @@ HTML-lista forrásra érvényes.
 | jel | várt (≈2026-08-10, az első nezopont-os futás) | hibajel |
 |---|---|---|
 | **nezopont** új tétel | **~0** — mind a 24 közlemény ≤ 2026-04-13 (118 napja néma), a since ELŐTTI; `OK_NINCS_UJ`, „24 tétel, egyik sem újabb". (Ha újra publikál → magától megjelenik, `revisit: if-republishes`.) | **HIBA** („soft-404…") = a Joomla-lekérés bukott (a fő kockázat, a Joomla ingatag); **RESZLEGES** = a Gantry-markup változott / parser tört; **burst** = a since/dátum-parse elromlott |
-| **forrásszám** (`source_checks`) | **25** — lásd lentebb | **≠25** = az aktiválás nem érvényesült |
+| **forrásszám** (`source_checks`) | **26** — lásd lentebb | **≠26** = az aktiválás nem érvényesült |
 | **KIEMELT / digest** | **változatlan** a nezoponttól (~0 új) | érdemi ugrás e `source_id`-től = váratlan burst |
 
 **tarskutato feed-aktiválás (2026-08-09, ugyanebben a batchben):** működő WordPress
@@ -265,13 +265,25 @@ szerver gzip-et küld, de az undici `res.text()`/`res.bytes()` transzparensen ki
 futásban: **~0 új** → `OK_NINCS_UJ`, „20 tétel, egyik sem újabb". Hibajel: `HIBA`
 (feed elérhetetlen / dekódolás bukik) vagy **burst**.
 
+**pew feed-aktiválás cím-szűrővel (2026-08-09, ugyanebben a batchben):** WordPress `/feed/`
+ÉL (100 tétel, napi, legfr. 2026-08-07), 0 kód (rss.js). ÚJ KÉPESSÉG: forrás-szintű
+`title_filter` (a `collect` alkalmazza, ha jelen van) — a Pew ~minden tétele amerikai, ezért
+CÍM/leírás-szintű magyar-relevancia-szűrő korlátozza a bevitelt (`hungary, hungarian, magyar,
+orbán, orban, budapest, central europe, visegrad, eastern europe`; RÉSZSZÓ-illesztés). NEM a
+triage.json globális kulcsszavai közé (az minden forrásra hatna). VÁLLALJA a cím-szintű magyar
+Pew-tételt; NEM vállalja a „rejtett magyar adat"-ot (globális kutatás, ahol Magyarország csak
+az adattáblában) — az az agentikus ág (eurobarometerrel). Várt a 08-10-i futásban: **~0 új**
+(a mai 100 tételből 0 megy át a szűrőn — VÁRT, a Pew ritkán ír kifejezetten Magyarországról) →
+`OK_UJ … · cím-szűrő: 100→0 — dedup után 0 új`. Hibajel: **sok pew-tétel egyszerre** = a szűrő
+nem érvényesült.
+
 **Forrásszám-reconciliáció (felülírja §10 izolált 22-jét):** a nezopont a felhasználó
-utasítására a publicusszal, a revisit-sémával, a tarskutato- ÉS az ipsos-aktiválással
-**együtt** pushal a mai 08-09-i verifikáció után. Így a **08-10-i levél 25 forrás** lesz,
-benne NÉGY először megjelenő aktiválás — publicus, nezopont, tarskutato ÉS ipsos —,
-**mind a négy függetlenül ~0 új** (mind a since-ablak ELŐTTI, dormant). A napi-egy-változás
-elve nem sérül érdemben: mind tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó
-explicit döntése.
+utasítására a publicusszal, a revisit-sémával, a tarskutato-, az ipsos- ÉS a pew-aktiválással
+**együtt** pushal a mai 08-09-i verifikáció után. Így a **08-10-i levél 26 forrás** lesz,
+benne ÖT először megjelenő aktiválás — publicus, nezopont, tarskutato, ipsos ÉS pew —,
+**mind az öt függetlenül ~0 új** (a négy dormant a since-ablak ELŐTTI; a pew-t a cím-szűrő
+tartja ~0-n). A napi-egy-változás elve nem sérül érdemben: mind tesztelt, ~0-új aktiválás;
+a batch a felhasználó explicit döntése.
 
 **A legfontosabb egyetlen ellenőrzés:** `nezopont OK_NINCS_UJ`, a detailben **24-es
 lista-tételszámmal** — a lekérés+parse megtörtént, csak nincs friss. `HIBA` (soft-404) /

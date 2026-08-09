@@ -62,6 +62,25 @@ test("collect: tételek gyűjtése, dedup, naplózás, frissesség", async () =>
   } catch (e) { cleanup(); throw e; }
 });
 
+test("collect: forrás-szintű title_filter a dedup ELŐTT szűr, a napló rögzíti az arányt", async () => {
+  const { db, cleanup } = tempDb();
+  try {
+    const now = Date.parse("2026-07-22T06:00:00Z");
+    const rs = new Date(now).toISOString();
+    // telex → rss_sample (2 tétel: "Első cikk címe", "Második & harmadik"); a szűrő csak az
+    // elsőre illeszt → 1 tétel marad, a napló „cím-szűrő: 2→1"-et mutat.
+    const src = [{ id: "telex", name: "Telex", kaszt: "A", kind: "sajto", feed: "https://telex.hu/rss", title_filter: ["első"] }];
+    startRun(db, { runId: "r", startedAt: rs });
+    const r = await collect({ db, sources: src, now, runId: "r", runStartedAt: rs, since: 0, fetchImpl: routedFetch });
+
+    assert.equal(r.items.length, 1, "a 2-ből 1 tétel maradt a szűrő után");
+    assert.equal(r.items[0].title, "Első cikk címe");
+    const check = r.sourceChecks.find((c) => c.source_id === "telex");
+    assert.match(check.detail, /cím-szűrő: 2→1/, "a napló rögzíti a szűrés arányát (nem csendes)");
+    cleanup();
+  } catch (e) { cleanup(); throw e; }
+});
+
 test("collect: két csatornás forrás (feed + list_url) mindkettőt lekéri, egy napló-sor", async () => {
   const { db, cleanup } = tempDb();
   try {
