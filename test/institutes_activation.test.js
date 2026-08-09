@@ -65,7 +65,7 @@ test("feed-aktiválás: realpr93 B→A WordPress-feed, a mentett feed 10 tétel 
 });
 
 // HTML-listás intézetek (list_url + per-source parser, feed NÉLKÜL) aktívak.
-for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus"]) {
+for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus", "nezopont"]) {
   test(`intézet-aktiválás: ${id} aktív HTML-listaként (list_url, feed nélkül)`, () => {
     const s = selectActiveSources(sources).find((x) => x.id === id);
     assert.ok(s, `${id} aktív forrás (A + list_url) — a collect felveszi`);
@@ -76,7 +76,7 @@ for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus"]) {
 // A többi (még be nem kötött) intézet MARAD inaktív.
 test("intézet-aktiválás: a be nem kötött intézetek érintetlenek (nem aktív forrás)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  const others = ["zavecz", "idea", "nezopont", "tarskutato"];
+  const others = ["zavecz", "idea", "tarskutato"];
   for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (még nincs bekötve)`);
 });
 

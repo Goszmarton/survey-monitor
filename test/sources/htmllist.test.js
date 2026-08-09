@@ -232,3 +232,35 @@ test("publicus: 28 keltezett cikk (25 dateOnly + 3 kiemelt monthOnly), semmi pri
   // a kategória-oldal linkje NEM cikk:
   assert.ok(!r.items.some((i) => /\/blog\/category\//.test(i.url)), "a /blog/category/ nem tétel");
 });
+
+// Nézőpont Intézet (nezopont.hu/hu/tevekenysegeink/osszes-kozlemeny) — Joomla/Gantry, NINCS
+// feed (mind az 5 ?format=feed út soft-404). A HTML-lista viszont parse-olható: g-array-item
+// kártyák, a címet+permalinket a <h2 class="g-item-title"><a href> adja, a dátumot a kártya
+// <span class="g-array-item-date">ÉÉÉÉ.HH.NN. (nap-granularitás → dateOnly). A kiemelt widget a
+// fő-grid 4 cikkét megismétli → URL-dedup. Szerződés: 24 egyedi cikk, legfrissebb 2026-04-13.
+const srcNez = { id: "nezopont", name: "Nézőpont Intézet", list_url: "https://nezopont.hu/hu/tevekenysegeink/osszes-kozlemeny" };
+test("nezopont: 24 keltezett közlemény (dateOnly), legfrissebb 2026-04-13, a duplikátumok összevonva", async () => {
+  const r = await fetchNew(srcNez, { since: 0, fetchImpl: stub(fx("nezopont_kozlemeny.html")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 24, "24 egyedi cikk (a kiemelt+grid duplikátumok egy permalinkre olvadnak)");
+  assert.equal(r.items.filter((i) => i.dateOnly).length, 24, "mind nap-granularitású (g-array-item-date)");
+  assert.equal(r.items.filter((i) => !i.publishedAt).length, 0, "nincs dátumtalan tétel");
+  const latest = r.items.map((i) => i.publishedAt).filter(Boolean).sort().reverse()[0];
+  assert.equal(latest, "2026-04-13T00:00:00.000Z", "legfrissebb közlemény 2026-04-13");
+  const median = r.items.find((i) => /MEDIÁN REALISTÁBB/.test(i.title));
+  assert.ok(median, "a legfrissebb cím (MEDIÁN REALISTÁBB…) bent van");
+  assert.equal(median.publishedAt, "2026-04-13T00:00:00.000Z");
+  assert.match(median.url, /\/tevekenysegeink\/sajtokozlemenyek\/a-median-realistabb/);
+  // csak cikk (kat/slug) — a puszta kategória-oldal (…/tevekenysegeink/{kat}) NEM tétel
+  assert.ok(!r.items.some((i) => /\/tevekenysegeink\/[^/]+\/?$/.test(new URL(i.url).pathname)), "a kategória-link nem tétel");
+});
+
+// Tegnapi tanulság (CLAUDE.md 2): a Joomla soft-404 HTTP 200-at ad, de a törzs hibadokumentum.
+// Ezt NE 0 friss tételként (OK_NINCS_UJ / RESZLEGES) könyveljük — az csendes eltűnés volna —,
+// hanem HIBA-ként, hogy a naplóban látsszon a lekérés meghiúsulása.
+test("soft-404: HTTP 200 + <error><code>404</code> → HIBA, nem 0 tétel", async () => {
+  const soft404 = '<?xml version="1.0" encoding="utf-8"?><error><code>404</code><message>Page not found</message></error>';
+  const r = await fetchNew(srcNez, { since: 0, fetchImpl: stub(soft404) });
+  assert.equal(r.check.status, "HIBA", "a soft-404 hiba, nem üres-de-rendben");
+  assert.deepEqual(r.items, []);
+});

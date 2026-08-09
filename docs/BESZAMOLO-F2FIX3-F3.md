@@ -227,8 +227,40 @@ levélben a hatása tisztán elváljon. A nezopont ma CSAK felmérve (nincs feed
 site-szinten kikapcsolva, mind soft-404; HTML-lista parse-olható, legfrissebb 2026-04-13),
 parser + aktiválás külön menet.
 
+## 11. nezopont HTML-parser aktiválás — ELŐRE RÖGZÍTETT várt számok (2026-08-09, push ELŐTT)
+
+A hazai kör utolsó felmért forrása. Joomla/Gantry, NINCS feed (mind az 5 `?format=feed`
+út soft-404: HTTP 200 + `<error><code>404`), ezért HTML-lista: `/hu/tevekenysegeink/osszes-kozlemeny`.
+Per-source parser (`htmllist.js/extractNezopont`): `g-array-item` kártyák, cím+permalink
+a `<h2 class=g-item-title><a href>`, dátum a kártya `<span class=g-array-item-date>`
+ÉÉÉÉ.HH.NN. (dateOnly). A mai mentett listaoldal: **28 kártya → 24 EGYEDI közlemény**
+(a kiemelt widget 4 cikket megismétel → URL-dedup), legfrissebb **2026-04-13**. (A tegnapi
+„18" csak a `kozvelemeny-kutatasok` alrovat becslése volt; a parser MINDEN közleményt hoz.)
+
+**Új a fetcher-viselkedésben (CLAUDE.md 1, regressziós teszttel):** a soft-404-et a
+`fetchNew` mostantól **HIBA**-ként könyveli (nem 0 tételként) — tegnapi tanulság, minden
+HTML-lista forrásra érvényes.
+
+| jel | várt (≈2026-08-10, az első nezopont-os futás) | hibajel |
+|---|---|---|
+| **nezopont** új tétel | **~0** — mind a 24 közlemény ≤ 2026-04-13 (118 napja néma), a since ELŐTTI; `OK_NINCS_UJ`, „24 tétel, egyik sem újabb". (Ha újra publikál → magától megjelenik, `revisit: if-republishes`.) | **HIBA** („soft-404…") = a Joomla-lekérés bukott (a fő kockázat, a Joomla ingatag); **RESZLEGES** = a Gantry-markup változott / parser tört; **burst** = a since/dátum-parse elromlott |
+| **forrásszám** (`source_checks`) | **23** — lásd lentebb | **≠23** = az aktiválás nem érvényesült |
+| **KIEMELT / digest** | **változatlan** a nezoponttól (~0 új) | érdemi ugrás e `source_id`-től = váratlan burst |
+
+**Forrásszám-reconciliáció (felülírja §10 izolált 22-jét):** a nezopont a felhasználó
+utasítására a publicusszal (és a revisit-sémával) **együtt** pushal a mai 08-09-i
+verifikáció után. Így a **08-10-i levél 23 forrás** lesz, benne KÉT először megjelenő
+aktiválás — publicus ÉS nezopont —, **mindkettő függetlenül ~0 új** (mindkettő a
+since-ablak ELŐTTI, dormant). A napi-egy-változás elve nem sérül érdemben: mindkettő
+tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó explicit döntése.
+
+**A legfontosabb egyetlen ellenőrzés:** `nezopont OK_NINCS_UJ`, a detailben **24-es
+lista-tételszámmal** — a lekérés+parse megtörtént, csak nincs friss. `HIBA` (soft-404) /
+`RESZLEGES` = a lekérés vagy a parse bukott, NEM „0 új" (a soft-404-guard épp ezt teszi
+láthatóvá).
+
 ---
 
-*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz). A számok
-forrása: `state/monitor.db`, a kód, a git-histó­ria, a regressziós tesztek és a
-2026-08-08-i verifikált forrás-próbák (mentett fixture-ök a `test/fixtures/` alatt).*
+*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz) és 2026-08-09
+(11. szakasz). A számok forrása: `state/monitor.db`, a kód, a git-histó­ria, a regressziós
+tesztek és a verifikált forrás-próbák (mentett fixture-ök a `test/fixtures/` alatt).*

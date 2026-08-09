@@ -219,10 +219,41 @@ function extractPublicus(html, baseUrl) {
   return [...seen.values()].map((v) => v.item);
 }
 
+// Nézőpont Intézet (nezopont.hu/hu/tevekenysegeink/osszes-kozlemeny) — Joomla/Gantry. NINCS
+// feed (mind az 5 ?format=feed út soft-404), ezért a HTML-lista kell. Minden közlemény egy
+// g-array-item kártya: a megbízható horgony a <h2 class="g-item-title"><a href="permalink">Cím
+// (az image- és category-link ugyanarra/máshova mutat, a h2 a cikké). A dátum a kártyán a cím
+// ELŐTT: <span class="g-array-item-date"> … ÉÉÉÉ.HH.NN. — NAP-granularitás (dateOnly, lásd
+// filterSince). A kiemelt widget a fő-grid néhány cikkét megismétli → URL-dedup (első nyer, a
+// dátum kártyánként azonos). A dátumot a KÁRTYÁN belül kötjük: az előző cím-horgonytól eddig a
+// horgonyig terjedő szegmens UTOLSÓ g-array-item-date tokenje a sajátja (a szegmens elején a
+// megelőző kártya farka dátum nélküli, így nincs átszivárgás). Identitás = permalink.
+function extractNezopont(html, baseUrl) {
+  const re = /<h2 class="g-item-title">\s*<a\b[^>]*?href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const marks = [];
+  let m;
+  while ((m = re.exec(html)) !== null) marks.push({ href: m[1], inner: m[2], index: m.index, end: re.lastIndex });
+  const seen = new Map();
+  for (let k = 0; k < marks.length; k++) {
+    const mk = marks[k];
+    const url = absolutize(mk.href, baseUrl);
+    // csak cikk: /hu/tevekenysegeink/{kategória}/{slug} (a puszta kategória-oldal kimarad)
+    if (!url || !/\/tevekenysegeink\/[^/]+\/[^/]+/.test(new URL(url).pathname)) continue;
+    const title = mk.inner.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < MIN_TITLE_LEN || seen.has(url)) continue;
+    const seg = html.slice(k > 0 ? marks[k - 1].end : 0, mk.index);
+    const dates = [...seg.matchAll(/g-array-item-date[\s\S]*?(\d{4})\.(\d{2})\.(\d{2})\./g)];
+    const dm = dates.length ? dates[dates.length - 1] : null;
+    const publishedAt = dm ? `${dm[1]}-${dm[2]}-${dm[3]}T00:00:00.000Z` : null;
+    seen.set(url, { guid: url, title, url, publishedAt, dateOnly: Boolean(dm), summary: null });
+  }
+  return [...seen.values()];
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus, nezopont: extractNezopont };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source
@@ -236,6 +267,12 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
       return { items: [], check: { status: "HIBA", detail: `HTTP ${res.status}`, url } };
     }
     const html = await res.text();
+    // Joomla soft-404 (CLAUDE.md 2, tegnapi tanulság): a szerver HTTP 200-at ad, de a törzs
+    // hibadokumentum (<error><code>404</code>). Ezt NE 0 friss tételként (OK_NINCS_UJ/RESZLEGES)
+    // könyveljük — az elrejtené a lekérés meghiúsulását —, hanem HIBA-ként.
+    if (/<error>[\s\S]{0,120}?<code>\s*404\b/i.test(html)) {
+      return { items: [], check: { status: "HIBA", detail: "soft-404 (HTTP 200 + <error><code>404)", url } };
+    }
     const extract = PARSERS[source.id] ?? extractLinks;
     const items = extract(html, url);
     if (items.length === 0) {
