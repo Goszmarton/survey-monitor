@@ -78,6 +78,21 @@ test("feed-aktiválás: tarskutato ? → A WordPress-feed, a mentett feed 10 té
   assert.equal(latestDay(r.items), "2026-01-26", "legfrissebb tétel 2026-01-26 — határ FÖLÖTTI STALE, mégis élő csatorna");
 });
 
+// ipsos (2026-08-09): feed-aktiválás — ugyanaz az eset, mint tarskutato/realpr93, csak
+// kind=nemzetkozi (nem ejtő ok, a mechanizmus azonos). A hu-hu ág MAGYAR tartalmat ad. A
+// szerver gzip-et küld, de az undici `res.text()`/`res.bytes()` transzparensen kibontja
+// (empirikusan igazolva) → NEM dekódolási hiba. PIROS a flip ELŐTT (kaszt="B"), ZÖLD kaszt A
+// + feed után. A mai mentett (dekódolt) feed a szerződés: 20 tétel, legfrissebb 2025-11-27.
+test("feed-aktiválás: ipsos B → A hu-hu RSS, a mentett feed 20 tétel / legfr. 2025-11-27 (határ-fölötti STALE, élő csatorna, magyar ág)", async () => {
+  const s = selectActiveSources(sources).find((x) => x.id === "ipsos");
+  assert.ok(s, "ipsos aktív forrás (kaszt B→A + feed)");
+  assert.equal(s.feed, "https://www.ipsos.com/hu-hu/rss.xml", "a magyar (hu-hu) ág RSS-e");
+  const r = await fetchNew(s, { since: 0, fetchImpl: stub(fx("ipsos_hu_rss.xml")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 20, "a mai mentett feed 20 tétele (gzip transzparensen kibontva)");
+  assert.equal(latestDay(r.items), "2025-11-27", "legfrissebb tétel 2025-11-27 — ~255 nap, határ FÖLÖTTI STALE");
+});
+
 // HTML-listás intézetek (list_url + per-source parser, feed NÉLKÜL) aktívak.
 for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus", "nezopont"]) {
   test(`intézet-aktiválás: ${id} aktív HTML-listaként (list_url, feed nélkül)`, () => {

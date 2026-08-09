@@ -246,7 +246,7 @@ HTML-lista forrásra érvényes.
 | jel | várt (≈2026-08-10, az első nezopont-os futás) | hibajel |
 |---|---|---|
 | **nezopont** új tétel | **~0** — mind a 24 közlemény ≤ 2026-04-13 (118 napja néma), a since ELŐTTI; `OK_NINCS_UJ`, „24 tétel, egyik sem újabb". (Ha újra publikál → magától megjelenik, `revisit: if-republishes`.) | **HIBA** („soft-404…") = a Joomla-lekérés bukott (a fő kockázat, a Joomla ingatag); **RESZLEGES** = a Gantry-markup változott / parser tört; **burst** = a since/dátum-parse elromlott |
-| **forrásszám** (`source_checks`) | **24** — lásd lentebb | **≠24** = az aktiválás nem érvényesült |
+| **forrásszám** (`source_checks`) | **25** — lásd lentebb | **≠25** = az aktiválás nem érvényesült |
 | **KIEMELT / digest** | **változatlan** a nezoponttól (~0 új) | érdemi ugrás e `source_id`-től = váratlan burst |
 
 **tarskutato feed-aktiválás (2026-08-09, ugyanebben a batchben):** működő WordPress
@@ -256,12 +256,22 @@ Határ FÖLÖTTI STALE (~195 nap), de a STALE-kor NEM ejtő ok — a csatorna é
 a since ELŐTTI) → `OK_NINCS_UJ`, „10 tétel, egyik sem újabb". Hibajel: `HIBA` = a feed
 elérhetetlen; **burst** = a since elromlott.
 
+**ipsos feed-aktiválás (2026-08-09, ugyanebben a batchben):** a magyar (hu-hu) ág RSS-e
+`https://www.ipsos.com/hu-hu/rss.xml` ÉL (20 tétel), 0 kód (rss.js). Ugyanaz az eset, mint
+tarskutato/realpr93 — a `kind: nemzetkozi` és a határ-fölötti STALE (~255 nap, legfr.
+2025-11-27) NEM ejtő ok (elvi következetesség, ARCHITEKTURA §5). TÖMÖRÍTÉS ellenőrizve: a
+szerver gzip-et küld, de az undici `res.text()`/`res.bytes()` transzparensen kibontja
+(empirikusan igazolva: 20 tétel, olvasható XML) — NEM dekódolási hiba. Várt a 08-10-i
+futásban: **~0 új** → `OK_NINCS_UJ`, „20 tétel, egyik sem újabb". Hibajel: `HIBA`
+(feed elérhetetlen / dekódolás bukik) vagy **burst**.
+
 **Forrásszám-reconciliáció (felülírja §10 izolált 22-jét):** a nezopont a felhasználó
-utasítására a publicusszal, a revisit-sémával ÉS a tarskutato-aktiválással **együtt**
-pushal a mai 08-09-i verifikáció után. Így a **08-10-i levél 24 forrás** lesz, benne HÁROM
-először megjelenő aktiválás — publicus, nezopont ÉS tarskutato —, **mindhárom függetlenül
-~0 új** (mind a since-ablak ELŐTTI, dormant). A napi-egy-változás elve nem sérül érdemben:
-mindhárom tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó explicit döntése.
+utasítására a publicusszal, a revisit-sémával, a tarskutato- ÉS az ipsos-aktiválással
+**együtt** pushal a mai 08-09-i verifikáció után. Így a **08-10-i levél 25 forrás** lesz,
+benne NÉGY először megjelenő aktiválás — publicus, nezopont, tarskutato ÉS ipsos —,
+**mind a négy függetlenül ~0 új** (mind a since-ablak ELŐTTI, dormant). A napi-egy-változás
+elve nem sérül érdemben: mind tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó
+explicit döntése.
 
 **A legfontosabb egyetlen ellenőrzés:** `nezopont OK_NINCS_UJ`, a detailben **24-es
 lista-tételszámmal** — a lekérés+parse megtörtént, csak nincs friss. `HIBA` (soft-404) /
