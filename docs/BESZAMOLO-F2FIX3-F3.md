@@ -141,14 +141,31 @@ deploy-sorát. (A rákövetkező cron `success`, egyszeri eset volt.)
 - **C-star residual:** 10 erős-containment pár leválik; mérlegelendő lokális-IDF
   hub-detekcióval csökkenteni.
 - **3b/3c gate finomítás, a Paks-sztori HU/EN cross-nyelvi dedup** — kisebb tételek.
-- **21kutato — GitHub Actions egress-IP-blokk (BACKLOG, 2026-08-09):** két nap egymás
-  után `HTTP 403` a runnerről (`lista: HTTP 403`), UGYANAZ az URL+produkciós UA lokális
-  IP-ről `200` → nem tranziens, hanem **runner-IP-blokk (Cloudflare)**. A forrás jelenleg
-  **NULLA értéket ad**: be van kötve, számít a forrásszámba (26), de sosem fut le sikeresen
-  → a forrásszám némileg „hazudik". Lehetséges irányok: **(a)** alternatív útvonal a
-  forráson belül (sitemap / feed / más aldomain), **(b)** B-fallback (agentikus), **(c)** ha
-  semmi nem megy, a `status` legyen **`HIBA_TARTOS`**, hogy a forrásszám ne tartalmazza a
-  tartósan halott csatornát. Külön, jóváhagyott menet.
+- **Tartósan nem szállító források — egészség-jelölő (RENDEZVE 2026-08-09):** a döntés
+  szerint az ilyen forrás **BENT marad a forrásszámban** (a szám így stabil — egy tranziens
+  403 nem mozgatja), de **jelölt** a regiszterben, KÉT ORTOGONÁLIS meglévő mezővel (nincs új
+  séma): `status` = „szállít-e most?" · `revisit` = „visszajön-e valaha?".
+  - **21kutato:** `status: "HIBA_TARTOS"` + `revisit: "active"` — a forrás ÉL, csak a
+    runner-IP blokkolt (két nap `403` a runnerről, lokálisan `200` → GitHub egress-IP /
+    Cloudflare), bármikor visszaállhat, magától.
+  - **szabadeu:** `status: "MEGSZUNT"` + `revisit: "never"` — a szervezet VÉGLEG megszűnt
+    (2025-11-20). A kaszt-leállítás (A-ról le) továbbra is külön, jóváhagyott lépés.
+  - A KÉT eset NEM ugyanaz: a különbséget a `revisit` viszi (`never` ≠ `active`), nem a
+    `status`. A `status`/`revisit` regiszter-mezők, a fetcher NEM olvassa (a 26-os szám
+    változatlan); a futásidejű hiba a `source_checks`-ben minden futásban külön látszik.
+  - **⚠️ NAPI VERIFIKÁCIÓS ELLENŐRZŐPONT (a kézi-karbantartás olcsó jelzője):** a levél-
+    ellenőrzésnél nézd meg, hogy a `HIBA_TARTOS`/`MEGSZUNT` jelölésű források `source_check`-je
+    EGYEZIK-e a jelöléssel. **Ha egy `HIBA_TARTOS` forrás hirtelen `OK_*`-t ad, a jelölés
+    ELAVULT → a regisztert `OK`-ra kell frissíteni** (21kutato így magától „visszaáll" a
+    figyelmünkbe, ha a Cloudflare-szabály feloldódik).
+  - **BACKLOG (jövőbeli, nem most):** futásidejű deriváció — „`HIBA` ≥ N egymást követő
+    futásban" a `source_checks` előzményből → önfrissülő jelölés, nincs kézi reset, a levél is
+    mutathatná. Azért marad backlogon, mert a **regiszter-jelölés kézi karbantartást igényel**
+    (a fenti ellenőrzőpont ezt hidalja át olcsón); a deriváció több munka (előzmény-lekérdezés
+    + küszöb + megjelenítés).
+- **21kutato alternatív útvonal (BACKLOG):** a `HIBA_TARTOS` csak jelöl, nem javít — érdemes
+  még megnézni **(a)** alternatív útvonalat a forráson belül (sitemap / feed / más aldomain)
+  vagy **(b)** B-fallbacket (agentikus), ha a tartalom értéke megéri.
 
 ---
 
