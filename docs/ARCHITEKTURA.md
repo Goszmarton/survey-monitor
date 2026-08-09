@@ -211,6 +211,34 @@ a megadott JSON-sémában, URL-t csak ténylegesen megtalált oldalról."
 A válasz sémavalidáláson megy át; a talált URL-t a kód le is kéri
 (létezik-e), mielőtt tételként felvenné — kitalált URL így nem juthat be.
 
+### Forrás-ejtési politika (F3, elvi rögzítés)
+
+Egy forrást **NEM ejtünk** azért, mert (a) a tartalma a sajtón át is
+látszik, vagy (b) régen publikált. Mindkét indok téves:
+
+- **(a) sajtó-lefedettség ≠ primer forrás.** A sajtón át a kutatás
+  *értelmezését* látjuk, nem a primer intézeti közleményt. Az egész
+  dedup(a) + `data_backed` logika épp erre a minőségi különbségre épül
+  (a primer intézeti tétel a reprezentáns, nem a sajtócím). Ha egy
+  intézetnek van élő gépi csatornája, bekötjük — akkor is, ha a sajtó
+  amúgy „lefedi".
+- **(b) a STALE-kor önmagában nem ejtő ok.** Ha a csatorna ÉL és ingyen
+  van (0 kód, rss.js), a határ fölötti kor ellenére is bekötjük
+  (`revisit: if-republishes`) — újra-publikáláskor magától megjelenik.
+  Precedens: realpr93 (181 nap), tarskutato (~195 nap).
+
+Forrást **CSAK** akkor hagyunk kint / soroljuk B-be, ha:
+
+- **nincs gépi csatorna** — nincs feed és nincs parse-olható lista
+  (idea: JS-render SPA; politico_pop: interaktív HTML; europeelects:
+  halott végpont) → agentikus B-kaszt; vagy
+- **a szervezet megszűnt** (szabadeu: RFE/RL magyar szolgálat leállt
+  2025-11) → `revisit: never`, deaktiválás.
+
+A zavecz kifejezetten az ELSŐ esetbe tartozik: a blog-feed 2023-09 óta
+halott (nincs használható csatorna) — NEM azért kint, mert a sajtón át
+látszik. Ha élő csatornát ad, azonnal bekötjük.
+
 ### Rejtett magyar adat (spec 4–5. pont)
 
 A friss nemzetközi riportoknál kétlépcsős, költségtakarékos ellenőrzés:

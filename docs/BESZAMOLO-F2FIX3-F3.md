@@ -94,11 +94,13 @@ B-fetchert** — a drága `agentic_check` a nemzetközi/rejtett-magyar körre ma
 - `minerva` — A(HTML-lista), havi `ÉÉÉÉHH.html` + `monthOnly` (`565e3e2`, queue).
 - `opinio` — A(sitemap), kétlépcsős `lastmod`-szűrt headline-backfill (`962e74f`, queue).
 
-**Finomított STALE-felmérés (2026-08-07):** zavecz `/feed/` él, de tartalma
-2023-09 óta befagyott (a Závecz a sajtón át jön be); **idea** valójában feed
-nélküli SPA → B-kaszt; **tarskutato** működő WordPress-feed (2026-01-26, ~193 nap) —
-a legjobb jövőbeli aktiválási jelölt. (13 alapból az intézeti kör túlnyomó része
-gépbarát; a `granularitás`-csapdák — nap/hó — a `filterSince`-ben kezelve.)
+**Finomított STALE-felmérés (2026-08-07):** zavecz `/feed/` él, de a tartalom-feed
+2023-09 óta befagyott → NINCS használható gépi csatorna (NEM azért kint, mert a sajtón
+át látszik — az a kutatás értelmezése, nem a primer közlemény); **idea** valójában feed
+nélküli SPA (JS-render) → B-kaszt; **tarskutato** működő WordPress-feed (2026-01-26) —
+**bekötve 2026-08-09** (§11), a határ-fölötti STALE-kor nem ejtő ok, a csatorna él és ingyen
+van. (13 alapból az intézeti kör túlnyomó része gépbarát; a `granularitás`-csapdák — nap/hó
+— a `filterSince`-ben kezelve.)
 
 ---
 
@@ -244,15 +246,22 @@ HTML-lista forrásra érvényes.
 | jel | várt (≈2026-08-10, az első nezopont-os futás) | hibajel |
 |---|---|---|
 | **nezopont** új tétel | **~0** — mind a 24 közlemény ≤ 2026-04-13 (118 napja néma), a since ELŐTTI; `OK_NINCS_UJ`, „24 tétel, egyik sem újabb". (Ha újra publikál → magától megjelenik, `revisit: if-republishes`.) | **HIBA** („soft-404…") = a Joomla-lekérés bukott (a fő kockázat, a Joomla ingatag); **RESZLEGES** = a Gantry-markup változott / parser tört; **burst** = a since/dátum-parse elromlott |
-| **forrásszám** (`source_checks`) | **23** — lásd lentebb | **≠23** = az aktiválás nem érvényesült |
+| **forrásszám** (`source_checks`) | **24** — lásd lentebb | **≠24** = az aktiválás nem érvényesült |
 | **KIEMELT / digest** | **változatlan** a nezoponttól (~0 új) | érdemi ugrás e `source_id`-től = váratlan burst |
 
+**tarskutato feed-aktiválás (2026-08-09, ugyanebben a batchben):** működő WordPress
+`/feed/` (10 keltezett tétel, legfrissebb 2026-01-26), 0 kód (rss.js, mint realpr93).
+Határ FÖLÖTTI STALE (~195 nap), de a STALE-kor NEM ejtő ok — a csatorna él és ingyen van
+(elvi rögzítés, lásd ARCHITEKTURA). Várt a 08-10-i futásban: **~0 új** (mind ≤ 2026-01-26,
+a since ELŐTTI) → `OK_NINCS_UJ`, „10 tétel, egyik sem újabb". Hibajel: `HIBA` = a feed
+elérhetetlen; **burst** = a since elromlott.
+
 **Forrásszám-reconciliáció (felülírja §10 izolált 22-jét):** a nezopont a felhasználó
-utasítására a publicusszal (és a revisit-sémával) **együtt** pushal a mai 08-09-i
-verifikáció után. Így a **08-10-i levél 23 forrás** lesz, benne KÉT először megjelenő
-aktiválás — publicus ÉS nezopont —, **mindkettő függetlenül ~0 új** (mindkettő a
-since-ablak ELŐTTI, dormant). A napi-egy-változás elve nem sérül érdemben: mindkettő
-tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó explicit döntése.
+utasítására a publicusszal, a revisit-sémával ÉS a tarskutato-aktiválással **együtt**
+pushal a mai 08-09-i verifikáció után. Így a **08-10-i levél 24 forrás** lesz, benne HÁROM
+először megjelenő aktiválás — publicus, nezopont ÉS tarskutato —, **mindhárom függetlenül
+~0 új** (mind a since-ablak ELŐTTI, dormant). A napi-egy-változás elve nem sérül érdemben:
+mindhárom tesztelt, dormant, ~0-új aktiválás; a batch a felhasználó explicit döntése.
 
 **A legfontosabb egyetlen ellenőrzés:** `nezopont OK_NINCS_UJ`, a detailben **24-es
 lista-tételszámmal** — a lekérés+parse megtörtént, csak nincs friss. `HIBA` (soft-404) /

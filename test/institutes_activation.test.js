@@ -64,6 +64,20 @@ test("feed-aktiválás: realpr93 B→A WordPress-feed, a mentett feed 10 tétel 
   assert.equal(latestDay(r.items), "2026-02-09", "legfrissebb tétel 2026-02-09 — 180 nap, a STALE-határon");
 });
 
+// tarskutato (2026-08-09): feed-aktiválás, mint realpr93 — a csatorna ÉL és INGYEN van, a
+// STALE-kor (határ FÖLÖTT) NEM ejtő ok (elvi rögzítés: forrást csak gépi csatorna hiánya vagy
+// megszűnés ejt). PIROS a flip ELŐTT (kaszt="?"), ZÖLD kaszt A + feed után. A mai mentett feed
+// a szerződés: 10 keltezett tétel, legfrissebb 2026-01-26.
+test("feed-aktiválás: tarskutato ? → A WordPress-feed, a mentett feed 10 tétel / legfr. 2026-01-26 (határ-fölötti STALE, élő csatorna)", async () => {
+  const s = selectActiveSources(sources).find((x) => x.id === "tarskutato");
+  assert.ok(s, "tarskutato aktív forrás (kaszt ?→A + feed)");
+  assert.equal(s.feed, "https://tarsadalomkutato.hu/feed/", "WordPress fő-feed");
+  const r = await fetchNew(s, { since: 0, fetchImpl: stub(fx("tarskutato_feed.xml")) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items.length, 10, "a mai mentett feed 10 tétele");
+  assert.equal(latestDay(r.items), "2026-01-26", "legfrissebb tétel 2026-01-26 — határ FÖLÖTTI STALE, mégis élő csatorna");
+});
+
 // HTML-listás intézetek (list_url + per-source parser, feed NÉLKÜL) aktívak.
 for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus", "nezopont"]) {
   test(`intézet-aktiválás: ${id} aktív HTML-listaként (list_url, feed nélkül)`, () => {
@@ -76,7 +90,7 @@ for (const id of ["21kutato", "republikon", "minerva", "opinio", "publicus", "ne
 // A többi (még be nem kötött) intézet MARAD inaktív.
 test("intézet-aktiválás: a be nem kötött intézetek érintetlenek (nem aktív forrás)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  const others = ["zavecz", "idea", "tarskutato"];
+  const others = ["zavecz", "idea"];
   for (const id of others) assert.ok(!activeIds.has(id), `${id} NEM aktív (még nincs bekötve)`);
 });
 
