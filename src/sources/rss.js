@@ -4,7 +4,7 @@
 // bound-olja a mennyiséget, és a check a transzport+parse tényleges eredménye.
 
 import { parseFeed } from "../lib/feedparse.js";
-import { httpGet, describeError, DEFAULT_TIMEOUT_MS } from "./http.js";
+import { httpGet, describeError, noNewItemsDetail, DEFAULT_TIMEOUT_MS } from "./http.js";
 
 /**
  * @param {{id:string,name?:string,feed:string}} source
@@ -36,7 +36,7 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
     });
 
     if (fresh.length === 0) {
-      return { items: [], check: { status: "OK_NINCS_UJ", detail: `${items.length} tétel, egyik sem újabb`, url } };
+      return { items: [], check: { status: "OK_NINCS_UJ", detail: noNewItemsDetail(items), url } };
     }
     return { items: fresh, check: { status: "OK_UJ", detail: `${fresh.length} friss tétel (${items.length} a feedben)`, url } };
   } catch (err) {

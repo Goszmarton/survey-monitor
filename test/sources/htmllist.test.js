@@ -264,3 +264,19 @@ test("soft-404: HTTP 200 + <error><code>404</code> → HIBA, nem 0 tétel", asyn
   assert.equal(r.check.status, "HIBA", "a soft-404 hiba, nem üres-de-rendben");
   assert.deepEqual(r.items, []);
 });
+
+// NINCS_UJ napló: a legfrissebb tétel dátuma is legyen benne, GRANULARITÁS-TUDATOSAN — a
+// monthOnly forrás (minerva) HÓ-szintet adjon, ne hazudjon nap-pontosságot (a monthOnly
+// tétel 1-jére dátumozott, de a nap fiktív). dateOnly forrás (21kutato) NAP-szintet.
+test("OK_NINCS_UJ detail: minerva monthOnly → HÓ-szintű legfrissebb dátum (nem hazudik napot)", async () => {
+  const r = await fetchNew(srcMin, { fetchImpl: stub(fx("minerva_home.html")), since: Date.parse("2026-06-01T00:00:00Z") });
+  assert.equal(r.check.status, "OK_NINCS_UJ");
+  assert.match(r.check.detail, /legfr\. 2026-04\b/, "hó-szintű legfrissebb (a fixture legfr. kutatása 2026-04)");
+  assert.doesNotMatch(r.check.detail, /legfr\. 2026-04-\d\d/, "monthOnly forrásnál NINCS hamis nap-pontosság");
+});
+
+test("OK_NINCS_UJ detail: dateOnly forrás (21kutato) → NAP-szintű legfrissebb dátum", async () => {
+  const r = await fetchNew(src21, { fetchImpl: stub(fx("21kutato_accordion.html")), since: Date.parse("2026-06-01T00:00:00Z") });
+  assert.equal(r.check.status, "OK_NINCS_UJ");
+  assert.match(r.check.detail, /legfr\. 2026-05-28\b/, "nap-szintű legfrissebb (a fixture legfr. tétele 2026-05-28)");
+});

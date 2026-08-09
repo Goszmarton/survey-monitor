@@ -42,6 +42,15 @@ test("OK_NINCS_UJ: van tétel, de egyik sem újabb a since-nél", async () => {
   assert.equal(r.check.status, "OK_NINCS_UJ");
 });
 
+// A NINCS_UJ napló ne csak a darabszámot mondja: a forrás legfrissebb tételének dátuma is
+// benne legyen, GÉPILEG kinyerhetően (`legfr. <dátum>`) — így a verifikáció nem igényel élő
+// próbát ("mikori a legfrissebb?"). RSS: valós időbélyeg → nap-szint.
+test("OK_NINCS_UJ detail: tartalmazza a legfrissebb tétel dátumát (nap-szint, gépi)", async () => {
+  const r = await fetchNew(src, { since: T("2026-07-22T06:00:00Z"), fetchImpl: stub(fx("rss_sample.xml")) });
+  assert.equal(r.check.status, "OK_NINCS_UJ");
+  assert.match(r.check.detail, /legfr\. 2026-07-22\b/, "a fixture legfrissebb tétele (2026-07-22) a detailben");
+});
+
 test("RESZLEGES: valid feed, de 0 tétel (Szabad Európa üres eset)", async () => {
   const r = await fetchNew(src, { since: 0, fetchImpl: stub(fx("rss_empty.xml")) });
   assert.equal(r.check.status, "RESZLEGES");

@@ -3,7 +3,7 @@
 // ezért a listaoldal <a> headline-linkjeit nyerjük ki heurisztikusan.
 // Publikációs időt nem talál — a frissesség a first_seen_at-re támaszkodik.
 
-import { httpGet, describeError, DEFAULT_TIMEOUT_MS } from "./http.js";
+import { httpGet, describeError, noNewItemsDetail, DEFAULT_TIMEOUT_MS } from "./http.js";
 
 const MIN_TITLE_LEN = 20; // a rövid nav-/lábléclinkek kiszűréséhez
 
@@ -282,7 +282,7 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
     // maradnak (Eurostat érintetlen); a dateOnly tételek az előző futás napjától frissek.
     const fresh = filterSince(items, since);
     if (fresh.length === 0) {
-      return { items: [], check: { status: "OK_NINCS_UJ", detail: `${items.length} tétel, egyik sem újabb`, url } };
+      return { items: [], check: { status: "OK_NINCS_UJ", detail: noNewItemsDetail(items), url } };
     }
     // Title-backfill (Opinio-sitemap-eset): a cím nélküli (needsTitle) tételekhez lekérjük az
     // oldalt a headline-ért — CSAK a since UTÁNi friss URL-ekre (napi 0-2, nem mind a 149-et).
