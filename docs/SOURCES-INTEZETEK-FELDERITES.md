@@ -9,6 +9,9 @@ Amíg a próbák le nem futnak, a `config/sources.json` intézeti besorolása
 **Scope:** a 8 eldöntetlen (`kaszt:"?"`) intézet + az 5 becsült-B hazai intézet.
 A nemzetközi források (Pew, Eurobarometer, Ipsos, Europe Elects, Politico PoP)
 NEM ebben a körben — azok külön, rejtett-magyar-adat pipeline-nal (ARCHITEKTURA §5).
+**Utólag** (2026-08-07/08) a nemzetközi ötöst is felmértük produkciós UA-val; az
+eredmény a **Függelék: Nemzetközi ötös**-ben (a fájl végén), hogy ne kelljen újra
+felderíteni.
 
 **Vezérelv (az F1-ből örökölve, `SOURCES.md`):** URL-t nem találunk ki. A configba
 csak **tényleges lekérdezéssel verifikált** feed/lista kerül; ahol nincs, azt a
@@ -150,6 +153,13 @@ Nagyságrendileg a **teljes intézeti kör heti ~5–8 primer publikáció** —
    híroldal-fetcherek MÁR behozzák. A közvetlen intézeti feed nagyrészt a
    story-dedup által úgyis összevont tételeket adná; a **nettó új** csak az, amit a
    sajtó kihagyott, plusz a primer részlet (teljes táblák, módszertan).
+
+   > **Olvasati figyelmeztetés:** ez a bekezdés **költség-haszon mérés a B-fetcher
+   > SÜRGŐSSÉGÉRŐL**, NEM forrás-ejtési indoklás. Egy forrást attól, hogy „a sajtón
+   > át is látszik", SOHA nem ejtünk — a sajtón át a kutatás *értelmezését* látjuk,
+   > nem a primer közleményt (a dedup(a)+`data_backed` erre épül). A tényleges
+   > ejtési/bekötési politika az **ARCHITEKTURA §5 „Forrás-ejtési politika"**-ban van:
+   > forrást csak a gépi csatorna hiánya vagy a szervezet megszűnése ejt.
 2. **Ez NEM a KIEMELT-aszály megoldása.** A 08-05-i diagnózis szerint a
    FONTOS/KIEMELT-esés a **data_backed-kapu** műve (a sajtóhír `data_backed=false`
    → plafon FIGYELENDO), nem a bevitel hiánya. Az intézeti primer adat viszont
@@ -180,3 +190,27 @@ sorolandók: azok a meglévő, napi ~200 releváns tételen javítanak látható
 KIEMELT-pontosságot, míg az intézeti kör heti ~5 tétellel bővít. A felderítést
 érdemes megcsinálni a besorolás tisztázásáért; a fetchereket csak ott megépíteni,
 ahol a nettó KIEMELT-képes hozam a döntési kaput átlépi.
+
+---
+
+## Függelék: Nemzetközi ötös — felmérés (2026-08-07/08, produkciós UA)
+
+A fájl fő törzse a **hazai** intézeti kört méri fel; a nemzetközi ötös eredetileg
+külön (rejtett-magyar-adat) pipeline-ba tartozott (fenti Scope). Utólag ezeket is
+lekérdeztük produkciós UA-val — az eredményt itt rögzítjük, hogy ne kelljen újra
+felderíteni. **Mind az öt `NEM_AKTIVALT` marad**, de az indok mostantól konkrét. A
+per-forrás részletek a `config/sources.json` note-jaiban; az ejtési/bekötési elv az
+**ARCHITEKTURA §5 „Forrás-ejtési politika"**-ban.
+
+| id | csatorna (2026-08) | miért nem aktivált | melyik ejtési/nyitott-kategória |
+|---|---|---|---|
+| **pew** | WordPress `/feed/` **ÉL**, 100 tétel, NAPI (legfr. 2026-08-06) | van csatorna, de ~minden tétel amerikai; szűretlenül ELÁRASZTANÁ a korpuszt, a magyar-hangolt `triage.json` kulcsszavak angol címekre nem illeszkednek | **NYITOTT: szűrés-mechanizmus** (nem parser) — angol relevancia-szűrő kell |
+| **ipsos** | `/hu-hu/rss.xml` **ÉL**, 20 tétel | a magyar (hu-hu) ág LASSÚ: legfr. 2025-11-27 (~255 nap). A STALE-kor nem ejtő ok, a csatorna él → elvben A(feed)-jelölt (mint tarskutato) | **bekötthető, csak nem csináltuk** (nemzetközi kör, külön menet); `revisit: if-republishes` |
+| **eurobarometer** | szándékosan URL nélkül | közvéleménykutatás-riportok (PDF/HTML), determinista feed nélkül; a magyar minta a rejtett-magyar-adat kétlépcsős pipeline-ba tartozik. **NEM azonos az Eurostattal** (az bekötött A) | **agentikus B** (rejtett-magyar-adat) |
+| **europeelects** | HALOTT végpont | nincs élő gépi csatorna | **ejtő ok: csatorna-hiány** |
+| **politico_pop** | `/europe-poll-of-polls/` HTTP 200 (nem blokkol), de INTERAKTÍV HTML | kliens-oldali render, nincs determinista feed / parse-olható lista | **ejtő ok: csatorna-hiány** |
+
+**Összegzés:** a valódi jövőbeli munka az ötösből **kettő** — pew (angol relevancia-szűrő,
+NYITOTT tervezési kérdés) és ipsos (kész A-feed, csak aktiválás hiányzik). Három
+determinista úton nem köthető: eurobarometer (agentikus B), europeelects és politico_pop
+(csatorna-hiány). Ipsos verifikált feedje a bekötéshez: `https://www.ipsos.com/hu-hu/rss.xml`.
