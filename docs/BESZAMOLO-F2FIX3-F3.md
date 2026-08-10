@@ -317,6 +317,73 @@ láthatóvá).
 
 ---
 
-*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz) és 2026-08-09
-(11. szakasz). A számok forrása: `state/monitor.db`, a kód, a git-histó­ria, a regressziós
-tesztek és a verifikált forrás-próbák (mentett fixture-ök a `test/fixtures/` alatt).*
+## 12. F3 LEZÁRÁS — a három feltétel teljesült (2026-08-10, futásból igazolva)
+
+A 08-10-i futás (`origin/main` DB-commit `8dd3cdf`, read-only ellenőrizve) mind a három
+lezárási feltételt igazolta. A számok forrása a futás `source_checks`/`items` táblája, nem
+a levél szövege.
+
+**(a) A (2) → (1) mozdulás megtörtént.** Az öt először megjelenő aktiválás mind ott van a
+`source_checks`-ben, mind ~0 új:
+
+| forrás | mai source_check | 0 új? |
+|---|---|---|
+| publicus | `OK_NINCS_UJ · lista: 28 tétel, …, legfr. 2026-07-31` | ✅ |
+| nezopont | `OK_NINCS_UJ · lista: 24 tétel, …, legfr. 2026-04-13` | ✅ |
+| tarskutato | `OK_NINCS_UJ · feed: 10 tétel, …, legfr. 2026-01-26` | ✅ |
+| ipsos | `OK_NINCS_UJ · feed: 20 tétel, …, legfr. 2025-11-27` | ✅ |
+| pew | `OK_NINCS_UJ · feed: 100 tétel, …, legfr. 2026-08-07 · cím-szűrő: 0→0` | ✅ |
+
+A **title_filter** bekötve és aktív (a `· cím-szűrő:` szuffix lefutott); a `0→0` azért, mert
+a frissesség-kapu a pew mind a 100 régi tételét a cím-szűrő ELŐTT kiszűrte — a 100→0
+diszkriminációt a `test/title_filter.test.js` fedi a valós archív fixture-ön. A **soft-404-guard**
+él: a nezopont `OK_NINCS_UJ` a 24-es lista-tételszámmal (nem 0-tétel, nem HIBA).
+
+**(b) szabadeu = `MEGSZUNT` + revisit `never`.** Mai check: `RESZLEGES` (üres feed, 0 tétel) —
+a szervezet megszűnt, üres feedet ad, NEM OK_*-t → a jelölés érvényes.
+
+**(c) 21kutato = `HIBA_TARTOS` + revisit `active`.** Mai check: `HIBA` (HTTP 403, 3. egymást
+követő nap a runnerről) — bekötve marad, tartósan bukik, NEM OK_*-t ad → **a forrásszám nem
+hazudik többé**: a 26-ból a két tudottan hibás/halott forrás jelölve van, a `revisit` (never ≠
+active) elkülöníti a véglegeset (szabadeu) az átmenetitől (21kutato).
+
+**Végállapot: 26 forrás — 24 termelő, 2 tudottan hibás/halott** (szabadeu MEGSZUNT, 21kutato
+HIBA_TARTOS). A **napi verifikációs ellenőrzőpont** (l. §7) tiszta: egyik jelölt forrás sem
+billent OK_*-ra, a regisztert nem kell frissíteni.
+
+**A hazai intézeti kör LEZÁRVA — 11 csatorna:**
+- **5 feed:** median, iranytu, realpr93, szazadveg, tarskutato
+- **5 HTML-lista:** publicus, nezopont, republikon, minerva, 21kutato *(a 21kutato parse kész,
+  csak a runner-IP blokkolt — a csatorna maga megvan)*
+- **1 sitemap:** opinio
+
+*(A `zavecz`/`idea` tudatosan kimarad: nincs használható gépi csatorna — ARCHITEKTURA §5
+forrás-ejtési politika, nem a sajtó-láthatóság vagy a régi last_content miatt.)*
+
+### Ami F4-be kerül át
+
+1. **Agentikus B-ág** — eurobarometer, europeelects, politico_pop + a pew „rejtett magyar adat"
+   (címben nem, csak adattáblában szereplő magyar sor). Ez az LLM-ügynöki lekérés-értelmezés
+   ága, nem determinisztikus feed/parse.
+2. **Kapu-A/B kísérlet** — a mérés megvan (`kapu-ab` workflow, 2026-08-07), a **döntés nyitva**:
+   a B-kapu 3,5× a zaj fölött, 0 KIEMELT-elnyomás, 1 Paks-anomália. Termék-szintű döntés kell,
+   mielőtt élesítjük.
+3. **Historikus backfill** — egy újonnan aktivált forrás **0 historikus tételt** hoz (a
+   frissesség-kapu az aktiválás előtti tartalmat kiszűri): ma mind a 6 új forrás `items`
+   count=0, azaz a **publicus 28, nezopont 24, tarskutato 10** meglévő tétele **soha nem
+   kerül a korpuszba** — csak az aktiválás UTÁN publikált tartalom. Ha kell a történeti anyag,
+   külön backfill-lépés (a since-kapu megkerülésével, egyszeri, idempotens beszúrás).
+4. **21kutato egress-IP-blokk** feloldása/megkerülése — alternatív útvonal (sitemap/aldomain),
+   B-fallback, vagy tartós HIBA_TARTOS. Backlog §7.
+5. **cost_estimate** (a `runs.cost_estimate` ma NULL), **press_urls merge-audit** (a story-dedup
+   +N tag futásidejű, az `items.press_urls` nem perzisztál — a Duna-blob rep-váltásának pontos
+   tag-diffje csak mindkét nap DB-jén futtatva reprodukálható), **Pages deploy-timeout**
+   (08-10: CDN-cache késleltetés, nem éles hiba, de megfigyelendő).
+6. **MAIL_TO több-címzett guard** — a jelenlegi egy-címzett feltevés megerősítése/kiterjesztése.
+
+---
+
+*Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz), 2026-08-09
+(11. szakasz) és 2026-08-10 (12. szakasz — F3 lezárás). A számok forrása: `state/monitor.db`,
+a kód, a git-histó­ria, a regressziós tesztek és a verifikált forrás-próbák (mentett
+fixture-ök a `test/fixtures/` alatt).*
