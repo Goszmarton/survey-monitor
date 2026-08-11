@@ -383,7 +383,56 @@ forrás-ejtési politika, nem a sajtó-láthatóság vagy a régi last_content m
 
 ---
 
+## 13. F4 első tétel — kapu-döntés + lehúzás-láthatóság (2026-08-11, commit `9dca05c`, PUSHOLVA)
+
+**A döntés:** a `data_backed`-kapu élesben **marad**, nem lazítjuk; a Paks-anomáliát tudatosan
+vállaljuk (új mérés más napon, más korpuszon futna, és eldobná a meglévő 109 tételt).
+
+**Honesty-reframe (kódból igazolva, a premissza javítva):** a kapu SOHA nem volt „kikapcsolva" —
+a `gatedSignificance` (triage.js:116) minden éles futásban futott, és a `reason` + `significance_raw`
+MÁR perzisztált (triage_json, applyTriage:235). Nem volt „élesítés": nincs flag, config vagy kódág;
+a `kapu-ab` kísérlet a KIKAPCSOLÁS ellentényét mérte. Az egyetlen valódi hiány: a lehúzás a
+levélből DB-túrás nélkül **láthatatlan** volt.
+
+**A fix:** dedikált, **cap- és dedup-független** „🔻 Kapu lehúzta (adat nélkül → FIGYELENDO)"
+szekció (`report.js`), soronként forrás · cím · `raw→FIGYELENDO` · reason.
+
+**A szűrő rése (a felhasználó kérdése tárta fel, DB-ből igazolva):** a `significance_raw` NEM minden
+látható tételen van meg. Bontás a 08-10-i korpuszon:
+
+| ág | `significance_raw` forrása | 08-10 | kezelés |
+|---|---|---|---|
+| korábbi futás lehúzása | CSAK a `triage_json`-ben (in-memory mező nincs) | **mind a 8** | a report onnan olvas (`it.significance_raw ?? triageBlob(it).significance_raw`) |
+| friss (mai) verdikt | enrich felszínre hozza | 0 | enrich-mező |
+| legacy (2026-08-06 előtti triázs) | SEHOL | **746** | külön „nem megállapítható" darabszám |
+
+Egy „csak friss verdiktet felszínre hozó" fix **0-t** mutatott volna a 8 helyett — minden lehúzás
+korábbi futásból való.
+
+**Mérési számok (08-10 korpusz, valós renderből):**
+- **8 lehúzás**, mind `FONTOS→FIGYELENDO`, 0 `KIEMELT→FIGYELENDO`;
+- a jelenlegi Sajtószemle-felületen (per-forrás cap 25 + kind-tábla) **a 8-ból csak 1 renderelt
+  volna** — 5-öt a cap levág (a FIGYELENDO a rendezés alján), 2-t a dedup elnyel (`press_urls`).
+  Ezért kell cap-független szekció;
+- **legacy „nem megállapítható": 746 → 690** (08-10 → 08-11, a 07-28-i sáv kigördült); 08-19-ig 0.
+
+**08-11 kontroll nap:** a `daily-monitor` run headSha = `ee1fc85` (a fix ELŐTT) → a 08-11-i levél a
+RÉGI renderrel ment, a szekció **nem jelent meg**. A szekció **08-12-én debütál**, a 08-12-i korpuszon.
+
+**Négy hibajel-kritérium a debütre** (a 08-11-i korpuszon dry-run-nal MIND teljesült): (1) minden
+lehúzás `FONTOS→FIGYELENDO`; (2) nulla `KIEMELT→FIGYELENDO`; (3) a legacy szám < előző nap (csökken);
+(4) minden sornál van reason. Kiinduló legacy-szám: **690**. Verifikáció naplóból/DB-ből, nem a levél
+szövegéből.
+
+**Diszciplína:** ez a nap EGYETLEN viselkedésváltozása; migráció-mentes (meglévő `triage_json` +
+`significance` oszlopból olvas). RED→zöld: `test/gate_downgrade_visibility.test.js` három ága (friss /
+korábbi-`triage_json` / legacy-nem-megállapítható), 182/182. **A backfill NEM jön a kapu 3-4 napos
+éles megfigyelése előtt** — különben igazolatlan kapun tolnánk át 60+ historikus tételt.
+
+---
+
 *Készült: 2026-08-07 (8. szakasz), kiegészítve 2026-08-08 (9–10. szakasz), 2026-08-09
-(11. szakasz) és 2026-08-10 (12. szakasz — F3 lezárás). A számok forrása: `state/monitor.db`,
+(11. szakasz), 2026-08-10 (12. szakasz — F3 lezárás) és 2026-08-11 (13. szakasz — F4 első tétel).
+A számok forrása: `state/monitor.db`,
 a kód, a git-histó­ria, a regressziós tesztek és a verifikált forrás-próbák (mentett
 fixture-ök a `test/fixtures/` alatt).*
