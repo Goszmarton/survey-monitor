@@ -92,6 +92,26 @@ const sortItems = (items) =>
 
 const titleLink = (it) => (it.url ? `<a href="${esc(it.url)}">${esc(it.title)}</a>` : esc(it.title));
 
+// A kapu-lehúzás auditálhatóságához a kapu ELŐTTI jelentőség és az indoklás kell. Friss
+// tételen az enrich felszínre hozta (significance_raw / triage_reason); korábbi futás
+// tételén CSAK a triage_json-ben van (az in-memory tétel oszlopai közt nincs). Ezért mindkét
+// forrásból olvasunk — különben a korábbi futásból származó lehúzások (a többség) NÉMÁN
+// kiesnének a szekció szűrőjéből (ugyanaz a csendes eltűnés, amit épp javítunk).
+function triageBlob(it) {
+  if (!it.triage_json) return null;
+  try { return JSON.parse(it.triage_json); } catch { return null; }
+}
+const rawSignificance = (it) => it.significance_raw ?? triageBlob(it)?.significance_raw ?? null;
+const triageReason = (it) => it.triage_reason ?? triageBlob(it)?.reason ?? "";
+// Lehúzás: a kapu (data_backed=false) egy FONTOS/KIEMELT-nek ítélt tételt FIGYELENDO-ra vitt.
+// A kapu KIZÁRÓLAG FIGYELENDO-ra húz (gatedSignificance), így a lehúzottak halmaza pontosan a
+// FIGYELENDO-végű, erősebb-nyers tételek.
+const isDowngraded = (it) => it.significance === "FIGYELENDO" && (rawSignificance(it) === "FONTOS" || rawSignificance(it) === "KIEMELT");
+// Nem megállapítható: FIGYELENDO, de a kapu ELŐTTI érték SEHOL (significance_raw bevezetése
+// előtti, korábbi triázs) — nem tudjuk, lehúzás volt-e. Külön darabszám (becsületes
+// részlegesség): a levél ne állítsa, hogy N lehúzás, ha valójában N + ismeretlen.
+const isUnassessableDowngrade = (it) => it.significance === "FIGYELENDO" && rawSignificance(it) == null;
+
 // Jelentőség-címke: az ítélet nélküli (bukott batch) tétel külön megjelölve — nem
 // keveredik a triázsolt tételek jelentőségi soraiba (becsületes részlegesség).
 const sigLabel = (it) => (it.triage_missing ? "⏳ ítélet nélkül (köv. futásra halasztva)" : SIGNIF[it.significance]?.label ?? "—");
@@ -188,6 +208,25 @@ export function renderReport(run) {
   // a countNewInRun-tól (ami a teljes DB-t számolja, a kód-DROP-olt churnnel együtt).
   const newRelevant = visibleRaw.filter((i) => i.first_seen_at === run.runStartedAt).length;
 
+  // Kapu-lehúzás szekció (cap- és dedup-független, tétel-szinten): a per-forrás cap a
+  // FIGYELENDO-farkat levágja a Sajtószemléből, így a lehúzások a fő táblákban láthatatlanok.
+  // Itt a teljes látható halmazból (visibleRaw) soroljuk fel őket, kapu ELŐTTI érték + reason.
+  const RAWRANK = { KIEMELT: 0, FONTOS: 1 };
+  const downgraded = visibleRaw.filter(isDowngraded)
+    .sort((a, b) => (RAWRANK[rawSignificance(a)] - RAWRANK[rawSignificance(b)]) || (Date.parse(b.published_at) || 0) - (Date.parse(a.published_at) || 0));
+  const unassessableDown = visibleRaw.filter(isUnassessableDowngrade).length;
+  const downRows = downgraded.map((it) =>
+    `<li>${esc(sourceNames[it.source_id] ?? it.source_id)}: ${titleLink(it)} <span class="empty">↳ ${esc(rawSignificance(it))}→FIGYELENDO — ${esc(triageReason(it))}</span></li>`).join("");
+  const gateSection = `<section id="kapu">
+    <h2>🔻 Kapu lehúzta (adat nélkül → FIGYELENDO)</h2>
+    ${downgraded.length
+      ? `<p class="empty">${downgraded.length} tétel: a modell FONTOS/KIEMELT-nek ítélte, de data_backed=false → a kapu FIGYELENDO-ra húzta (spec 1./15.).</p><ul>${downRows}</ul>`
+      : `<p class="empty">nincs lehúzott tétel ebben az ablakban</p>`}
+    ${unassessableDown > 0
+      ? `<p class="empty">⚠️ további ${unassessableDown} FIGYELENDO tétel lehúzása nem megállapítható (significance_raw nélküli, korábbi triázs) — a 14-napos ablakból fokozatosan kigördül.</p>`
+      : ""}
+  </section>`;
+
   const naploRows = checks.length
     ? checks.map((c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`).join("\n")
     : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`;
@@ -254,6 +293,8 @@ export function renderReport(run) {
     ${table("📈 Hivatalos adatközlések", hivatalos, sourceNames)}
     ${table("📰 Sajtószemle", sajto, sourceNames)}
   </section>
+
+  ${gateSection}
 
   <section id="valtozas">
     <h2>Mi változott az előző jelentéshez képest?</h2>

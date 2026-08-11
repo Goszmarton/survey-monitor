@@ -41,6 +41,11 @@ export async function enrichWithTriage({ db, items, completeFn, prefilterCfg, pr
       it.relevant = v.relevant ? 1 : 0;
       it.triage_reason = v.reason;
       it.triage_missing = v.missing === true; // ítélet nélküli (bukott batch) — külön jelölve
+      // A kapu ELŐTTI érték felszínre hozása a friss verdiktből: a report enélkül nem tudná
+      // detektálni a lehúzást (a friss tétel in-memory triage_json-ja stale/null, mert a
+      // finalizeFreshness az applyTriage ELŐTT olvasott). Korábbi futás tételén nincs verdikt
+      // → ott a report a triage_json-ből olvassa (report.js: rawSignificance).
+      if (v.significance_raw !== undefined) it.significance_raw = v.significance_raw;
     }
   }
 
