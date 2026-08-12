@@ -48,32 +48,31 @@ test("degradált mód: nincs triázs → a 24h tételek relevancia-szűrés nél
   assert.match(html, /Sporthír/); // degradáltban minden UJ_24H megjelenik
 });
 
-// A digest „Teljes jelentés →" linkje a kapu-szekciót tartalmazó Pages-archívumra mutat.
-// A hibás viselkedés (2026-08-12-ig): a run.pagesUrl SOHA nem volt beállítva → a levél a
-// link nélküli fallback-szöveget küldte. A fix: run.js beállítja run.pagesUrl = PAGES_BASE +
-// reportUrl (az archív ÉÉÉÉ/HH/NN.html), a renderDigest kattinthatóvá teszi.
+// A digest linkje a Pages-site GYÖKERÉRE mutat (mindig a legfrissebb jelentés).
+// Empíria (2026-08-12, élő curl): a deploy-pages NEM additív — a dist/ minden futáskor
+// TELJES site-ként publikálódik, csak {index.html, a mai archív}-val, ezért a tegnapi
+// ÉÉÉÉ/HH/NN.html archív MÁSNAP 404. Ezért mutat a link a gyökérre, nem a napi archívra.
+// A link SZÖVEGE ezért „Legfrissebb jelentés →" — nem ígéri, hogy pont EZT a jelentést nyitja.
 
-test("renderDigest: beállított pagesUrl → kattintható archív-link, a fallback eltűnik", () => {
-  const withUrl = { ...RUN, pagesUrl: PAGES_BASE + "2026/08/12.html" };
+test("renderDigest: beállított pagesUrl → kattintható GYÖKÉR-link, a fallback eltűnik", () => {
+  const withUrl = { ...RUN, pagesUrl: PAGES_BASE };
   const html = renderDigest(withUrl);
-  assert.match(html, /<a href="https:\/\/goszmarton\.github\.io\/survey-monitor\/2026\/08\/12\.html">Teljes jelentés →<\/a>/);
-  // a link-nélküli fallback-szöveg NINCS jelen, ha van pagesUrl
+  assert.match(html, /<a href="https:\/\/goszmarton\.github\.io\/survey-monitor\/">Legfrissebb jelentés →<\/a>/);
+  assert.ok(!html.includes("Teljes jelentés →")); // a régi, túlígérő szöveg NINCS
   assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
 });
 
-test("PAGES_BASE + reportUrl: valós archív-forma, nincs dupla perjel, nem a gyökér", () => {
-  const reportUrl = "2026/08/12.html"; // run.js finishRun reportUrl-je (now.ymd-ből)
-  const archiveUrl = PAGES_BASE + reportUrl;
-  assert.equal(archiveUrl, "https://goszmarton.github.io/survey-monitor/2026/08/12.html");
-  // nincs dupla perjel a protokoll után (PAGES_BASE-perjel + reportUrl-perjel hibája)
-  assert.ok(!archiveUrl.replace("https://", "").includes("//"), "nincs dupla perjel");
-  // a napra rögzített archívra mutat, NEM a mindig-legfrissebb gyökérre
-  assert.notEqual(archiveUrl, PAGES_BASE);
-  assert.ok(archiveUrl.endsWith("2026/08/12.html"));
+test("renderDigest: a link a gyökérre mutat, NEM napi archívra (ÉÉÉÉ/HH/NN.html)", () => {
+  const html = renderDigest({ ...RUN, pagesUrl: PAGES_BASE });
+  // a href pontosan a gyökér
+  assert.match(html, /href="https:\/\/goszmarton\.github\.io\/survey-monitor\/"/);
+  // sehol nincs ÉÉÉÉ/HH/NN.html napi archív-URL (az másnap 404 lenne)
+  assert.ok(!/\/\d{4}\/\d{2}\/\d{2}\.html/.test(html), "nincs napi archív-URL a digestben");
 });
 
 test("renderDigest guard: unset pagesUrl → fallback-szöveg, nem törik (a levél sose bukjon egy linken)", () => {
   const html = renderDigest(RUN); // RUN-on nincs pagesUrl
   assert.ok(html.includes("A teljes jelentés a GitHub Pages-archívumban."));
+  assert.ok(!html.includes("Legfrissebb jelentés →"));
   assert.ok(!html.includes("Teljes jelentés →"));
 });

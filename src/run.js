@@ -121,9 +121,10 @@ async function main() {
   await writeFile(`dist/${reportPath}`, html);
   console.log(`Jelentés kész: ${items.length} tétel, ${kiemeltCount} KIEMELT${triageDegraded ? " (triázs degradált)" : ""}, ${collected.sourceChecks.length} forrás.`);
 
-  // A digest „Teljes jelentés →" linkje a napra rögzített archívra mutasson (nem a gyökérre,
-  // amit a holnapi futás felülír) — így a mai levél mindig a MAI jelentést (kapu-szekcióval) nyitja.
-  run.pagesUrl = PAGES_BASE + reportPath;
+  // A digest linkje a Pages-GYÖKÉRRE mutat (nem a napi archívra): a deploy-pages NEM additív,
+  // a napi ÉÉÉÉ/HH/NN.html archív URL másnap 404 (empíria 2026-08-12) — a gyökér mindig él.
+  // (A reportPath-t továbbra is írjuk dist/-be és a finishRun-ba, csak nem ez a link célja.)
+  run.pagesUrl = PAGES_BASE;
 
   // ---- E-mailek (SMTP-konfig nélkül a futás nem hasal el) ----
   const digestSent = await sendMail(digestSubject(run), renderDigest(run));

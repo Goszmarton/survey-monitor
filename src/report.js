@@ -50,16 +50,21 @@ const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "�
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
 
-// A publikált Pages-site gyökere (a digest „Teljes jelentés →" linkjének bázisa).
+// A publikált Pages-site GYÖKERE — a digest „Legfrissebb jelentés →" linkjének célja.
 // FORRÁS: `gh api repos/Goszmarton/survey-monitor/pages` → `html_url` (verifikált,
 // `cname:null` — nincs egyedi domain, a github.io séma érvényes). NEM lehet a
 // deploy-pages action `page_url` outputjából venni: a levél a `node src/run.js`
 // lépésben megy ki, a Pages-deploy KÉSŐBBI lépés (a page_url a render pillanatában
 // még nem létezik) — lásd .github/workflows/monitor.yml.
-// KORLÁT (a komment a korlátot mondja, nem többet ígér az adatnál): ha egyedi
-// domaint (CNAME) kapcsolsz a Pages-hez, EZT KÉZZEL kell átírni — a github.io URL
-// akkor elavul. Trailing perjel KELL: a reportUrl (`ÉÉÉÉ/HH/NN.html`) perjel nélkül
-// fűződik hozzá, dupla perjel nélkül.
+//
+// MIÉRT A GYÖKÉR, NEM A NAPI ARCHÍV (empirikus, 2026-08-12 élő curl): a `deploy-pages`
+// NEM additív — a `dist/` minden futáskor TELJES site-ként publikálódik, és a run.js
+// csak {index.html, a MAI archív}-ot írja bele. Ezért a tegnapi `ÉÉÉÉ/HH/NN.html` archív
+// URL MÁSNAP 404 (igazolva: 08-11 archív 404 volt 08-12-n). A napra rögzített link tehát
+// másnaptól halott lenne → a link a mindig-élő gyökérre mutat (a mai jelentés, ill. később
+// a frissebb). Trailing perjel a bázison KELL.
+// KORLÁT (a komment a korlátot mondja, nem többet ígér az adatnál): ha egyedi domaint
+// (CNAME) kapcsolsz a Pages-hez, EZT KÉZZEL kell átírni — a github.io URL akkor elavul.
 export const PAGES_BASE = "https://goszmarton.github.io/survey-monitor/";
 
 function fmtTime(iso) {
@@ -367,7 +372,10 @@ export function renderDigest(run) {
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
-  const link = run.pagesUrl ? `<p><a href="${esc(run.pagesUrl)}">Teljes jelentés →</a></p>` : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
+  // A link a Pages-GYÖKÉRRE mutat (PAGES_BASE) → mindig a legfrissebb jelentés (a napi archív
+  // URL-ek másnap 404-esek, lásd PAGES_BASE komment). A szöveg ezért „Legfrissebb" — nem ígéri,
+  // hogy pont EZT a jelentést nyitja (a levél olvasásakor a gyökér = a mai; később a frissebb).
+  const link = run.pagesUrl ? `<p><a href="${esc(run.pagesUrl)}">Legfrissebb jelentés →</a></p>` : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
 
   return `<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
