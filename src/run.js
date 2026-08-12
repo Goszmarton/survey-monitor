@@ -5,7 +5,7 @@
 // provider-kiesés degradált, de működő jelentést ad (triázs kimarad, nyers lista).
 
 import { mkdir, writeFile, readFile } from "node:fs/promises";
-import { renderReport, renderDigest, renderKiemelt, digestSubject, storyGroups } from "./report.js";
+import { renderReport, renderDigest, renderKiemelt, digestSubject, storyGroups, PAGES_BASE } from "./report.js";
 import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt } from "./state/db.js";
 import { collect, selectActiveSources } from "./collect.js";
@@ -115,10 +115,15 @@ async function main() {
     providersUsed.push({ role: "dedup", status: "OK", detail: `${merges.length} sztori összevonva (${merges.reduce((a, m) => a + m.members.length, 0)} további forrás)` });
   }
   const [y, m, d] = now.ymd.split("-");
+  const reportPath = `${y}/${m}/${d}.html`; // a napra rögzített archív (index.html-t a holnapi futás felülírja)
   await mkdir(`dist/${y}/${m}`, { recursive: true });
   await writeFile("dist/index.html", html);
-  await writeFile(`dist/${y}/${m}/${d}.html`, html);
+  await writeFile(`dist/${reportPath}`, html);
   console.log(`Jelentés kész: ${items.length} tétel, ${kiemeltCount} KIEMELT${triageDegraded ? " (triázs degradált)" : ""}, ${collected.sourceChecks.length} forrás.`);
+
+  // A digest „Teljes jelentés →" linkje a napra rögzített archívra mutasson (nem a gyökérre,
+  // amit a holnapi futás felülír) — így a mai levél mindig a MAI jelentést (kapu-szekcióval) nyitja.
+  run.pagesUrl = PAGES_BASE + reportPath;
 
   // ---- E-mailek (SMTP-konfig nélkül a futás nem hasal el) ----
   const digestSent = await sendMail(digestSubject(run), renderDigest(run));
@@ -135,7 +140,7 @@ async function main() {
     attemptId,
     finishedAt: new Date().toISOString(),
     providersUsed,
-    reportUrl: `${y}/${m}/${d}.html`,
+    reportUrl: reportPath,
     emailStatus: digestSent ? (kiemeltSent ? "sent+kiemelt" : "sent") : "skipped",
   });
   db.close();

@@ -50,6 +50,18 @@ const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "�
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
 
+// A publikált Pages-site gyökere (a digest „Teljes jelentés →" linkjének bázisa).
+// FORRÁS: `gh api repos/Goszmarton/survey-monitor/pages` → `html_url` (verifikált,
+// `cname:null` — nincs egyedi domain, a github.io séma érvényes). NEM lehet a
+// deploy-pages action `page_url` outputjából venni: a levél a `node src/run.js`
+// lépésben megy ki, a Pages-deploy KÉSŐBBI lépés (a page_url a render pillanatában
+// még nem létezik) — lásd .github/workflows/monitor.yml.
+// KORLÁT (a komment a korlátot mondja, nem többet ígér az adatnál): ha egyedi
+// domaint (CNAME) kapcsolsz a Pages-hez, EZT KÉZZEL kell átírni — a github.io URL
+// akkor elavul. Trailing perjel KELL: a reportUrl (`ÉÉÉÉ/HH/NN.html`) perjel nélkül
+// fűződik hozzá, dupla perjel nélkül.
+export const PAGES_BASE = "https://goszmarton.github.io/survey-monitor/";
+
 function fmtTime(iso) {
   if (!iso) return "publikációs idő nem elérhető";
   const t = Date.parse(iso);
