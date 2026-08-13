@@ -80,3 +80,33 @@ test("anthropic: a kliens hibája (státusszal) propagálódik", async () => {
     (err) => err.status === 429,
   );
 });
+
+// Token-mérés (backfill-headroom, cost_estimate F4): az adapterek a válasz-body
+// token-számait NORMALIZÁLVA adják vissza ({input_tokens, output_tokens,
+// total_tokens}) — eddig eldobták. A hívó (complete) a naplóba fűzi. Hiányzó
+// usage-mező (régi válasz / degradált) → usage undefined, a text NEM törik.
+
+test("openai_compat: usage → normalizált token-számok", async () => {
+  const fetchImpl = async () => resp({ choices: [{ message: { content: "x" } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+  const r = await openaiCompat({ apiKey: "k", model: "m", prompt: "p", endpoint: "e", fetchImpl });
+  assert.deepEqual(r.usage, { input_tokens: 100, output_tokens: 20, total_tokens: 120 });
+});
+
+test("gemini_rest: usageMetadata → normalizált token-számok", async () => {
+  const fetchImpl = async () => resp({ candidates: [{ content: { parts: [{ text: "x" }] } }], usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 30, totalTokenCount: 230 } });
+  const r = await geminiRest({ apiKey: "k", model: "m", prompt: "p", endpoint: "e", fetchImpl });
+  assert.deepEqual(r.usage, { input_tokens: 200, output_tokens: 30, total_tokens: 230 });
+});
+
+test("anthropic: usage → normalizált token-számok (total = input+output)", async () => {
+  const client = { messages: { create: async () => ({ content: [{ type: "text", text: "A" }], usage: { input_tokens: 150, output_tokens: 40 } }) } };
+  const r = await anthropic({ apiKey: "k", model: "m", prompt: "p", client });
+  assert.deepEqual(r.usage, { input_tokens: 150, output_tokens: 40, total_tokens: 190 });
+});
+
+test("gemini_rest: hiányzó usageMetadata → usage undefined, a text nem törik", async () => {
+  const fetchImpl = async () => resp({ candidates: [{ content: { parts: [{ text: "x" }] } }] });
+  const r = await geminiRest({ apiKey: "k", model: "m", prompt: "p", endpoint: "e", fetchImpl });
+  assert.equal(r.text, "x");
+  assert.equal(r.usage, undefined);
+});

@@ -26,5 +26,9 @@ export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fe
 
   const json = await res.json();
   const text = json?.choices?.[0]?.message?.content ?? "";
-  return { text };
+  // Token-mérés (backfill-headroom): az OpenAI-kompatibilis válasz usage-objektuma;
+  // normalizálva {input,output,total}. Hiánynál undefined — a hívó nem számol vele.
+  const u = json?.usage;
+  const usage = u ? { input_tokens: u.prompt_tokens ?? 0, output_tokens: u.completion_tokens ?? 0, total_tokens: u.total_tokens ?? 0 } : undefined;
+  return { text, usage };
 }

@@ -17,5 +17,9 @@ export async function anthropic({ apiKey, model, prompt, client }) {
     .filter((b) => b.type === "text")
     .map((b) => b.text)
     .join("");
-  return { text };
+  // Token-mérés (backfill-headroom): az Anthropic usage input/output-ot ad, total nélkül;
+  // normalizálva {input,output,total=input+output}. Hiánynál undefined.
+  const u = res?.usage;
+  const usage = u ? { input_tokens: u.input_tokens ?? 0, output_tokens: u.output_tokens ?? 0, total_tokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0) } : undefined;
+  return { text, usage };
 }

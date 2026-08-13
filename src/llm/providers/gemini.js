@@ -22,5 +22,9 @@ export async function geminiRest({ apiKey, model, prompt, schema, endpoint, fetc
   const json = await res.json();
   const parts = json?.candidates?.[0]?.content?.parts ?? [];
   const text = parts.map((p) => p?.text ?? "").join("");
-  return { text };
+  // Token-mérés (backfill-headroom): a generateContent visszaadja a usageMetadata-t;
+  // normalizálva {input,output,total}. Hiánynál undefined — a hívó nem számol vele.
+  const u = json?.usageMetadata;
+  const usage = u ? { input_tokens: u.promptTokenCount ?? 0, output_tokens: u.candidatesTokenCount ?? 0, total_tokens: u.totalTokenCount ?? 0 } : undefined;
+  return { text, usage };
 }

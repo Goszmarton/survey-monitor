@@ -91,6 +91,27 @@ test("minden láncszem elbukik → null", async () => {
   assert.equal(log.length, 3);
 });
 
+test("usage: az adapter token-számai az OK naplóbejegyzésbe kerülnek (token-mérés)", async () => {
+  const log = [];
+  await complete("triage", "p", {
+    schema: SCHEMA, llmConfig: CFG, env: { GEMINI_API_KEY: "k" },
+    adapters: adapters({ gemini_rest: () => ({ text: okText, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } }) }), log,
+  });
+  assert.equal(log[0].status, "OK");
+  assert.deepEqual(log[0].usage, { input_tokens: 10, output_tokens: 5, total_tokens: 15 });
+});
+
+test("usage: hiányzó usage → az OK naplóbejegyzés usage nélkül, nem törik", async () => {
+  const log = [];
+  const r = await complete("triage", "p", {
+    schema: SCHEMA, llmConfig: CFG, env: { GEMINI_API_KEY: "k" },
+    adapters: adapters({ gemini_rest: () => ({ text: okText }) }), log,
+  });
+  assert.equal(r.provider, "gemini");
+  assert.equal(log[0].status, "OK");
+  assert.equal(log[0].usage, undefined);
+});
+
 test("séma nélküli szerep → text visszaadva", async () => {
   const log = [];
   const r = await complete("synthesis", "p", {
