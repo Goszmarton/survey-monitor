@@ -157,10 +157,15 @@ source_checks(
 runs(
   run_id TEXT PK, started_at TEXT, finished_at TEXT,
   providers_used TEXT,         -- JSON: melyik szerepet melyik modell futtatta
-  cost_estimate REAL,
   report_url TEXT, email_status TEXT
 )
 ```
+
+> **Megj. a `runs` sémához:** a `cost_estimate` oszlop **nincs** a sémában
+> (token-alapú költségbecslés nélkül üresen maradna — lásd 8. pont és
+> `src/state/db.js`). Régi, még a kivétel előtt létrehozott DB-kben fizikailag
+> maradhat egy **inert** `cost_estimate` oszlop: a kód nem írja/olvassa, az
+> eltávolítása destruktív rebuild lenne, ezért szándékosan érintetlen.
 
 ### Kanonikus kulcs (dedup)
 
@@ -384,6 +389,14 @@ WHO/UNICEF, NEAK/NNGYK/Oktatási Hivatal/NFSZ témafüggő források.
 | Mély audit (Sonnet, 0–5 tétel/nap) | $0,00–0,05 |
 | Szintézis (Sonnet, 2 rövid bekezdés) | ~$0,005 |
 | **Összesen** | **~$0,02–0,10** · keret-kimerülésnél $0, degradált móddal |
+
+Ezek **tervezési becslések, nem mért értékek** — a token-alapú tényleges
+költségmérés a lábléchez visszavonva (8. pont), a `runs.cost_estimate` nincs a
+sémában. A napi triázs a free-tier gemini/groq láncon fut (~$0); a fizetős rész
+gyakorlatilag csak a szintézis (Sonnet). A free-tier valódi korlátja nem a
+forint, hanem a kvóta: megfigyelt gyakorlati plafon ~17 batch/nap körül (2026-08-08:
+17 batch mellett a gemini a hívások többségét HTTP 429-cel elutasította, a
+fallback-lánc groq-ra kapta el) — ez a backfill-tervezés headroom-korlátja.
 
 GitHub Actions: napi 1 futás × ~10–20 perc — privát repó ingyenes
 keretében is bőven elfér.
