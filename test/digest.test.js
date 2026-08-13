@@ -76,3 +76,22 @@ test("renderDigest guard: unset pagesUrl → fallback-szöveg, nem törik (a lev
   assert.ok(!html.includes("Legfrissebb jelentés →"));
   assert.ok(!html.includes("Teljes jelentés →"));
 });
+
+// A KIEMELT-levél (renderKiemelt, külön email) UGYANAZT a gyökér-linket kapja, mint a digest.
+// A ffed269/5b772a5 csak a renderDigest-et javította; a renderKiemelt-ben egy IKER
+// fallback-literál maradt link nélkül (report.js:405), amit a régi teszt nem fogott meg
+// (csak renderDigest-re assertáltunk). A levél ígért egy jelentést, de nem adott hozzá utat
+// (CLAUDE.md 2). A közös link mindkét levélben ugyanabból a helperből jön.
+
+test("renderKiemelt: beállított pagesUrl → UGYANAZ a kattintható GYÖKÉR-link, a fallback eltűnik", () => {
+  const html = renderKiemelt({ ...RUN, pagesUrl: PAGES_BASE });
+  assert.match(html, /<a href="https:\/\/goszmarton\.github\.io\/survey-monitor\/">Legfrissebb jelentés →<\/a>/);
+  assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
+});
+
+test("renderKiemelt guard: unset pagesUrl → fallback-szöveg, nem törik (a levél sose bukjon egy linken)", () => {
+  const html = renderKiemelt(RUN); // RUN-on nincs pagesUrl
+  assert.ok(html.includes("A teljes jelentés a GitHub Pages-archívumban."));
+  assert.ok(!html.includes("Legfrissebb jelentés →"));
+  assert.ok(!html.includes("Teljes jelentés →"));
+});

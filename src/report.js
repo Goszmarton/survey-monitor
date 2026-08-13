@@ -358,6 +358,16 @@ function digestItemList(items, sourceNames) {
 const freshRepresentatives = (run) =>
   storyGroups(run).representatives.filter((i) => i.freshness === "UJ_24H");
 
+// A digest ÉS a KIEMELT-levél KÖZÖS „jelentés-linkje". A Pages-GYÖKÉRRE mutat (PAGES_BASE) →
+// mindig a legfrissebb jelentés (a napi archív URL-ek másnap 404-esek, lásd PAGES_BASE komment);
+// a szöveg ezért „Legfrissebb" — nem ígéri, hogy pont EZT a jelentést nyitja. Unset pagesUrl-nél
+// fallback-szöveg, hogy a levél sose bukjon egy hiányzó linken (CLAUDE.md 2). EGY helyen, mert a
+// duplikált fallback-literál volt a bug forrása: az 5b772a5 csak a digestet javította, a
+// KIEMELT-levél iker-literálja link nélkül maradt — egy jövőbeli link-változás se maradjon le.
+const pagesLink = (run) => run.pagesUrl
+  ? `<p><a href="${esc(run.pagesUrl)}">Legfrissebb jelentés →</a></p>`
+  : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
+
 export function digestSubject(run) {
   // Mindkét szám a story-dedup UTÁNi halmazból — konzisztens a levél törzsével
   // (a nyers kiemeltCount-ot NEM keverjük ide, az a küldés-döntéshez van).
@@ -372,11 +382,6 @@ export function renderDigest(run) {
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
-  // A link a Pages-GYÖKÉRRE mutat (PAGES_BASE) → mindig a legfrissebb jelentés (a napi archív
-  // URL-ek másnap 404-esek, lásd PAGES_BASE komment). A szöveg ezért „Legfrissebb" — nem ígéri,
-  // hogy pont EZT a jelentést nyitja (a levél olvasásakor a gyökér = a mai; később a frissebb).
-  const link = run.pagesUrl ? `<p><a href="${esc(run.pagesUrl)}">Legfrissebb jelentés →</a></p>` : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
-
   return `<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(digestSubject(run))}</title><style>${STYLE}</style></head>
@@ -385,7 +390,7 @@ export function renderDigest(run) {
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
   <section><h2>Mi jelent meg az utolsó 24 órában?</h2>${synth}</section>
   <section><h2>Friss tételek jelentőség szerint</h2>${digestItemList(fresh, sourceNames)}</section>
-  ${link}
+  ${pagesLink(run)}
 </main></body></html>
 `;
 }
@@ -402,7 +407,7 @@ export function renderKiemelt(run) {
 <body><main>
   <header><h1>🔴 KIEMELT tételek — ${esc(run.runId)}</h1></header>
   <section>${digestItemList(kiemelt, sourceNames)}</section>
-  <p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>
+  ${pagesLink(run)}
 </main></body></html>
 `;
 }
