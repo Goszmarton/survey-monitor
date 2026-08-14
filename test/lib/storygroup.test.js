@@ -312,3 +312,53 @@ test("storygroup: intézet-lista NÉLKÜL a guard nem véd — a lista load-bear
   const zavecz = setsNoInst.find((s) => s.includes("nepszava:zavecz"));
   assert.ok(zavecz.includes("hvg:median"), "intézet-lista nélkül a Medián tévesen összevonódik — a guard load-bearing");
 });
+
+// ---- rep-centralitás a tie-breakben (2026-08-14) ----
+// A rep azonos significance mellett eddig KIND→first_seen→ck szerint dőlt el. Egy nagy,
+// KOHÉZÍV klaszterben (mind FONTOS/sajto) a legkorábbi tag lehet egy PERIFÉRIÁS cím, míg
+// a valódi központi sztori csak tag → a levél félrevezet. A 08-13-i +52 Paks-merge élő
+// esete: a perifériás „díszkivilágítás" lett a főcím a központi „teljesen leáll a Paksi
+// Atomerőmű" helyett. A fix: a KIND UTÁN, a first_seen ELÉ a csoporton belüli edgeRule-
+// szomszédsági FOK (a legcentrálisabb tag a rep). A KIND elsőbbsége marad → a primer-forrás
+// (hivatalos_adat/kutatas) NEM veszti el a rep-séget egy központibb sajtó-cím miatt.
+function centralityFixture() {
+  // Hub-token „magyar péter" felhő (c a legcentrálisabb, foka 4) + perifériás SZUPERHALMAZ
+  // p (nincs benne „magyar péter", csak a „leáll a Paksi Atomerőmű" tokeneken lóg c-hez → fok 1).
+  // p a LEGKORÁBBI first_seen → a régi tie-break p-t választaná (a bug); a fix c-t.
+  const F = (k, s, t, fs) => ({ canonical_key: k, source_id: s, kind: "sajto", title: t, url: `x/${k}`, first_seen_at: fs, significance: "FONTOS", freshness: "UJ_24H" });
+  return [
+    F("p", "444", "Budapesten lekapcsolják a díszkivilágítást, ha leáll a Paksi Atomerőmű", "2026-08-01T00:00:00Z"),
+    F("c", "nepszava", "Magyar Péter: Teljesen leáll a Paksi Atomerőmű", "2026-08-02T00:00:00Z"),
+    F("m1", "telex", "Magyar Péter bejelentése", "2026-08-02T01:00:00Z"),
+    F("m2", "hvg", "Magyar Péter nyilatkozata", "2026-08-02T02:00:00Z"),
+    F("m3", "portfolio", "Magyar Péter üzenete", "2026-08-02T03:00:00Z"),
+  ];
+}
+
+test("storygroup: rep-centralitás — azonos significance+kind mellett a legcentrálisabb (edgeRule-fok) tag a rep, nem a legkorábbi perifériás", () => {
+  const { representatives } = groupStories(centralityFixture(), { cfg, institutes });
+  const rep = representatives.find((r) => r._groupSize > 1);
+  assert.equal(rep._groupSize, 5, "az öt Paks-tétel egy csoport");
+  // c foka 4 (p, m1, m2, m3), p foka 1 (csak c) — a régi first_seen p-t adott, a fix c-t.
+  assert.equal(rep.canonical_key, "c", "a központi „teljesen leáll” a rep, nem a perifériás, korábban látott „díszkivilágítás”");
+  assert.ok((rep._pressUrls ?? []).some((x) => x.canonical_key === "p"), "a perifériás tétel a press_urls-be süllyed");
+});
+
+test("storygroup: rep-centralitás guard — hamis fúziónál (over-merge) a fok-döntetlen NEM ront (first_seen marad)", () => {
+  // ELVI KORLÁT: ez a három KSH-hír ELLENTÉTES jelentésű (kiskereskedelem NŐTT vs építőipar
+  // ESETT), csak a generikus „tovább”/„júniusban” tokeneken hídolva egy hamis fúzióba (a #2
+  // hub-token over-merge tétel, TUDATOSAN halasztva — itt NEM oldjuk meg). A centralitás egy
+  // over-merge-et nem tud jól rep-elni; a cél csak annyi, hogy NE rontson. Itt mindhárom tag
+  // foka 2 (háromszög) → a fok DÖNTETLEN → a tie-break a régi first_seen-re esik vissza →
+  // a rep VÁLTOZATLAN. (A korábbi sum-dice jel ezt „építőipar”-ra billentette volna — az edgeRule-
+  // fok nem.) A teszt rögzíti: tudjuk, mi történik itt, és nem véletlenül.
+  const F = (k, s, t, fs) => ({ canonical_key: k, source_id: s, kind: "sajto", title: t, url: `x/${k}`, first_seen_at: fs, significance: "FONTOS", freshness: "UJ_24H" });
+  const items = [
+    F("k1", "hvg", "Tovább pörgött a kiskereskedelem júniusban", "2026-08-06T00:00:00Z"),
+    F("k2", "telex", "Tovább zuhant az építőipar teljesítménye júniusban", "2026-08-13T00:00:00Z"),
+    F("k3", "portfolio", "Az ipari termelés nőtt, az építőipar tovább esett júniusban", "2026-08-13T01:00:00Z"),
+  ];
+  const rep = groupStories(items, { cfg, institutes }).representatives.find((r) => r._groupSize > 1);
+  assert.equal(rep._groupSize, 3, "a három hír egy (hamis) fúzió");
+  assert.equal(rep.canonical_key, "k1", "fok-döntetlen → a legkorábbi first_seen marad a rep, a változás nem billenti ellentétes jelentésű címre");
+});

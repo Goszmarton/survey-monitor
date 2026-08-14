@@ -255,16 +255,33 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
       continue;
     }
 
-    // Reprezentáns: LEGMAGASABB jelentőség (dedup(a)) → azon belül leghitelesebb kind →
-    // legkorábbi first_seen → canonical_key. A significance elsődlegessége azért kell, mert
-    // a groupSig eddig is felhúzta a rep significance-MEZŐJÉT a legerősebbre (a badge KIEMELT
-    // lett), DE a rep IDENTITÁSA (cím/url) a kind-nyertesé maradt → egy KIEMELT sztori egy
+    // CENTRALITÁS a tie-breakhez: a tag csoporton belüli edgeRule-szomszédsági FOKA (hány másik
+    // taggal van közvetlen éle az `adj` gráfban). A legcentrálisabb tag a sztori magja; a legkorábbi
+    // first_seen ehelyett egy PERIFÉRIÁS címet tehetett rep-pé egy nagy kohézív klaszterben (mért:
+    // a 08-13-i +52 Paks-mergeben a „díszkivilágítás" [fok 7] lett rep a „teljesen leáll" mag helyett).
+    // A fok a produkciós élgráfot használja (containment VAGY dice — épp az, amivel a csoport készült);
+    // NEM sum-dice (az rövid/generikus címet favorizál, length-bias). Over-merge-nél a fok tipikusan
+    // DÖNTETLEN (a hamis fúzió hídjai szimmetrikusak) → visszaesik first_seen-re, nem ront.
+    const degIn = new Map(); // item → csoporton belüli fok
+    for (const i of idxs) {
+      const nb = adj.get(i);
+      let d = 0;
+      if (nb) for (const j of idxs) if (j !== i && nb.has(j)) d++;
+      degIn.set(nodes[i].it, d);
+    }
+
+    // Reprezentáns: LEGMAGASABB jelentőség (dedup(a)) → azon belül leghitelesebb kind → CENTRALITÁS
+    // (fok, csökkenő) → legkorábbi first_seen → canonical_key. A significance elsődlegessége azért
+    // kell, mert a groupSig eddig is felhúzta a rep significance-MEZŐJÉT a legerősebbre (a badge
+    // KIEMELT lett), DE a rep IDENTITÁSA (cím/url) a kind-nyertesé maradt → egy KIEMELT sztori egy
     // FONTOS/FIGYELENDO cím alatt, rutinnak hangzó headline-nal jelent meg a levélben, a valódi
-    // KIEMELT cím a press_urls-be süllyedt (félrekeretezés, ARCHITEKTURA.md 2–3.). A missing
-    // ítéletű tag significance-e null → rank 9 → sose lesz rep, hacsak MINDEN tag az.
+    // KIEMELT cím a press_urls-be süllyedt (félrekeretezés, ARCHITEKTURA.md 2–3.). A KIND a
+    // centralitás ELŐTT marad → a primer-forrás (hivatalos_adat/kutatas) NEM veszti el a rep-séget
+    // egy központibb sajtó-cím miatt. A missing ítéletű tag significance-e null → rank 9 → sose rep.
     const rep = [...members].sort((a, b) =>
       ((SIGNIF_RANK[a.significance] ?? 9) - (SIGNIF_RANK[b.significance] ?? 9)) ||
       ((KIND_RANK[a.kind] ?? 9) - (KIND_RANK[b.kind] ?? 9)) ||
+      ((degIn.get(b) ?? 0) - (degIn.get(a) ?? 0)) ||
       (a.first_seen_at ?? "").localeCompare(b.first_seen_at ?? "") ||
       (a.canonical_key ?? "").localeCompare(b.canonical_key ?? ""))[0];
     const others = members.filter((m) => m !== rep);
