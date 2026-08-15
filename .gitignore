@@ -2,6 +2,10 @@ node_modules/
 dist/
 .env
 
+# Az archive/ (dátumozott jelentés-pillanatképek) SZÁNDÉKOSAN a repóba kerül — NE ignoráld.
+# Ez a nem-additív Pages-deploy PERZISZTENS forrása (F4-B): a buildDist ebből rakja
+# össze a dist/-et minden futáskor. A dist/ maga build-kimenet, marad ignorálva.
+
 # Az állapot-DB (state/monitor.db) SZÁNDÉKOSAN a repóba kerül — NE ignoráld.
 # Csak az átmeneti SQLite-sidecar fájlokat zárjuk ki:
 state/*.db-journal

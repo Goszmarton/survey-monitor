@@ -6,6 +6,7 @@
 
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { renderReport, renderDigest, renderKiemelt, digestSubject, storyGroups, PAGES_BASE } from "./report.js";
+import { buildDist } from "./dist.js";
 import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt } from "./state/db.js";
 import { collect, selectActiveSources } from "./collect.js";
@@ -115,10 +116,14 @@ async function main() {
     providersUsed.push({ role: "dedup", status: "OK", detail: `${merges.length} sztori összevonva (${merges.reduce((a, m) => a + m.members.length, 0)} további forrás)` });
   }
   const [y, m, d] = now.ymd.split("-");
-  const reportPath = `${y}/${m}/${d}.html`; // a napra rögzített archív (index.html-t a holnapi futás felülírja)
-  await mkdir(`dist/${y}/${m}`, { recursive: true });
-  await writeFile("dist/index.html", html);
-  await writeFile(`dist/${reportPath}`, html);
+  const reportPath = `${y}/${m}/${d}.html`; // a napra rögzített archív
+  // F4-B: a napi pillanatkép a PERZISZTENS, git-trackelt archive/-ba kerül; a dist/-et
+  // (Pages-artifact) a buildDist a TELJES archívból rakja össze, a legújabb napot téve
+  // index.html-nek — így a korábbi napok archív URL-jei NEM 404-elnek a nem-additív
+  // Pages-deploy után (a workflow az archive/-ot is visszacommitolja, mint a monitor.db-t).
+  await mkdir(`archive/${y}/${m}`, { recursive: true });
+  await writeFile(`archive/${reportPath}`, html);
+  await buildDist({ archiveDir: "archive", distDir: "dist" });
   console.log(`Jelentés kész: ${items.length} tétel, ${kiemeltCount} KIEMELT${triageDegraded ? " (triázs degradált)" : ""}, ${collected.sourceChecks.length} forrás.`);
 
   // A digest linkje a Pages-GYÖKÉRRE mutat (nem a napi archívra): a deploy-pages NEM additív,

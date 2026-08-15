@@ -16,3 +16,10 @@ test("ARCHITEKTURA 3.: a cron-indoklás a mért 112–218 perces sorállásra é
   assert.match(md, /112–218/, "a mért Actions-sorállás sávja szerepel az indoklásban");
   assert.match(md, /43 8 \* \* \*/, "a doksi a 08:43 cront írja");
 });
+
+// F4-B: a nem-additív Pages-deployhoz az archive/-ot vissza KELL commitolni, különben
+// a buildDist következő futáskor nem látja a korábbi napokat → az archív URL-ek 404-elnek.
+test("workflow: az archive/ visszacommitálva (F4-B archív-perzisztálás)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  assert.match(yml, /git add .*archive\//, "a commit-lépés az archive/-ot is hozzáadja");
+});

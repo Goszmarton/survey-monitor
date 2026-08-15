@@ -50,11 +50,14 @@ jobs:
           MAIL_TO: ${{ secrets.MAIL_TO }}
         run: node src/run.js
 
-      - name: Állapot-DB visszacommit (main)
+      - name: Állapot-DB + archív visszacommit (main)
         run: |
           git config user.name "monitor-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add state/monitor.db
+          # F4-B: az archive/ a dátumozott jelentések PERZISZTENS forrása (a dist/ gitignore-olt
+          # build-kimenet). Visszacommitoljuk, hogy a következő futás buildDist-je a TELJES
+          # archívot dist/-be rakhassa → a korábbi napok archív URL-jei nem 404-elnek.
+          git add state/monitor.db archive/
           if git diff --cached --quiet; then
             echo "Nincs állapotváltozás — nincs mit commitolni."
           else
