@@ -98,8 +98,11 @@ export async function complete(role, prompt, opts = {}) {
         if (attempt > maxSchemaRetries) {
           log.push({ role, provider: link.provider, model: link.model, status: "SCHEMA_FAIL", detail: v.errors.slice(0, 3).join("; ") });
           advanced = true;
+        } else {
+          // A köztes séma-bukás → retry ugyanazon a provideren. Külön naplósor, hogy a
+          // retry MÉRHETŐ legyen (különben a végső OK elnyeli, és úgy tűnik, elsőre sikerült).
+          log.push({ role, provider: link.provider, model: link.model, status: "SCHEMA_RETRY", detail: v.errors.slice(0, 3).join("; ") });
         }
-        // különben: retry ugyanazon a provideren
       } catch (err) {
         const status = err?.status ? `HTTP_${err.status}` : "ERROR";
         // A detail publikus láblécbe kerülhet → titokmaszkolás (hálózati hiba URL-je is).

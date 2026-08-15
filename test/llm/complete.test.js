@@ -67,8 +67,27 @@ test("sémahibás JSON → 1 retry, majd SCHEMA_FAIL és tovább", async () => {
     }), log,
   });
   assert.equal(calls, 2, "egy retry ugyanazon a provideren");
-  assert.equal(log[0].status, "SCHEMA_FAIL");
+  // A köztes retry mérhető (SCHEMA_RETRY), majd a kimerült retry SCHEMA_FAIL, végül a lánc lép.
+  assert.equal(log[0].status, "SCHEMA_RETRY");
+  assert.equal(log[1].status, "SCHEMA_FAIL");
   assert.equal(r.provider, "groq");
+});
+
+test("sémahibás JSON, majd retryn valid → a köztes retry MÉRHETŐ a naplóban (SCHEMA_RETRY)", async () => {
+  const log = [];
+  let calls = 0;
+  const r = await complete("triage", "p", {
+    schema: SCHEMA, llmConfig: CFG, env: { GEMINI_API_KEY: "k" },
+    adapters: adapters({
+      gemini_rest: () => { calls++; return { text: calls === 1 ? '{"ok":"nem-bool"}' : okText }; },
+    }), log,
+  });
+  assert.deepEqual(r.data, { ok: true });
+  assert.equal(calls, 2, "egy retry ugyanazon a provideren");
+  // A köztes bukás eddig NEM került naplóba (csak a végső OK) → a retry láthatatlan volt.
+  assert.equal(log[0].status, "SCHEMA_RETRY", "a köztes séma-bukás külön naplósorként mérhető");
+  assert.equal(log[0].provider, "gemini");
+  assert.equal(log[1].status, "OK");
 });
 
 test("SKIP láncszem → null, SKIP napló (synthesis degradáció)", async () => {
