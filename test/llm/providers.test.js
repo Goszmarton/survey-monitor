@@ -110,3 +110,34 @@ test("gemini_rest: hiányzó usageMetadata → usage undefined, a text nem töri
   assert.equal(r.text, "x");
   assert.equal(r.usage, undefined);
 });
+
+// Rate-limit-mérés (groq-plafon-recalibráció, 2026-08-15): a groq MINDEN válaszban
+// visszaadja az x-ratelimit-* headereket (request-headerek = NAPI limit, token-headerek =
+// PERCES). A plafon így passzív mérés nélkül, minden hívásból kiolvasható. Az adapter
+// normalizálja; a complete() a naplóba fűzi (mint a usage-t) → levél-semleges.
+function respH(body, headers, opts) {
+  return { ...resp(body, opts), headers: new Map(Object.entries(headers)) };
+}
+
+test("openai_compat: x-ratelimit-* headerök → normalizált ratelimit (groq plafon-mérés)", async () => {
+  const fetchImpl = async () => respH({ choices: [{ message: { content: "x" } }] }, {
+    "x-ratelimit-limit-requests": "1000",
+    "x-ratelimit-remaining-requests": "987",
+    "x-ratelimit-reset-requests": "2m59s",
+    "x-ratelimit-limit-tokens": "12000",
+    "x-ratelimit-remaining-tokens": "9500",
+    "x-ratelimit-reset-tokens": "7.5s",
+  });
+  const r = await openaiCompat({ apiKey: "k", model: "m", prompt: "p", endpoint: "e", fetchImpl });
+  assert.deepEqual(r.ratelimit, {
+    requests_limit: 1000, requests_remaining: 987, requests_reset: "2m59s",
+    tokens_limit: 12000, tokens_remaining: 9500, tokens_reset: "7.5s",
+  });
+});
+
+test("openai_compat: nincs ratelimit-header (pl. régi mock) → ratelimit undefined, nem törik", async () => {
+  const fetchImpl = async () => resp({ choices: [{ message: { content: "x" } }] });
+  const r = await openaiCompat({ apiKey: "k", model: "m", prompt: "p", endpoint: "e", fetchImpl });
+  assert.equal(r.text, "x");
+  assert.equal(r.ratelimit, undefined);
+});

@@ -82,17 +82,17 @@ export async function complete(role, prompt, opts = {}) {
     while (attempt <= maxSchemaRetries && !advanced) {
       attempt++;
       try {
-        const { text, usage } = await adapter({ apiKey, model: link.model, prompt, schema, endpoint: pdef.endpoint, fetchImpl });
+        const { text, usage, ratelimit } = await adapter({ apiKey, model: link.model, prompt, schema, endpoint: pdef.endpoint, fetchImpl });
 
         if (!schema) {
-          log.push({ role, provider: link.provider, model: link.model, status: "OK", usage });
+          log.push({ role, provider: link.provider, model: link.model, status: "OK", usage, ...(ratelimit ? { ratelimit } : {}) });
           return { text, provider: link.provider, model: link.model };
         }
 
         const data = extractJson(text);
         const v = data == null ? { ok: false, errors: ["nem értelmezhető JSON"] } : validate(data, schema);
         if (v.ok) {
-          log.push({ role, provider: link.provider, model: link.model, status: "OK", usage });
+          log.push({ role, provider: link.provider, model: link.model, status: "OK", usage, ...(ratelimit ? { ratelimit } : {}) });
           return { data, provider: link.provider, model: link.model };
         }
         if (attempt > maxSchemaRetries) {

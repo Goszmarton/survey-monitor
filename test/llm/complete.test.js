@@ -120,6 +120,17 @@ test("usage: az adapter token-számai az OK naplóbejegyzésbe kerülnek (token-
   assert.deepEqual(log[0].usage, { input_tokens: 10, output_tokens: 5, total_tokens: 15 });
 });
 
+test("ratelimit: az adapter rate-limit-headerei az OK naplóbejegyzésbe kerülnek (groq plafon-mérés)", async () => {
+  const log = [];
+  const rl = { requests_limit: 1000, requests_remaining: 987, tokens_limit: 12000, tokens_remaining: 9500 };
+  await complete("triage", "p", {
+    schema: SCHEMA, llmConfig: CFG, env: { GEMINI_API_KEY: "k" },
+    adapters: adapters({ gemini_rest: () => ({ text: okText, ratelimit: rl }) }), log,
+  });
+  assert.equal(log[0].status, "OK");
+  assert.deepEqual(log[0].ratelimit, rl);
+});
+
 test("usage: hiányzó usage → az OK naplóbejegyzés usage nélkül, nem törik", async () => {
   const log = [];
   const r = await complete("triage", "p", {

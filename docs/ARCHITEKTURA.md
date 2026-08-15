@@ -316,7 +316,9 @@ szövegét írja:
    és MNB-naptárból **gépileg beolvasva**, sosem kitalálva
 7. Teljes ellenőrzési napló — a `source_checks` táblából
 8. Lábléc: futási idő, használt modellek + a szerep-provider napló
-   (`providers_used`, benne a token-`usage`, 2026-08-14 óta). **Becsült $-költség
+   (`providers_used`, benne a token-`usage` 2026-08-14 óta, és a groq
+   `x-ratelimit-*` fejlécek `ratelimit`-ként 2026-08-15 óta — a kvóta-plafon
+   mért adatból, nem becslésből; ld. `openai_compat.js`). **Becsült $-költség
    szándékosan NINCS a láblécben:** a $/nap keret nem-kötő korlát (a triázs
    free-tier-en fut, a fizetős rész csak a szintézis ~$0,005/nap, ld. §9), a valódi
    korlát a **kvóta/rate limit**. A `runs.cost_estimate` oszlop ezért kikerült a

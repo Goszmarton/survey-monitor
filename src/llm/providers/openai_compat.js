@@ -4,6 +4,25 @@
 
 import { httpError } from "./errors.js";
 
+// Rate-limit-mérés (groq-plafon): a groq (és az OpenRouter) MINDEN válaszban visszaadja az
+// x-ratelimit-* headereket. Groq-szemantika: a request-headerek NAPI, a token-headerek PERCES
+// limitre vonatkoznak. A plafon így passzív mérés nélkül, minden hívásból kiolvasható. Ha nincs
+// header (pl. teszt-mock v. más provider) → undefined, a hívó nem számol vele. Neutrális
+// mezőnevek (a napi/perces szemantika provider-függő, dokumentációban rögzítve).
+function parseRateLimit(headers) {
+  const g = (n) => headers?.get?.(n) ?? undefined;
+  const num = (v) => (v == null ? undefined : Number(v));
+  const rl = {
+    requests_limit: num(g("x-ratelimit-limit-requests")),
+    requests_remaining: num(g("x-ratelimit-remaining-requests")),
+    requests_reset: g("x-ratelimit-reset-requests"),
+    tokens_limit: num(g("x-ratelimit-limit-tokens")),
+    tokens_remaining: num(g("x-ratelimit-remaining-tokens")),
+    tokens_reset: g("x-ratelimit-reset-tokens"),
+  };
+  return Object.values(rl).some((v) => v !== undefined) ? rl : undefined;
+}
+
 export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fetchImpl = fetch }) {
   const body = {
     model,
@@ -30,5 +49,6 @@ export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fe
   // normalizálva {input,output,total}. Hiánynál undefined — a hívó nem számol vele.
   const u = json?.usage;
   const usage = u ? { input_tokens: u.prompt_tokens ?? 0, output_tokens: u.completion_tokens ?? 0, total_tokens: u.total_tokens ?? 0 } : undefined;
-  return { text, usage };
+  const ratelimit = parseRateLimit(res.headers);
+  return { text, usage, ratelimit };
 }
