@@ -7,16 +7,44 @@
 
 import nodemailer from "nodemailer";
 
+/**
+ * MAIL_TO guard: a nyers secretet tisztított címzett-listává bontja, hogy a néma
+ * kézbesítési hibák (CLAUDE.md 2) láthatóvá váljanak. A nodemailer csak a VESSZŐS
+ * listát érti — a pontosvesszőt helyreállítjuk (de jelezzük), a záró whitespace-t
+ * és üres tagokat eldobjuk, a @-nélküli (gyanús) címet MEGTARTJUK, de jelezzük
+ * (nem néma dobás). @returns {{recipients: string[], warnings: string[]}}
+ */
+export function parseRecipients(raw) {
+  const warnings = [];
+  if (raw == null) return { recipients: [], warnings: ["MAIL_TO nincs beállítva"] };
+  let s = String(raw);
+  if (s.includes(";")) {
+    warnings.push("MAIL_TO pontosvesszőt tartalmaz — a nodemailer csak a vesszős listát érti; a pontosvesszőt is elválasztóként kezelem");
+    s = s.replace(/;/g, ",");
+  }
+  const recipients = s.split(",").map((x) => x.trim()).filter(Boolean);
+  if (recipients.length === 0) {
+    warnings.push("MAIL_TO üres a szétbontás után — nincs címzett");
+  }
+  for (const r of recipients) {
+    if (!r.includes("@")) warnings.push(`gyanús címzett (nincs @): ${r}`);
+  }
+  return { recipients, warnings };
+}
+
 function config() {
   const { SMTP_USER, SMTP_PASS, MAIL_TO, SMTP_HOST, SMTP_PORT } = process.env;
   if (!SMTP_USER || !SMTP_PASS || !MAIL_TO) return null;
+  const { recipients, warnings } = parseRecipients(MAIL_TO);
+  for (const w of warnings) console.warn(`MAIL_TO guard: ${w}`);
+  if (recipients.length === 0) return null; // nincs kézbesíthető címzett → mint a hiányzó konfig
   return {
     host: SMTP_HOST || "smtp.gmail.com",
     port: Number(SMTP_PORT || 465),
     secure: Number(SMTP_PORT || 465) === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     from: SMTP_USER,
-    to: MAIL_TO,
+    to: recipients, // tömb: a nodemailer több címzettet is elfogad
   };
 }
 
