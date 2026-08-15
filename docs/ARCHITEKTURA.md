@@ -315,10 +315,13 @@ szövegét írja:
 6. 📅 Következő figyelendő publikációk — a KSH közzétételi naptárából
    és MNB-naptárból **gépileg beolvasva**, sosem kitalálva
 7. Teljes ellenőrzési napló — a `source_checks` táblából
-8. Lábléc: futási idő, használt modellek. (Becsült költség: token-számlálás
-   nélkül nem adható álpontosság nélküli szám — a valós token-alapú
-   költségbecslés F3, addig a lábléc nem ígéri. A `runs.cost_estimate` oszlop
-   ezért kikerült a sémából, lásd `src/state/db.js`.)
+8. Lábléc: futási idő, használt modellek + a szerep-provider napló
+   (`providers_used`, benne a token-`usage`, 2026-08-14 óta). **Becsült $-költség
+   szándékosan NINCS a láblécben:** a $/nap keret nem-kötő korlát (a triázs
+   free-tier-en fut, a fizetős rész csak a szintézis ~$0,005/nap, ld. §9), a valódi
+   korlát a **kvóta/rate limit**. A `runs.cost_estimate` oszlop ezért kikerült a
+   sémából (lásd `src/state/db.js`) és NEM kötjük vissza — LEZÁRVA 2026-08-15,
+   ld. BESZAMOLO §12.
 
 **Kimenetek:**
 
@@ -332,6 +335,36 @@ szövegét írja:
 - **Küldő szolgáltatás — döntés induláskor:** (a) SMTP Gmail
   app-jelszóval (0 Ft, legegyszerűbb), (b) Resend/Postmark free tier
   (szebb kézbesíthetőség, API). v1-nek az (a) is elég.
+
+### Mi kerül a jelentésbe / a 🔴 KIEMELT-be — a három ortogonális tengely
+
+Amit az olvasó lát (a jelentésben és a KIEMELT-levélben), három EGYMÁSTÓL FÜGGETLEN
+szűrő/választás együttese határozza meg. Külön-külön is hibázhatnak, ezért külön is
+kell érteni őket; a pipeline-sorrendjük: **freshness → gated/raw → rep/tétel**.
+
+1. **freshness-szűrő — bekerül-e egyáltalán a korpuszba.** (`src/lib/freshness.js`,
+   `computeFreshness`.) Csak a frissességi ablakba eső tétel megy triázsra:
+   `UJ_24H` / `H24_48` / `KORABBI`; a >48h-s, de csak most először látott tétel
+   `KIHAGYOTT_MOST` → kimarad. Ez a cím- és jelentőség-szűrés ELŐTT szűr (pl. a pew
+   100 régi tétele 100→0). Következmény: egy újonnan aktivált forrás 0 historikus
+   tételt hoz (ld. BESZAMOLO §12 backfill).
+
+2. **gated vs raw — a jelentőség kapuzva.** (`src/triage.js`, `gatedSignificance`; a
+   lehúzás láthatósága `src/report.js`.) A `data_backed`-kapu: KIEMELT/FONTOS CSAK
+   konkrét adatra/mérésre adható; a puszta politikai hír (data_backed=false)
+   legfeljebb FIGYELENDO, KIEMELT SOHA. A kapu KIZÁRÓLAG FIGYELENDO-ra húz le. A
+   kapuzott érték mellett a NYERS besorolás is perzisztál (`significance_raw`), és a
+   jelentés dedikált „🔻 Kapu lehúzta (adat nélkül → FIGYELENDO)" szekciója a
+   lehúzottakat DB-túrás nélkül láthatóvá teszi (rep- és cap-független).
+
+3. **rep vs tétel — melyik forrás képviseli a sztorit.** (`src/lib/storygroup.js`,
+   `groupStories`.) A cross-source story-dedup az UGYANAZT a sztorit hozó tételeket
+   egy csoportba vonja, és egyetlen **reprezentánst** mutat (a leghitelesebb forrás:
+   `KIND_RANK` hivatalos_adat < kutatas < nemzetkozi < sajto, majd centralitás-
+   tiebreak); a többi forrás a rep `press_urls`-ébe kerül („+N forrás"). Az olvasó a
+   repet látja, nem minden duplikátumot. Mivel a hamis összevonás egy fontos tételt a
+   rep alá temethet, itt a becsületes részlegesség elve dönt (inkább megmaradt
+   duplikátum, mint elrejtett tétel, CLAUDE.md 5).
 
 ---
 
