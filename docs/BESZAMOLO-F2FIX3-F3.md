@@ -373,12 +373,22 @@ forrás-ejtési politika, nem a sajtó-láthatóság vagy a régi last_content m
    count=0, azaz a **publicus 28, nezopont 24, tarskutato 10** meglévő tétele **soha nem
    kerül a korpuszba** — csak az aktiválás UTÁN publikált tartalom. Ha kell a történeti anyag,
    külön backfill-lépés (a since-kapu megkerülésével, egyszeri, idempotens beszúrás).
+   **BLOKKOLT — előbb újrakalibráció (2026-08-15):** a ~17 batch/nap terhelés-kalibráció
+   08-14-én elavult (a triázs-láncban a gemini 15 batchből csak 2-t vitt, 13 groq-fallback
+   ment át) — a valós plafon most a **groq**-nál van, amiről **nincs mérésünk**. Egy backfill
+   a szokásosnál nagyságrenddel több batchet zúdítana a groq-ra; a batch/nap keret
+   újramérése (groq-ra) a backfill ELŐFELTÉTELE, addig nem indítható.
 4. **21kutato egress-IP-blokk** feloldása/megkerülése — alternatív útvonal (sitemap/aldomain),
    B-fallback, vagy tartós HIBA_TARTOS. Backlog §7.
-5. **cost_estimate** (a `runs.cost_estimate` ma NULL), **press_urls merge-audit** (a story-dedup
-   +N tag futásidejű, az `items.press_urls` nem perzisztál — a Duna-blob rep-váltásának pontos
-   tag-diffje csak mindkét nap DB-jén futtatva reprodukálható), **Pages deploy-timeout**
-   (08-10: CDN-cache késleltetés, nem éles hiba, de megfigyelendő).
+5. ~~**cost_estimate** (a `runs.cost_estimate` ma NULL)~~ **— LEZÁRVA (2026-08-15), NEM kötjük be.**
+   A $/nap keret **értéktelen** mint korlát: a triázs a szolgáltatók **free-tier**-jén fut (nincs
+   $-költsége), a fizetős rész kizárólag a **szintézis** (~$0,005/nap, amit a §9 költségbecslés
+   már becsül). A valódi korlát nem a pénz, hanem a **kvóta** (rate limit / napi batch-plafon,
+   ld. #3 backfill újrakalibráció). Egy `cost_estimate` mező álpontos $-számot adna egy nem-kötő
+   dimenzióra → szándékosan inert marad. **press_urls merge-audit** (a story-dedup +N tag
+   futásidejű, az `items.press_urls` nem perzisztál — a Duna-blob rep-váltásának pontos
+   tag-diffje csak mindkét nap DB-jén futtatva reprodukálható) és **Pages deploy-timeout**
+   (08-10: CDN-cache késleltetés, nem éles hiba, de megfigyelendő) **továbbra is NYITOTT**.
 6. **MAIL_TO több-címzett guard** — a jelenlegi egy-címzett feltevés megerősítése/kiterjesztése.
 
 ---
