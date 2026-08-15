@@ -23,3 +23,11 @@ test("workflow: az archive/ visszacommitálva (F4-B archív-perzisztálás)", ()
   const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
   assert.match(yml, /git add .*archive\//, "a commit-lépés az archive/-ot is hozzáadja");
 });
+
+// F4-C: a tranziens Pages-backend beragadásra natív 1-retry (marketplace-függés nélkül) —
+// az első deploy continue-on-error, bukáskor egy második próba fut.
+test("workflow: a Pages-deploynak van natív retry-ága (F4-C)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  assert.match(yml, /continue-on-error:\s*true/, "az első deploy nem bukik azonnal");
+  assert.match(yml, /steps\.deploy1\.outcome == 'failure'/, "bukáskor fut a retry-lépés");
+});

@@ -70,7 +70,18 @@ jobs:
         with:
           path: dist
 
+      # F4-C: a deploy-pages 2026-08-06-on egy TRANZIENS Pages-backend beragadásba futott
+      # (10 perc self-timeout, nem concurrency). F4-B óta a napi archív ÉRTÉKES (egy bukott
+      # deploy egy napot késleltetne), ezért egy natív 1-retry (nincs marketplace-függés):
+      # az első kísérlet continue-on-error, bukáskor egy második próba fut ugyanarra az
+      # artifactra. Ha a második is bukik, a job elhasal → hiba-email.
       - name: Pages deploy
+        id: deploy1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Pages deploy (retry — tranziens beragadásra)
+        if: steps.deploy1.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
       - name: Hiba-email (ha a futás elhasalt)
