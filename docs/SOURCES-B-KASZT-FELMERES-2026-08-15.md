@@ -257,16 +257,42 @@ napi keret megléte.** A számítás:
 amit az eurobarometer utána újrahasznál. Az eurobarometer XLSX-parse + több-hostos lánca több munka →
 a bizonyított mintára épüljön.
 
-### Nyitandó tervezési döntés (az első implementációs nap elején eldöntendő)
+### ELDÖNTVE (2026-08-16): (b) — determinista beemelés + fail-closed validáció + LLM csak a jelentőségre
 
-**Hogyan viszonyul a determinista poll-adat az LLM-triázshoz?** A poll-sorok eleve `data_backed=true`,
-`kind=kutatas` — ismerjük. Három út, TPM-vonzattal:
-- (a) teljes LLM-triázs soronként → +batch/sor → TPM-nyomás (a legdrágább);
-- (b) determinista beemelés (`data_backed=true`/`kind=kutatas` kód-oldalról) + LLM CSAK a jelentőségre
-  (KIEMELT/FONTOS/FIGYELENDO trend-ítélet), vagy szabály-alapú jelentőség;
-- (c) több poll-sor EGY triázs-hívásba kötegelve → kevés batch.
-→ **(b) vagy (c) ajánlott**, mert a determinista források így alig terhelik a TPM-et; ez dönti el,
-mekkora a tényleges §5.2-szünet-igény.
+**A kérdés:** a poll-sorok eleve `data_backed=true`, `kind=kutatas` — hogyan viszonyuljanak az
+LLM-triázshoz? (a) teljes LLM-triázs soronként (drága, TPM); (b) determinista beemelés + LLM csak a
+jelentőségre; (c) több sor EGY LLM-hívásba kötegelve.
+
+**Döntés: (b).** Indoklás — és a döntő tengely NEM „van-e LLM-ellenőrzés", hanem „mit ellenőriz":
+
+1. **A sémavalidáció ALAKOT ellenőriz, nem HELYESSÉGET.** A (c) LLM-kimenete séma-validáláson megy át,
+   ami típust/formát néz — egy hihető, de HIBÁS szám (átnevezett oszlop → rossz párthoz kötött érték)
+   ÁTMEGY rajta. A strukturált poll-adatra épített determinista validátor viszont HELYESSÉG-plauzibilitást
+   is ellenőriz (%-összeg, tartomány, dátum) → **szigorúan erősebb, mint a (c) séma-védelme.**
+2. **A (b) teljesen kizárja a szám-halluciációt.** A számok bájtról bájtra a forrástáblából, kód-oldali
+   parse-szal jönnek, LLM-et SOSEM érintenek. Ez ugyanaz a garancia, amit a pew-nél grounding-verifikációval
+   (§2) építünk — itt INGYEN adódik, mert a forrás MÁR strukturált.
+3. **A (c) egy ÚJ kockázatot VEZET BE:** az LLM újraírja a számokat → halluciáció a számokon, pont az,
+   amit máshol kerülünk. Ez önmagában kizárja a (c)-t egy determinista forrásnál.
+4. **Fail-closed guard → a formátumváltozás LÁTHATÓ, nem néma rossz adat** (CLAUDE.md 1./2.).
+5. TPM: a (b) bónusza (alig terheli), de NEM ez a döntő érv.
+
+**A determinista validációs réteg (fail-closed, minden guardhoz RED teszt valós fixture-rel):**
+a beemelés CSAK akkor enged tételt, ha MIND teljesül; bármelyik bukása → a forrás az adott futásban
+KIMARAD + látható naplósor (SKIPPED_VALIDATION), nem néma beengedés és nem néma eldobás:
+- **Fejléc/oszlop-assert:** a várt `<thead>` címkék megléte és pozíciója (Fieldwork Period · Polling
+  Firm · Commissioner · Sample Size + a párt-oszlopok). Átnevezés/átrendezés → bukás.
+- **%-összeg sanity:** a párt-százalékok összege ~100 (pl. 90–110, tűrve a kerekítést + egyéb/bizonytalan).
+  Elkapja az oszlop-eltolást, tizedes-hibát (0,61 vs 61), rossz párthoz kötést.
+- **Érték-tartomány:** minden párt-% ∈ [0, 100].
+- **Mintaméret-plauzibilitás:** numerikus, józan sávban (pl. 300–5000). Elkapja az oszlop-eltolást.
+- **Dátum-plauzibilitás:** a fieldwork-dátum parse-olható és józan ablakban (nem 1900, nem messze jövő).
+- **Sor-sanity:** ≥ 1 poll (nem üres/megváltozott shell).
+
+**A jelentőség (KIEMELT/FONTOS/FIGYELENDO):** LLM CSAK a MÁR RÖGZÍTETT számokra (grounded — a modell
+címkéz, nem állít elő értéket → nem ronthatja az adatot); ez a hívás kötegelhető (több poll egy hívásban),
+így a TPM-terhelés minimális. Alternatíva/finomítás: szabály-alapú jelentőség (trend-törés az előző
+aggregátumhoz mérve) — determinista, de ez későbbi lépés; az alap a grounded-significance-LLM.
 
 ### Lépések (minden lépés: RED teszt VALÓS fixture-rel ELŐBB — CLAUDE.md 1.)
 
@@ -277,10 +303,13 @@ levél-semleges. **Ez ELŐBB kell, mint bármely volumen-növelő aktiválás** 
 429-et kockáztat). *(Ha az (b)/(c) út miatt a determinista források nem adnak új batchet, P0 akkor is
 ship-elendő általános biztonsági korlátként — a pew burst miatt úgyis kell.)*
 
-**E1 — europeelects adapter + parser + fixture-teszt (LEVÉL-SEMLEGES):**
-fetch-adapter az ASAPOP GCS-táblára + parser → tételek. RED teszt a valós `hu.html` fixture-rel
-(15,6 KB, `<thead>`: Fieldwork Period · Polling Firm · Commissioner · Sample Size · TISZA · Fidesz–KDNP
-· MH · DK · MKKP…). A forrás MÉG NEM aktív (nincs a futó forrás-listán). Levél-semleges.
+**E1 — europeelects adapter + parser + FAIL-CLOSED validátor + fixture-tesztek (LEVÉL-SEMLEGES):**
+fetch-adapter az ASAPOP GCS-táblára + parser → tételek, a `(b)`-döntés determinista validációs rétegével
+(fejléc-assert, %-összeg, tartomány, mintaméret, dátum, sor-sanity — ld. fent). RED teszt a valós
+`hu.html` fixture-rel (15,6 KB, `<thead>`: Fieldwork Period · Polling Firm · Commissioner · Sample Size
+· TISZA · Fidesz–KDNP · MH · DK · MKKP…) ÉS **külön RED teszt a validátor MINDEN guardjára** (elrontott
+fixture: átnevezett oszlop, %-összeg≠100, rossz dátum → SKIPPED_VALIDATION). A forrás MÉG NEM aktív.
+Levél-semleges.
 
 **E2 — europeelects AKTIVÁLÁS (ez a nap EGYETLEN levél-ható változása):**
 `status: OK`, a tételek belépnek a triázs→kapu→jelentés folyamba. Verifikáció: batch-szám + TPM-headroom
