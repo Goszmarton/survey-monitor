@@ -245,6 +245,68 @@ napi keret megléte.** A számítás:
 
 ---
 
+## 7. Implementációs sorrend (2026-08-16, F4-felderítés lezárva)
+
+**Aktiválható: europeelects + eurobarometer.** politico kézi ág (403, runtime), pew agentikus
+(későbbre). **Sorrend: europeelects ELSŐ, eurobarometer MÁSODIK.**
+
+**Miért europeelects elsőnek:** (1) a legegyszerűbb — egyetlen host, egyetlen tiszta HTML-`<table>`
+(ASAPOP-widget), a meglévő `htmllist`-adapter mintájára parse-olható; (2) a legrelevánsabb+leggyakoribb
+(magyar pártpreferencia = a domén magja, folyamatos frissülés); (3) ez fekteti le a
+**determinista-B-forrás mintát** (fetch-adapter → parse → dedup-integráció → TPM-tudatos ütemezés),
+amit az eurobarometer utána újrahasznál. Az eurobarometer XLSX-parse + több-hostos lánca több munka →
+a bizonyított mintára épüljön.
+
+### Nyitandó tervezési döntés (az első implementációs nap elején eldöntendő)
+
+**Hogyan viszonyul a determinista poll-adat az LLM-triázshoz?** A poll-sorok eleve `data_backed=true`,
+`kind=kutatas` — ismerjük. Három út, TPM-vonzattal:
+- (a) teljes LLM-triázs soronként → +batch/sor → TPM-nyomás (a legdrágább);
+- (b) determinista beemelés (`data_backed=true`/`kind=kutatas` kód-oldalról) + LLM CSAK a jelentőségre
+  (KIEMELT/FONTOS/FIGYELENDO trend-ítélet), vagy szabály-alapú jelentőség;
+- (c) több poll-sor EGY triázs-hívásba kötegelve → kevés batch.
+→ **(b) vagy (c) ajánlott**, mert a determinista források így alig terhelik a TPM-et; ez dönti el,
+mekkora a tényleges §5.2-szünet-igény.
+
+### Lépések (minden lépés: RED teszt VALÓS fixture-rel ELŐBB — CLAUDE.md 1.)
+
+**P0 — TPM-tudatos batch-szünet a triázs-hurokban (LEVÉL-SEMLEGES, ELSŐNEK):**
+a triázs-hurok minimum-késleltetése két batch közt (mért `token/batch` ÷ 200, vagy fix konzervatív
+~15 s). RED teszt: injektált óra/sleep-spy, a hurok ≥ küszöböt vár batchek közt. Kimenet BÁJTAZONOS →
+levél-semleges. **Ez ELŐBB kell, mint bármely volumen-növelő aktiválás** (különben az első aktiválás
+429-et kockáztat). *(Ha az (b)/(c) út miatt a determinista források nem adnak új batchet, P0 akkor is
+ship-elendő általános biztonsági korlátként — a pew burst miatt úgyis kell.)*
+
+**E1 — europeelects adapter + parser + fixture-teszt (LEVÉL-SEMLEGES):**
+fetch-adapter az ASAPOP GCS-táblára + parser → tételek. RED teszt a valós `hu.html` fixture-rel
+(15,6 KB, `<thead>`: Fieldwork Period · Polling Firm · Commissioner · Sample Size · TISZA · Fidesz–KDNP
+· MH · DK · MKKP…). A forrás MÉG NEM aktív (nincs a futó forrás-listán). Levél-semleges.
+
+**E2 — europeelects AKTIVÁLÁS (ez a nap EGYETLEN levél-ható változása):**
+`status: OK`, a tételek belépnek a triázs→kapu→jelentés folyamba. Verifikáció: batch-szám + TPM-headroom
+(a P0-szünet tartja), a jelentés mutatja az europeelects-tételeket, dedup ép (nem olvad hamisan a
+sajtó-tételekkel — [[f2-fix-round-decisions]] intézet-guard), kapu helyes. *(Felhalmozott állapot —
+CLAUDE.md 3.: az aktiválás a MAI ablak polljait húzza be; a historikus poll-backfill KÜLÖN, idempotens
+migráció, jóváhagyással.)*
+
+**B1 — eurobarometer fetch-lánc + XLSX-parser + fixture-tesztek (LEVÉL-SEMLEGES):**
+`survey/get/latest` → `get/one` → `openDataPublicationUrl` → `data.europa.eu` dataset → `volumeA.xlsx`
+→ V-oszlop parse. RED tesztek valós fixture-ökkel (a JSON-válaszok + egy `volumeA.xlsx` minta). A
+letöltő-key futásidőben a hub-API-ból; `openDataPublicationUrl` hiányában a HU-Country-results PDF a
+fallback. Nem aktív. Levél-semleges.
+
+**B2 — eurobarometer AKTIVÁLÁS (egy külön nap EGYETLEN levél-ható változása):**
+esemény-vezérelt (új survey megjelenésekor). A grounding-verifikáció (§2) itt is áll a kinyert
+számokra.
+
+### Ütemezési összefoglaló (napi EGY levél-ható változás + §5.2 TPM-szünet)
+P0 (semleges) → E1 (semleges) → **E2 (levél-ható, 1 nap)** → megfigyelés/verifikáció →
+B1 (semleges) → **B2 (levél-ható, másik nap)**. A levél-semleges lépések halmozhatók, a két aktiválás
+(E2, B2) külön napokon. A TPM-szünetet a P0 kényszeríti; a token/batch a `usage`-ből folyamatosan
+mérendő, és ha nő, a szünet arányosan.
+
+---
+
 *Készült: 2026-08-15. Forrás: élő laptop-fetch (lakossági IP), a 08-15 éles futás DB-je
 (`state/monitor.db`), és a repo kódja. Kapcsolódó: [[f3-plan-and-measurements]] (#5 F4-hátralék),
 [[deploy-pipeline-ordering]], `docs/SOURCES-INTEZETEK-FELDERITES.md` (A/B döntési minta).*
@@ -257,10 +319,13 @@ ezzel az europeelects mellé sorolódik: determinista, LLM-mentes, kvóta UTÁN,
 *2026-08-16 kiegészítés (groq élő mérés + ASN-próbák): a groq-plafon blokkoló FELOLDVA (§5.2, mért
 2616 tok/batch, ~35–38 batch/nap, TPD 29% → van headroom), DE a kötő korlát KETTŐS: a TPM (perces)
 szűk → forrás-aktiváláshoz a batch-széthúzás a feltétel (≥ ~13 s, cél 15–20 s / batch), nem a napi
-keret. Az Actions-ASN próba a determinista forrásokra: politico **403/403 = blokkolt** (kézi ág, a
-CSATORNA él lakossági IP-ről); europeelects + eurobarometer (3 host) próbája `bkaszt-asn-probe.yml`,
-lefuttatandó. Ha ezek átmennek → az aktiválható B-kaszt = europeelects + eurobarometer. Ha nem → az
-egész B-kaszt kézi ág, és ez ARCHITEKTÚRA-kérdés (rezidens futtatókörnyezet), nem forrás-kérdés.*
+keret. Actions-ASN próbák EREDMÉNYE: politico **403/403 = blokkolt** (kézi ág, a CSATORNA él lakossági
+IP-ről); **europeelects + eurobarometer (4 host): 4/4 ELÉRHETŐ** (`bkaszt-asn-probe.yml`, 2026-08-16):
+europeelects 200/15641 B, eb-api 200/7215 B, eb-odp 200/143313 B, eb-webgate 200/377142 B — a méretek
+BÁJTRA egyeznek a laptopos méréssel → nem csak elérhető, UGYANAZT az adatot adja Actions-ból is; a
+webgate-key élt (stale-eset nem állt elő). **AZ AKTIVÁLHATÓ B-KASZT = europeelects + eurobarometer**
+(mindkettő determinisztikus ÉS Actions-elérhető). **F4 minden felderítési kérdése ezzel lezárult.**
+Az implementációs sorrend: §7.*
 
 *2026-08-16 kiegészítés: az eurobarometer sor is tisztázva — a bundle lazy-chunkjának felderítése
 (nem tippelés) feltárta az `urlRootApi="/eurobarometer/api/"`-t és a valódi REST-útvonalakat
