@@ -1,0 +1,81 @@
+name: politico-probe
+
+# Egyszeri, KÉZI datacenter-ASN elérhetőség-próba a politico wp-json poll-endpointra.
+# Ok: a laptopos (lakossági IP) 200 NEM bizonyít Actions-elérhetőséget — a 21kutato ott
+# bukott, hogy datacenter-ASN-ről (Actions+Hetzner) Cloudflare 403-at adott, lakossági
+# laptopról 200-at. Ez a job ugyanezt méri a politicóra: fut-e a runnerről a fetch.
+#
+# NINCS schedule — sose fut magától. NULLA LLM-hívás, csak HTTP-kérés. Nincs DB-visszacommit,
+# nincs email, nincs Pages, nincs checkout (a curl-nek nem kell a repo). Csak-olvasó jogok.
+on:
+  workflow_dispatch: {}
+
+# Semmilyen write/pages/id-token — ez csak egy kimenő HTTP-kérés.
+permissions:
+  contents: read
+
+# KÜLÖN concurrency-csoport — sose ütközzön a daily-monitorral vagy a kapu-ab-bal.
+concurrency:
+  group: politico-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      URL: https://www.politico.eu/wp-json/politico/v1/poll-of-polls/HU-parliament
+      # A valódi JSON ~1,4 MB; a CF-challenge ("Just a moment…") pár KB. A méret-küszöb
+      # elválasztja a "200-de-challenge"-et az igazi sikertől.
+      MIN_OK_BYTES: 100000
+    steps:
+      - name: Bare curl (a javasolt próba — UA nélkül)
+        id: bare
+        run: |
+          code=$(curl -sS -o body_bare.bin -w '%{http_code}' --max-time 25 "$URL" || echo "000")
+          size=$(stat -c%s body_bare.bin 2>/dev/null || echo 0)
+          echo "bare: HTTP $code | ${size}B"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: "Böngésző-UA variáns (diagnosztika: ASN-blokk vs bare-UA-blokk elkülönítése)"
+        id: ua
+        run: |
+          UA='Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'
+          code=$(curl -sS -A "$UA" -o body_ua.bin -w '%{http_code}' --max-time 25 "$URL" || echo "000")
+          size=$(stat -c%s body_ua.bin 2>/dev/null || echo 0)
+          echo "ua:   HTTP $code | ${size}B"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Verdikt (step summary + kilépőkód)
+        run: |
+          bc="${{ steps.bare.outputs.code }}"; bs="${{ steps.bare.outputs.size }}"
+          uc="${{ steps.ua.outputs.code }}";   us="${{ steps.ua.outputs.size }}"
+          ok() { [ "$1" = "200" ] && [ "$2" -ge "$MIN_OK_BYTES" ]; }
+
+          if ok "$bc" "$bs"; then
+            verdict="✅ ELÉRHETŐ Actions-ból (bare curl 200, ${bs}B) → a politico datacenter-ASN-ről is megy → aktiválható a groq-kvóta után."
+          elif ok "$uc" "$us"; then
+            verdict="⚠️ RÉSZBEN: bare curl bukik (HTTP $bc, ${bs}B), de böngésző-UA-val 200 (${us}B) → ASN nincs blokkolva, csak UA kell. Aktiválható UA-fejléccel."
+          else
+            verdict="❌ BLOKKOLT Actions-ból (bare HTTP $bc/${bs}B, UA HTTP $uc/${us}B) → ugyanaz a datacenter-ASN minta, mint a 21kutatónál → politico marad kézi/parkolt ág."
+          fi
+
+          {
+            echo "## politico wp-json Actions-próba"
+            echo ""
+            echo "\`$URL\`"
+            echo ""
+            echo "| próba | HTTP | méret |"
+            echo "|---|---|---|"
+            echo "| bare curl | $bc | ${bs}B |"
+            echo "| böngésző-UA | $uc | ${us}B |"
+            echo ""
+            echo "**$verdict**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$verdict"
+          # Sikeres job csak, ha valamelyik ág valódi 200-at hozott — így a job zöld/piros
+          # önmagában is olvasható jelzés (nem kell a summaryba nézni).
+          ok "$bc" "$bs" || ok "$uc" "$us"
