@@ -1,0 +1,99 @@
+name: bkaszt-asn-probe
+
+# Kézi datacenter-ASN elérhetőség-próba a determinisztikus B-kaszt források HOSTJAIRA.
+# Ok: a politico-probe (99b6599) 403/403-at adott Actions-ból (CF-challenge), miközben a
+# wp-json API lakossági IP-ről 200 → a blokk a FUTTATÓKÖRNYEZETRE vonatkozik, nem a csatornára.
+# Ezért a másik két determinista forrás Actions-elérhetőségét sem szabad feltételezni; itt
+# mérjük. Több HOST külön, mert külön ASN-eken/WAF-okon ülhetnek.
+#
+# NINCS schedule (sose fut magától). NULLA LLM. Nincs checkout/DB/email/Pages. Csak-olvasó jogok.
+#
+# ELŐREJELZÉS (kötelező, lefutás ELŐTT rögzítve):
+#   - europeelects (storage.googleapis.com): Google Cloud Storage, nyilvános objektum, NEM CF
+#     mögött → VÁRT 200 (magas bizalom).
+#   - eb-api (europa.eu): EC-infra, ma laptopról 200; a cloud-ASN-t ritkán tiltja → VÁRT 200
+#     (közepes-magas bizalom).
+#   - eb-odp (data.europa.eu): Piveau nyílt-adat portál, programozott hozzáférésre tervezve →
+#     VÁRT 200 (magas bizalom).
+#   - eb-webgate (webgate.ec.europa.eu): EC webgate, szigorúbb WAF lehet; ráadásul a letöltő-key
+#     futásidőre elavulhat → VÁRT: 200 ha él a key + ASN OK; ⚠️ ha a key elavult (app-404/604,
+#     de ASN OK); ❌ ha a WAF datacenter-ASN-t blokkol (CF/challenge). EZ A LEGKOCKÁZATOSABB.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bkaszt-asn-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: ASN elérhetőség-próba (europeelects + eurobarometer 3 host)
+        run: |
+          UA='Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'
+          # A letöltő-key a 08-16-i mérésből (volumeA.xlsx); elavulhat → a ⚠️ ág kezeli.
+          # host|url|minBytes  (minBytes = a MÉRT sikeres törzs mérete alá húzott küszöb)
+          HOSTS='europeelects|https://storage.googleapis.com/asapop-website-20220812/_widgets/tables/hu.html|5000
+          eb-api|https://europa.eu/eurobarometer/api/survey/get/latest?nb=5|2000
+          eb-odp|https://data.europa.eu/api/hub/search/datasets/s3752_105_3_eb050ep_eng|50000
+          eb-webgate|https://webgate.ec.europa.eu/ebsm/api/public/odp/download?key=67D194B61F444805B74EC806F3838594|100000'
+
+          # CF/WAF-challenge markerek: ha a törzsben megjelennek, az ASN-blokk jele (nem valódi tartalom).
+          CHALLENGE='Just a moment|Cloudflare|cf-chl|cf-mitigated|Attention Required|Enable JavaScript|Access Denied|Request unsuccessful'
+
+          fail=0
+          {
+            echo "## B-kaszt determinista források — Actions-ASN próba"
+            echo ""
+            echo "| host | bare | UA | méret | verdikt |"
+            echo "|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          probe_one() {
+            local name="$1" url="$2" minb="$3"
+            local bc bs uc us body
+            bc=$(curl -sS -o "b_$name.bin" -w '%{http_code}' --max-time 25 "$url" || echo "000")
+            bs=$(stat -c%s "b_$name.bin" 2>/dev/null || echo 0)
+            uc=$(curl -sS -A "$UA" -o "u_$name.bin" -w '%{http_code}' --max-time 25 "$url" || echo "000")
+            us=$(stat -c%s "u_$name.bin" 2>/dev/null || echo 0)
+            # challenge-detektálás bármelyik törzsben
+            local chal=0
+            if grep -qiE "$CHALLENGE" "b_$name.bin" "u_$name.bin" 2>/dev/null; then chal=1; fi
+            # a nagyobb sikeres méret a két próbából
+            local best=$bs; [ "$us" -gt "$best" ] && best=$us
+            local ok200=0
+            { [ "$bc" = "200" ] && [ "$bs" -ge "$minb" ]; } && ok200=1
+            { [ "$uc" = "200" ] && [ "$us" -ge "$minb" ]; } && ok200=1
+
+            local verdict
+            if [ "$chal" = "1" ]; then
+              verdict="❌ BLOKKOLT (CF/WAF-challenge — ASN)"; fail=1
+            elif [ "$ok200" = "1" ]; then
+              verdict="✅ ELÉRHETŐ"
+            elif echo "$bc$uc" | grep -qE '2..|3..|404|604'; then
+              verdict="⚠️ ELÉRHETŐ, nem a várt tartalom (pl. stale key/path — ASN OK)"
+            else
+              verdict="❓ egyéb (bc=$bc uc=$uc)"; fail=1
+            fi
+            echo "$name: bare=$bc/${bs}B ua=$uc/${us}B chal=$chal -> $verdict"
+            echo "| $name | $bc | $uc | ${best}B | $verdict |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          while IFS='|' read -r name url minb; do
+            name=$(echo "$name" | xargs)   # trim
+            [ -z "$name" ] && continue
+            probe_one "$name" "$url" "$minb"
+          done <<< "$HOSTS"
+
+          {
+            echo ""
+            echo "**Összegzés:** $([ "$fail" = "0" ] && echo '✅ minden host elérhető Actions-ból → europeelects + eurobarometer aktiválható rész' || echo '❌ legalább egy host blokkolt → az érintett forrás kézi/parkolt ág, architektúra-kérdés')"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A job zöld csak, ha egy host sem BLOKKOLT/egyéb (a ⚠️ stale-key NEM buktat).
+          [ "$fail" = "0" ]

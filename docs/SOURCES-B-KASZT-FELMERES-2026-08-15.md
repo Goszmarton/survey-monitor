@@ -26,9 +26,12 @@ a datacenter-ASN Cloudflare-blokkokkal, ld. [[21kutato]]). UA: Chrome-desktop. M
 - A **politico SEM ügynök-ügy — de nem is halott: determinista JSON-endpoint** (08-16-i mérés,
   ld. a táblát fent). A `wp-json/.../poll-of-polls/HU-parliament` route a teljes idősort adja
   (% is), csupasz GET-tel. → **kiveendő a #5-ből, europeelects-tel egy tekintet alá** (mindkettő
-  determinista poll-tábla/JSON, LLM nélkül). Az egyetlen nyitott kockázat: **datacenter-ASN
-  elérhetőség** (GitHub Actions), a 21kutato-analógia — ez laptopról nem mérhető, Actions-próba
-  kell aktiválás előtt.
+  determinista poll-tábla/JSON, LLM nélkül). **DE: az Actions-ASN próba 403/403 (2026-08-16,
+  `politico-probe.yml`)** — bare 5547 B, UA 5696 B, mindkettő CF-challenge (a MIN_OK_BYTES küszöb
+  jól fogta). Ugyanaz a datacenter-ASN minta, mint a 21kutatónál → **a politico kézi/parkolt ág.**
+  **FONTOS: ez a FUTTATÓKÖRNYEZETRE vonatkozik, nem a csatornára** — a wp-json JSON-API él és
+  teljes, lakossági IP-ről (200, 1,4 MB). Ha lesz lakossági/rezidens futtatókörnyezet, azonnal
+  aktiválható.
 - **Az agentikus ág EGYEDÜL a pew-re szűkül (08-16 véglegesítve).** Az eurobarometer is
   determinista lett — a négyből HÁROM (europeelects, politico, eurobarometer) determinista,
   LLM-mentes csatorna.
@@ -174,6 +177,42 @@ TÉNYLEGES fogyasztást tükrözi (a retry-tokeneket is), így a mért-vs-konzer
 a headroom feltételezetten ~0, azaz a backfill/europeelects/pew NEM indítható, amíg a header nem
 igazolja a valós plafont.**
 
+### 5.2 groq-plafon — az ELSŐ ÉLES HEADER-MÉRÉS (2026-08-16) → blokkoló feloldva
+
+A 08-16-i futás `providers_used`-je 11 groq OK-batchet tartalmaz mért `ratelimit`-tel. Baseline
+igazolva: `requests_limit=1000` (RPD), `tokens_limit=12000` (TPM). **MÉRT token/batch: átlag 2 616**
+(1757–3052), és **0 SCHEMA_RETRY** a futásban → a `:102`-alapú konzervatív ~5600/„~18 batch"
+**nem materializálódott. A MÉRT ~35–38 batch/nap az igaz.**
+
+**A kötő korlát KETTŐS, és a kettő MÁSHOGY viselkedik — ez a fő tanulság:**
+
+| korlát | mért érték (08-16) | státusz |
+|---|---|---|
+| **TPD (napi token)** | 28 781 / 100 000 = **29%** | **BŐ** — itt van headroom |
+| **TPM (perces token)** | `tokens_remaining` **2740/12000**-ig süllyedt a run-on belül | **SZŰK** — közel a fojtáshoz (429 nem lett, mert a futás rövid) |
+| RPD (napi kérés) | 999→989 = 10/1000 | irreleváns |
+
+**Következmény: az új források NEM ragaszthatók a meglévő batch-lökethez.** A politico/europeelects
+folyamatos volumen-többlete ugyanabba a futásba esne, és a **per-run TPM-burst-öt** növelné (pont
+azt, ami már közel van a limithez), miközben a napi TPD-t alig érintené.
+
+**TERVEZÉSI SZABÁLY (forrás-aktiváláshoz): a triázs-batchek IDŐBELI SZÉTHÚZÁSA a feltétel, nem a
+napi keret megléte.** A számítás:
+
+- TPM utántöltési ráta = 12 000 token / 60 s = **200 token/s**.
+- Break-even szünet két batch közt (a `tokens_remaining` nem csökken tartósan) =
+  2 616 ÷ 200 = **~13,1 s**. Ennél sűrűbben → a vödör ürül (elég hosszú futásnál 429); ritkábban →
+  visszatöltődik.
+- Fenntartható ráta = 12 000 ÷ 2 616 = **4,6 batch/perc** a plafon; **cél ~3–4 batch/perc
+  (≥ 15–20 s szünet)** a tartalékért.
+- Ma az átlag ~10,7 s/batch volt (14 batch ~2,5 perc alatt) — a küszöb ALATT; azért nem 429-elt,
+  mert rövid a futás. Több forrásnál a futás hosszabb → a szünetet KÉNYSZERÍTENI kell.
+- **Ugyanez áll a pew bursty terhelésére:** riport-napokon a triázson FELÜLI kinyerés-hívások
+  szintén ≥ ~13 s (cél 15–20 s) széthúzással, vagy a triázs-batchek közé interleave-elve.
+
+Általános alak: **min. szünet (s) ≥ token_per_batch ÷ 200**; a token/batch a `providers_used`
+`usage.total_tokens` mezőjéből folyamatosan mérhető (ha nő, a szünetet arányosan növelni).
+
 ---
 
 ## 6. Javaslat — sorrend (a userrel egyeztetve, 2026-08-15)
@@ -185,19 +224,22 @@ igazolja a valós plafont.**
    mai `title_filter` épp KIZÁRJA a nem-magyar-című pew-cikkeket → ez a réteg tölti be a
    vakfoltot. **Előfeltétel: a §5 pew-burst előmérése + a groq-újrakalibráció.**
 2. **europeelects a kvóta UTÁN** — determinisztikus A-forrásként (ASAPOP-tábla parse), NEM a
-   #5 részeként; a groq-újramérés a kapuja (folyamatos triázs-többlet).
-3. **politico ~~PARKOLVA~~ → DETERMINISZTIKUS (08-16 tisztázva)** — a vote-share % igenis
-   kinyerhető: `wp-json/politico/v1/poll-of-polls/HU-parliament` teljes JSON (595 kutatás +
-   kalman-trend, csupasz GET). Az europeelects-tel egy sorba kerül: A-kasztos, LLM-mentes,
-   determinista poll-forrás, a groq-kvóta UTÁN (folyamatos triázs-többlet miatt). Egyetlen
-   előfeltétel a doksizott felfedezésen túl: **datacenter-ASN (Actions) elérhetőség-próba**
-   (21kutato-kockázat, laptopról nem mérhető).
+   #5 részeként. Kapuk: a groq-plafon FELOLDVA (§5.2), marad a batch-széthúzás (§5.2) + az
+   **Actions-ASN próba** (`bkaszt-asn-probe.yml`, host `storage.googleapis.com`) — a politico
+   403/403 után egyik determinista forrás Actions-elérhetősége sem feltételezhető.
+3. **politico → DETERMINISZTIKUS csatorna, DE Actions-ból BLOKKOLT (08-16) → kézi/parkolt ág.**
+   A `wp-json/.../poll-of-polls/HU-parliament` JSON él lakossági IP-ről (595 kutatás + kalman),
+   de az Actions-ASN próba **403/403 (CF-challenge)**, mint a 21kutatónál. A blokk a
+   futtatókörnyezet, nem a csatorna → csak lakossági/rezidens runnerrel aktiválható.
 4. **eurobarometer ~~a pew-tapasztalat UTÁN~~ → DETERMINISZTIKUS A-forrás (08-16 véglegesítve)** —
    NEM agentikus. A számok strukturált XLSX-ben (`data.europa.eu` Piveau-API → `volumeA.xlsx`,
    HU=V oszlop), PDF-parse és LLM nélkül. Az europeelects/politico mellé kerül: determinista,
    kvóta UTÁN. Az egyetlen agentikus forrás a pew maradt. (Építési megjegyzés: a letöltő-key
    futásidőben a hub-API-ból; az `openDataPublicationUrl` megléte survey-függő — hiányában a
-   HU-Country-results PDF a fallback, az az egyetlen pont, ahol PDF-parse kellhet.)
+   HU-Country-results PDF a fallback, az az egyetlen pont, ahol PDF-parse kellhet.) **Kapu: az
+   Actions-ASN próba HÁROM külön hostra** (`bkaszt-asn-probe.yml`: `europa.eu`, `data.europa.eu`,
+   `webgate.ec.europa.eu` — külön ASN-ek/WAF-ok lehetnek); a politico 403/403 után ez sem
+   feltételezhető, mérendő aktiválás előtt.
 
 **Vezérlő kényszer marad:** egyszerre EGY viselkedésváltozás/nap a napi levélben.
 
@@ -211,6 +253,14 @@ igazolja a valós plafont.**
 JSON-endpointon él (`wp-json/politico/v1/poll-of-polls/HU-parliament`, 200, 1,4 MB, csupasz GET).
 A 08-15-i „nincs wp-json poll-endpoint" állítás mérten hibás volt (nem lett megmérve). A politico
 ezzel az europeelects mellé sorolódik: determinista, LLM-mentes, kvóta UTÁN, Actions-ASN-próbával.*
+
+*2026-08-16 kiegészítés (groq élő mérés + ASN-próbák): a groq-plafon blokkoló FELOLDVA (§5.2, mért
+2616 tok/batch, ~35–38 batch/nap, TPD 29% → van headroom), DE a kötő korlát KETTŐS: a TPM (perces)
+szűk → forrás-aktiváláshoz a batch-széthúzás a feltétel (≥ ~13 s, cél 15–20 s / batch), nem a napi
+keret. Az Actions-ASN próba a determinista forrásokra: politico **403/403 = blokkolt** (kézi ág, a
+CSATORNA él lakossági IP-ről); europeelects + eurobarometer (3 host) próbája `bkaszt-asn-probe.yml`,
+lefuttatandó. Ha ezek átmennek → az aktiválható B-kaszt = europeelects + eurobarometer. Ha nem → az
+egész B-kaszt kézi ág, és ez ARCHITEKTÚRA-kérdés (rezidens futtatókörnyezet), nem forrás-kérdés.*
 
 *2026-08-16 kiegészítés: az eurobarometer sor is tisztázva — a bundle lazy-chunkjának felderítése
 (nem tippelés) feltárta az `urlRootApi="/eurobarometer/api/"`-t és a valódi REST-útvonalakat
