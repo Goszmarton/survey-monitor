@@ -1,0 +1,134 @@
+name: groq-limits-probe
+
+# Kézi (workflow_dispatch) groq free-tier mérés — a napi triázs UGYANAZZAL a GROQ_API_KEY
+# secrettel megy, ezért a kapott limitek a VALÓDIAK (a mi fiókunké), nem egy másik fiókéi vagy
+# egy elavult blogé. Ok: a llama-3.3-70b-versatile 2026-08-16-án LEÁLLT (Groq deprecations) →
+# 08-17 13×HTTP_404, a fizetős anthropic vitte a triázst. Az utódmodell free-tier plafonja
+# (a P0 szünet-képlet TPM-paramétere) és a modell-lista MÉRENDŐ, nem tippelhető.
+#
+# NINCS schedule (sose fut magától). Csak a GROQ kulcsot használja; nincs checkout/DB/email/Pages.
+# Csak-olvasó repo-jog. Elfogyaszt ~3 apró kérést (max_tokens:1) + pár tokent a napi keretből
+# (RPD ~1000 mellett elhanyagolható); NE futtasd közvetlenül a 08:43 UTC cron ELŐTT.
+#
+# FONTOS SZEMANTIKA (a saját 08-15/08-16-i méréssel igazolva, openai_compat.js): a Groq CSAK KÉT
+# limitet ad headerben — `x-ratelimit-limit-requests` = NAPI (RPD), `x-ratelimit-limit-tokens` =
+# PERCES (TPM). Az RPM és a TPD headerben NINCS (csak a docs/console). Ezért a lenti táblában az
+# RPD és a TPM a MÉRT (header) érték, az RPM/TPD „—†" (nem header-elérhető) — a nyers headereket
+# is kiírjuk, így ha a Groq mégis ad több limit-headert, az itt kiderül (nem tippelünk).
+#
+# ELŐREJELZÉS (kötelező, lefutás ELŐTT rögzítve):
+#   - /v1/models: 200, JSON lista. A `llama-3.3-70b-versatile` HIÁNYZIK (08-16 leállt); a
+#     `openai/gpt-oss-120b` és `openai/gpt-oss-20b` JELEN (context_window 131072). VÁRT (magas
+#     bizalom). A `qwen/qwen3.6-27b` — a docs migrációs célként említi, de a PONTOS id nincs élőben
+#     igazolva → VÁRT: jelen, KÖZEPES bizalom; ha 404/hiányzik, az id téves (mint a llama-eset).
+#   - openai/gpt-oss-120b hívás: 200; header jelen. RPD (limit-requests) ~1000 VÁRT. TPM
+#     (limit-tokens) — EZ A FŐ MÉRÉS: a docs 250K-t mutat (valószínűleg NEM free), egy elavult blog
+#     8K free-t → VÁRT: a free TPM a [8000, 15000] sávban, KÖZEPES bizalom. Ha 8000 körül → a P0
+#     break-even (2600 tok/batch ÷ (8000/60)=133 ≈ 20s) a 15s padló FÖLÉ kerül → a padlót emelni kell.
+#   - openai/gpt-oss-20b hívás: 200; hasonló vagy MAGASABB TPM (kisebb modell), RPD ~1000. VÁRT.
+#   - qwen/qwen3.6-27b hívás: 200, HA az id pontos; különben 404 → megtudjuk, hogy az id téves.
+#   - RPM/TPD: headerben NEM várt (csak RPD+TPM header-elérhető) → a táblában „—†".
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: groq-limits-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      MODELS: "openai/gpt-oss-120b openai/gpt-oss-20b qwen/qwen3.6-27b"
+    steps:
+      - name: Kulcs jelenlét-ellenőrzés (titok nélkül)
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::NINCS GROQ_API_KEY secret — a mérés nem futtatható."
+            exit 1
+          fi
+          echo "GROQ_API_KEY jelen (hossz: ${#GROQ_API_KEY})."
+
+      - name: 1) Aktív modell-lista (/v1/models) — id, context_window, max_completion_tokens
+        run: |
+          code=$(curl -sS -o models.json -w '%{http_code}' --max-time 25 \
+            https://api.groq.com/openai/v1/models \
+            -H "Authorization: Bearer $GROQ_API_KEY")
+          echo "GET /v1/models -> HTTP $code"
+          {
+            echo "## groq free-tier próba — a napi triázs KULCSÁVAL (valódi fiók-limitek)"
+            echo ""
+            echo "### 1. Aktív modell-lista (/v1/models -> HTTP $code)"
+            echo ""
+            echo "| model id | context_window | max_completion_tokens | active |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - "$code" <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          try:
+              data = json.load(open("models.json")).get("data", [])
+          except Exception as e:
+              print(f"| (JSON-hiba: {e}) | | | |"); sys.exit(0)
+          for m in sorted(data, key=lambda x: x.get("id","")):
+              print(f"| `{m.get('id','?')}` | {m.get('context_window','?')} | {m.get('max_completion_tokens','?')} | {m.get('active', True)} |")
+          PY
+          # A jelöltek jelenléte + a leállt llama HIÁNYA — determinista ellenőrzés
+          {
+            echo ""
+            echo "**Jelölt-ellenőrzés:**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for M in $MODELS "llama-3.3-70b-versatile"; do
+            if grep -q "\"$M\"" models.json; then present="✅ jelen"; else present="❌ hiányzik"; fi
+            echo "- \`$M\`: $present" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: 2) Modellenként apró hívás (max_tokens:1) — valós x-ratelimit-* headerek
+        run: |
+          {
+            echo ""
+            echo "### 2. Free-tier limitek a válasz-headerekből (a MÉRT, fiók-szintű érték)"
+            echo ""
+            echo "| modell | HTTP | RPM | RPD (limit-requests) | TPM (limit-tokens) | TPD |"
+            echo "|---|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          rawdump=""
+          for M in $MODELS; do
+            code=$(curl -sS -D headers.txt -o body.json -w '%{http_code}' --max-time 25 \
+              https://api.groq.com/openai/v1/chat/completions \
+              -H "Authorization: Bearer $GROQ_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"model\":\"$M\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}")
+            # Header-kinyerés kis-nagybetű-függetlenül; hiány esetén "—"
+            get() { grep -i "^$1:" headers.txt | head -1 | sed "s/^[^:]*:[[:space:]]*//" | tr -d "\r"; }
+            rpd=$(get "x-ratelimit-limit-requests"); rpd=${rpd:-—}
+            tpm=$(get "x-ratelimit-limit-tokens");   tpm=${tpm:-—}
+            echo "$M: HTTP $code | RPD=$rpd | TPM=$tpm"
+            # RPM/TPD headerben nincs → —† (a nyers dump alább igazolja)
+            echo "| \`$M\` | $code | —† | $rpd | $tpm | —† |" >> "$GITHUB_STEP_SUMMARY"
+            # nyers x-ratelimit headerek (minden, ami jött) — hogy semmi ne maradjon rejtve
+            allrl=$(grep -i "^x-ratelimit" headers.txt | tr -d "\r" | sed "s/^/    /")
+            rawdump="$rawdump"$'\n'"**\`$M\` (HTTP $code) nyers x-ratelimit headerek:**"$'\n'"\`\`\`"$'\n'"${allrl:-  (nincs x-ratelimit header)}"$'\n'"\`\`\`"
+            # ha nem-200, a hibatörzs eleje (titkot nem tartalmaz) — pl. 404 „model does not exist"
+            if [ "$code" != "200" ]; then
+              body=$(head -c 300 body.json | tr -d "\r")
+              rawdump="$rawdump"$'\n'"hibatörzs: \`${body}\`"$'\n'
+            fi
+          done
+
+          {
+            echo ""
+            echo "† Az RPM és a TPD a Groq válasz-headerében NINCS — csak \`limit-requests\` (napi=RPD) és"
+            echo "\`limit-tokens\` (perces=TPM) elérhető (openai_compat.js szemantika). Az RPM/TPD a docs/console-ról."
+            echo ""
+            echo "### Nyers headerek (semmi elrejtve — ha mégis van több limit-header, itt látszik)"
+            echo "$rawdump"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Emlékeztető — NINCS config-váltás
+        run: echo "A mérés diagnosztikai. A config/llm.json modellváltás KÜLÖN, közös döntés + regressziós teszt után (a triázs KIEMELT-kalibrációja modell-függő)."
