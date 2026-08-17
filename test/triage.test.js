@@ -100,8 +100,9 @@ test("triageItems: részleges batch-hiba → NEM degraded, a sikeres verdiktek m
   assert.match(r.verdicts.get("c").reason, /hiányzó ítélet|batch/i);
 });
 
-test("triageItems: TPM-szünet — a batchek KÖZT vár, a mért token/batch ÷ 200 alapján (§5.2)", async () => {
-  // 3 batch (batchSize 1), mindegyik 4000 total_token usage-t naplóz → 4000/200 = 20 s szünet.
+test("triageItems: TPM-szünet — a batchek KÖZT vár, a mért token/batch ÷ (TPM/60) alapján (§5.3)", async () => {
+  // 3 batch (batchSize 1), mindegyik 4000 total_token → 4000 ÷ (8000/60=133,3) = 30 s szünet.
+  // (A gpt-oss-120b free-tier TPM 8000, a llama-3.3-70b 12000-e ELAVULT — groq-limits-probe 08-17.)
   const items = [
     { canonical_key: "a", source_id: "telex", kind: "sajto", title: "pártA" },
     { canonical_key: "b", source_id: "telex", kind: "sajto", title: "pártB" },
@@ -116,10 +117,11 @@ test("triageItems: TPM-szünet — a batchek KÖZT vár, a mért token/batch ÷ 
   await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1, sleepFn });
 
   assert.equal(sleeps.length, 2, "3 batch → 2 szünet (az utolsó UTÁN nem vár)");
-  for (const ms of sleeps) assert.ok(ms >= 20000, `szünet ${ms}ms ≥ 20000 (4000 token ÷ 200)`);
+  for (const ms of sleeps) assert.ok(ms >= 30000, `szünet ${ms}ms ≥ 30000 (4000 token ÷ (8000/60))`);
 });
 
-test("triageItems: TPM-szünet — usage híján a konzervatív ~15s padló érvényes (§5.2)", async () => {
+test("triageItems: TPM-szünet — usage híján a konzervatív ~25s padló érvényes (§5.3)", async () => {
+  // A padló 15s→25s: a break-even (2616 ÷ 133,3 ≈ 19,6s) FÖLÉ, tartalékkal (8000 TPM).
   const items = [
     { canonical_key: "a", source_id: "telex", kind: "sajto", title: "pártA" },
     { canonical_key: "b", source_id: "telex", kind: "sajto", title: "pártB" },
@@ -130,7 +132,7 @@ test("triageItems: TPM-szünet — usage híján a konzervatív ~15s padló érv
   await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1, sleepFn });
 
   assert.equal(sleeps.length, 1, "2 batch → 1 szünet");
-  assert.ok(sleeps[0] >= 15000, `usage nélkül a padló érvényes: ${sleeps[0]}ms ≥ 15000`);
+  assert.ok(sleeps[0] >= 25000, `usage nélkül a padló érvényes: ${sleeps[0]}ms ≥ 25000`);
 });
 
 test("triageItems: TPM-szünet — egyetlen batch → nincs várakozás", async () => {

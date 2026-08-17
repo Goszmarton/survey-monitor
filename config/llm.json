@@ -14,7 +14,7 @@
       "batch_size": 15,
       "chain": [
         { "provider": "gemini",    "model": "gemini-flash-latest" },
-        { "provider": "groq",      "model": "llama-3.3-70b-versatile" },
+        { "provider": "groq",      "model": "openai/gpt-oss-120b" },
         { "provider": "anthropic", "model": "claude-haiku-4-5" }
       ]
     },

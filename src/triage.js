@@ -39,8 +39,14 @@ const DEFAULT_MAX_ITEMS = 600; // cap = 40 batch × 15 (backstop; a prioritás v
 // minimum-szünet: a mért token/batch ÷ 200 (a break-even, ahol a vödör nem ürül tartósan),
 // egy konzervatív ~15s padlóval (cél 15–20s / 3–4 batch/perc, tartalékkal). Levél-semleges:
 // a szünet csak a futás sebességét változtatja, a verdikteket nem (kimenet bájtazonos).
-const TPM_TOKENS_PER_S = 200;      // groq TPM-utántöltés: 12000 / 60
-const MIN_BATCH_PAUSE_MS = 15000;  // konzervatív padló (cél 15–20s), a token/batch ÷ 200 fölé húzva
+// A groq free-tier TPM az openai/gpt-oss-120b-n MÉRT 8000 (groq-limits-probe 2026-08-17) — a
+// korábbi llama-3.3-70b 12000-e ELAVULT (a modell 08-16-án leállt). A padló 15s→25s: a break-even
+// (2616 tok/batch ÷ 133,3 ≈ 19,6s) FÖLÉ, tartalékkal; a 8000 TPM-nél a 15s már nem elég. A képlet
+// ADAPTÍV: a tényleges token/batch a usage-ből → ha a gpt-oss-120b (reasoning) többet fogyaszt,
+// a szünet automatikusan nő (a TPM-et így akkor is védi, ha a tok/batch a padló fölé viszi).
+const GROQ_TPM_LIMIT = 8000;                     // MÉRT free-tier TPM (openai/gpt-oss-120b), §5.3
+const TPM_TOKENS_PER_S = GROQ_TPM_LIMIT / 60;    // ~133,3 tok/s utántöltés
+const MIN_BATCH_PAUSE_MS = 25000;                // padló a break-even (19,6s) fölé, tartalékkal
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // A batch tényleges token-fogyása a completeFn által a logba fűzött `usage.total_tokens`-ekből

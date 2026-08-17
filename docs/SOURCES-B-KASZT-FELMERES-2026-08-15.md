@@ -240,6 +240,52 @@ napi keret megléte.** A számítás:
 
 ---
 
+### 5.3 groq-modellváltás + újramérés az ÉLŐ free-tieren (2026-08-17) — az ÉRVÉNYES számok
+
+A `llama-3.3-70b-versatile` 08-16-i leállása után a `groq-limits-probe.yml` (kézi, a napi triázs
+KULCSÁVAL) lemérte a jelölteket. **Eredmény: mindhárom modell HTTP 200, és a limit FIÓK-SZINTŰ
+(nem modell-szintű):**
+
+| modell | HTTP | RPD (limit-requests) | TPM (limit-tokens) | kontextus |
+|---|---|---|---|---|
+| **openai/gpt-oss-120b** | 200 | 1000 | **8000** | 131072 |
+| openai/gpt-oss-20b | 200 | 1000 | 8000 | 131072 |
+| qwen/qwen3.6-27b | 200 | 1000 | 8000 | — |
+
+**Döntés: `openai/gpt-oss-120b`** (`config/llm.json` triázs-lánc, 2026-08-17). Azonos kvóta mellett a
+legerősebb, nincs trade-off, és a KIEMELT-kalibráció visszaállítására a legjobb esély. (RPM/TPD a
+Groq headerében nincs; a nyers dump sem adott többet.)
+
+**Következmény 1 — a TPM 12000 → 8000 CSÖKKENT → a P0 padló és képlet újrakalibrálva:**
+- Utántöltés = 8000/60 = **133,3 tok/s** (volt 200).
+- Break-even a 2616 tok/batch mellett = 2616 ÷ 133,3 = **~19,6 s** → a **15 s padló MÁR NEM ELÉG.**
+- **Új padló: 25 s** (a break-even fölé, tartalékkal). A képlet ADAPTÍV marad: `szünet = max(25s,
+  token/batch ÷ 133,3)` — ha a gpt-oss-120b (reasoning-modell!) többet fogyaszt 2616-nál, a szünet
+  automatikusan nő, így a 8000 TPM-et akkor is védi (a padló csak a baseline). *A gpt-oss-120b valós
+  tok/batch-e a triázs-batchen MÉG NEM mért (a probe max_tokens:1-gyel hívott) → az első éles futás
+  méri; ha jóval 2616 fölött van, a padló-emelés vagy `reasoning_effort:low` a következő lépés.*
+- **Futás-nyúlás 15 batchnél (14 gap):** 15s padló → 14×15=210s (3,5 min); 25s padló → 14×25=350s
+  (5,83 min) → **+140 s (+2,3 min)**. A node-futás ~11 → **~13,3 min** (a mai LLM+IO-t konstansnak véve).
+- **SLA (15:00 CEST): BŐVEN belefér.** Ma a levél 11:33 CEST (cron→levél 50,8 min = 39,6 min GHA-queue
+  + 11 min node). Az új node ~13,3 min → tipikus queue mellett levél ~11:36 CEST; a legrosszabb queue
+  (+78 min) + lassú reasoning-futás (~18 min) mellett is ~12:20 CEST → **~2,7–3,4 h tartalék** a 15:00-ig.
+  A padló-emelés SLA-kockázata elhanyagolható.
+
+**Következmény 2 — a valós napi batch-plafon (RPD nem korlát, TPD nincs headerben):**
+- **RPD 1000: NEM korlát** — a napi terhelés ~15–40 batch (a `maxItems=600` cap = 40 batch), messze 1000 alatt.
+- **TPM 8000: a run-on BELÜLI RÁTA-korlát, nem batch-SZÁM-korlát** — a P0-szünet (adaptív) tartja a
+  futást a TPM alatt; a „ára" idő, nem elvesztett batch.
+- **TPD: a header NEM adja** (mérhetetlen ezen a csatornán). Ha ~200k (bizonytalan másodlagos forrás),
+  akkor 2616 tok/batchnél ~76 batch/nap, reasoning-nehéz 4000-nél ~50/nap — mindkettő a 40-batch cap FÖLÖTT.
+- **→ Az operatív plafon a `maxItems=600` (40 batch), NEM a kvóta.** 40 batch × 25s padló = 39×25 = 975s
+  (16,25 min) szünet + LLM — még mindig bőven SLA-n belül. **A kötő korlát a futáshossz (SLA), ami
+  kényelmes.** Figyelendő EGYETLEN eset: nehéz nap (40 batch) × magas reasoning-tok/batch → a TPD (ha
+  ~200k) közelébe kerülhet; a napi providers_used token-összegét figyelni kell az első gpt-oss-futásokon.
+
+**Aváltás LEVÉL-HATÓ** (a triázs KIEMELT/FONTOS/FIGYELENDO kalibrációja modell-függő) → 2026-08-17-en
+ez a nap EGYETLEN levél-ható változása; az E2 (europeelects aktiválás) HOLNAPRA csúszik. A P0 padló-emelés
+(levél-semleges) ugyanebbe a körbe került, mert a kettő összefügg (a 8000 TPM hajtja a padlót).
+
 ## 6. Javaslat — sorrend (a userrel egyeztetve, 2026-08-15)
 
 1. **pew ELSŐNEK** — nem a legkönnyebb, hanem ami a #5 tényleges célját (rejtett magyar adat)
