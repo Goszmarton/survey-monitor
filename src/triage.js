@@ -33,6 +33,28 @@ const TRIAGE_SCHEMA = {
 const DATASET_CODE = /^[A-Z][A-Z0-9_]{2,}\b.*\bDataset\b/i; // pl. 'EI_ISBR_M - "Dataset: updated data"'
 const DEFAULT_MAX_ITEMS = 600; // cap = 40 batch × 15 (backstop; a prioritás védi a fontosat)
 
+// P0 — TPM-tudatos batch-szünet (§5.2). A kötő korlát KETTŐS: a napi TPD bő, DE a perces
+// TPM (groq: 12000 tok/perc, ~200 tok/s utántöltés) a per-run burst-plafon. Több forrás →
+// hosszabb futás → a batch-löket a TPM-limithez közelít. Ezért a batchek KÖZT kényszerített
+// minimum-szünet: a mért token/batch ÷ 200 (a break-even, ahol a vödör nem ürül tartósan),
+// egy konzervatív ~15s padlóval (cél 15–20s / 3–4 batch/perc, tartalékkal). Levél-semleges:
+// a szünet csak a futás sebességét változtatja, a verdikteket nem (kimenet bájtazonos).
+const TPM_TOKENS_PER_S = 200;      // groq TPM-utántöltés: 12000 / 60
+const MIN_BATCH_PAUSE_MS = 15000;  // konzervatív padló (cél 15–20s), a token/batch ÷ 200 fölé húzva
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A batch tényleges token-fogyása a completeFn által a logba fűzött `usage.total_tokens`-ekből
+// (a batch alatt keletkezett bejegyzések, `from`-tól). Összegzés: egy esetleges séma-retry
+// külön hívás → külön usage; a burst szempontjából a SUMMA a mérvadó. Usage híján 0 → padló.
+function batchTokens(log, from) {
+  let sum = 0;
+  for (let i = from; i < log.length; i++) {
+    const t = log[i]?.usage?.total_tokens;
+    if (typeof t === "number") sum += t;
+  }
+  return sum;
+}
+
 /** @returns {"DROP"|"LLM"} — DROP: kódból eldöntött irreleváns (nincs LLM-hívás). */
 export function prefilter(item, cfg) {
   const title = (item.title ?? "").toLowerCase();
@@ -129,7 +151,7 @@ function gatedSignificance(r) {
  * @param {number} [opts.maxItems]    cap az LLM-nek küldött tételekre
  * @returns {Promise<{verdicts:Map<string,object>, degraded:boolean}>}
  */
-export async function triageItems(items, { completeFn, prefilterCfg, log = [], batchSize = 15, maxItems = DEFAULT_MAX_ITEMS }) {
+export async function triageItems(items, { completeFn, prefilterCfg, log = [], batchSize = 15, maxItems = DEFAULT_MAX_ITEMS, sleepFn = defaultSleep }) {
   const verdicts = new Map();
   const llmItems = [];
 
@@ -151,31 +173,41 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
 
   let okBatches = 0;
   let llmBatches = 0;
-  for (const batch of chunk(toTriage, batchSize)) {
+  const batches = chunk(toTriage, batchSize);
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batch = batches[bi];
     llmBatches++;
+    const logStart = log.length;
     const res = await completeFn("triage", buildPrompt(batch), { schema: TRIAGE_SCHEMA, log });
 
     if (res == null) {
       // Bukott batch: a tételek megmaradnak, ítélet nélkül — a többi batch fut tovább.
       for (const it of batch) verdicts.set(it.canonical_key, missingVerdict(it, "triázs: hiányzó ítélet (batch kihagyva)"));
-      continue;
+    } else {
+      okBatches++;
+      const byId = new Map(res.data.map((r) => [r.id, r]));
+      batch.forEach((it, i) => {
+        const r = byId.get(i + 1);
+        if (r) {
+          verdicts.set(it.canonical_key, {
+            relevant: r.relevant, significance: gatedSignificance(r),
+            significance_raw: ungatedSignificance(r), // kapu ELŐTTI érték — auditálhatóság (3a, CLAUDE.md 2)
+            data_backed: r.data_backed === true,
+            kind: r.kind ?? it.kind, reason: r.reason ?? "", triage_provider: res.provider, triage_model: res.model,
+          });
+        } else {
+          verdicts.set(it.canonical_key, missingVerdict(it, "triázs: hiányzó ítélet"));
+        }
+      });
     }
 
-    okBatches++;
-    const byId = new Map(res.data.map((r) => [r.id, r]));
-    batch.forEach((it, i) => {
-      const r = byId.get(i + 1);
-      if (r) {
-        verdicts.set(it.canonical_key, {
-          relevant: r.relevant, significance: gatedSignificance(r),
-          significance_raw: ungatedSignificance(r), // kapu ELŐTTI érték — auditálhatóság (3a, CLAUDE.md 2)
-          data_backed: r.data_backed === true,
-          kind: r.kind ?? it.kind, reason: r.reason ?? "", triage_provider: res.provider, triage_model: res.model,
-        });
-      } else {
-        verdicts.set(it.canonical_key, missingVerdict(it, "triázs: hiányzó ítélet"));
-      }
-    });
+    // P0 (§5.2): TPM-tudatos szünet a KÖVETKEZŐ batch előtt (az utolsó UTÁN nem, bukott batch
+    // után is — ott is fogyott rate). A szünet = max(padló, mért token/batch ÷ 200). A `continue`-t
+    // szándékosan kerüljük, hogy a bukott batch se ugorja át a szünetet.
+    if (bi < batches.length - 1) {
+      const pauseMs = Math.max(MIN_BATCH_PAUSE_MS, Math.ceil(batchTokens(log, logStart) / TPM_TOKENS_PER_S) * 1000);
+      await sleepFn(pauseMs);
+    }
   }
 
   // Degradált CSAK akkor, ha volt LLM-tétel, de EGYETLEN batch sem sikerült.

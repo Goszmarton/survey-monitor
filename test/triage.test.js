@@ -89,7 +89,7 @@ test("triageItems: részleges batch-hiba → NEM degraded, a sikeres verdiktek m
     if (n === 3) return null; // az utolsó batch elbukik
     return { data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "sajto" }], provider: "gemini", model: "m" };
   };
-  const r = await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1 });
+  const r = await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1, sleepFn: async () => {} });
 
   assert.equal(r.degraded, false, "van sikeres batch → nem degradált");
   assert.equal(r.verdicts.get("a").significance, "FONTOS");
@@ -98,6 +98,47 @@ test("triageItems: részleges batch-hiba → NEM degraded, a sikeres verdiktek m
   assert.equal(r.verdicts.get("c").relevant, true);
   assert.equal(r.verdicts.get("c").significance, null);
   assert.match(r.verdicts.get("c").reason, /hiányzó ítélet|batch/i);
+});
+
+test("triageItems: TPM-szünet — a batchek KÖZT vár, a mért token/batch ÷ 200 alapján (§5.2)", async () => {
+  // 3 batch (batchSize 1), mindegyik 4000 total_token usage-t naplóz → 4000/200 = 20 s szünet.
+  const items = [
+    { canonical_key: "a", source_id: "telex", kind: "sajto", title: "pártA" },
+    { canonical_key: "b", source_id: "telex", kind: "sajto", title: "pártB" },
+    { canonical_key: "c", source_id: "telex", kind: "sajto", title: "pártC" },
+  ];
+  const completeFn = async (role, prompt, { log }) => {
+    log?.push({ role, provider: "groq", status: "OK", usage: { total_tokens: 4000 } });
+    return { data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "sajto" }], provider: "groq", model: "m" };
+  };
+  const sleeps = [];
+  const sleepFn = async (ms) => { sleeps.push(ms); };
+  await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1, sleepFn });
+
+  assert.equal(sleeps.length, 2, "3 batch → 2 szünet (az utolsó UTÁN nem vár)");
+  for (const ms of sleeps) assert.ok(ms >= 20000, `szünet ${ms}ms ≥ 20000 (4000 token ÷ 200)`);
+});
+
+test("triageItems: TPM-szünet — usage híján a konzervatív ~15s padló érvényes (§5.2)", async () => {
+  const items = [
+    { canonical_key: "a", source_id: "telex", kind: "sajto", title: "pártA" },
+    { canonical_key: "b", source_id: "telex", kind: "sajto", title: "pártB" },
+  ];
+  const completeFn = async () => ({ data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "sajto" }], provider: "groq", model: "m" });
+  const sleeps = [];
+  const sleepFn = async (ms) => { sleeps.push(ms); };
+  await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 1, sleepFn });
+
+  assert.equal(sleeps.length, 1, "2 batch → 1 szünet");
+  assert.ok(sleeps[0] >= 15000, `usage nélkül a padló érvényes: ${sleeps[0]}ms ≥ 15000`);
+});
+
+test("triageItems: TPM-szünet — egyetlen batch → nincs várakozás", async () => {
+  const items = [{ canonical_key: "a", source_id: "telex", kind: "sajto", title: "pártA" }];
+  const completeFn = async () => ({ data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "sajto" }], provider: "groq", model: "m" });
+  const sleeps = [];
+  await triageItems(items, { completeFn, prefilterCfg: PF, log: [], batchSize: 15, sleepFn: async (ms) => sleeps.push(ms) });
+  assert.equal(sleeps.length, 0, "egy batch → 0 szünet");
 });
 
 test("triageItems: cap + prioritás — hivatalos és UJ_24H előre, a többi halasztva", async () => {
@@ -113,7 +154,7 @@ test("triageItems: cap + prioritás — hivatalos és UJ_24H előre, a többi ha
     return { data: [{ id: 1, relevant: true, significance: "FONTOS", data_backed: true, kind: "hivatalos_adat" }], provider: "gemini", model: "m" };
   };
   const log = [];
-  const r = await triageItems(items, { completeFn, prefilterCfg: PF, log, batchSize: 1, maxItems: 2 });
+  const r = await triageItems(items, { completeFn, prefilterCfg: PF, log, batchSize: 1, maxItems: 2, sleepFn: async () => {} });
 
   // a 2 hivatalos UJ_24H tétel triázsra ment (prioritás), a 4 régi sajtó nem
   const promptText = seen.join("\n");
