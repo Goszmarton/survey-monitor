@@ -296,20 +296,28 @@ aggregátumhoz mérve) — determinista, de ez későbbi lépés; az alap a grou
 
 ### Lépések (minden lépés: RED teszt VALÓS fixture-rel ELŐBB — CLAUDE.md 1.)
 
-**P0 — TPM-tudatos batch-szünet a triázs-hurokban (LEVÉL-SEMLEGES, ELSŐNEK):**
+**IMPLEMENTÁCIÓS ÁLLAPOT (2026-08-17): a négy LEVÉL-SEMLEGES lépés SHIPPELVE, TDD-vel
+(RED előbb, valós fixture), 243 teszt zöld.** P0 (`0b94b45`), E1 (`f031760`), B1 (`d7271dd`),
+pew-kinyerés (`91d3f9b`). A két AKTIVÁLÁS (E2, B2) NEM ma — azok levél-hatók, külön napokra esnek.
+
+**P0 — TPM-tudatos batch-szünet a triázs-hurokban (LEVÉL-SEMLEGES, ELSŐNEK) — ✅ SHIPPELVE `0b94b45`:**
+`triage.js`: a batchek KÖZT `max(15s padló, mért token/batch ÷ 200)` szünet, a token/batch a
+completeFn logba fűzött `usage.total_tokens`-éből; injektálható `sleepFn`. RED: sleepFn-spy
+(token-alapú szünet / usage-nélküli padló / egy-batch=nincs-szünet). Kimenet bájtazonos.
 a triázs-hurok minimum-késleltetése két batch közt (mért `token/batch` ÷ 200, vagy fix konzervatív
 ~15 s). RED teszt: injektált óra/sleep-spy, a hurok ≥ küszöböt vár batchek közt. Kimenet BÁJTAZONOS →
 levél-semleges. **Ez ELŐBB kell, mint bármely volumen-növelő aktiválás** (különben az első aktiválás
 429-et kockáztat). *(Ha az (b)/(c) út miatt a determinista források nem adnak új batchet, P0 akkor is
 ship-elendő általános biztonsági korlátként — a pew burst miatt úgyis kell.)*
 
-**E1 — europeelects adapter + parser + FAIL-CLOSED validátor + fixture-tesztek (LEVÉL-SEMLEGES):**
-fetch-adapter az ASAPOP GCS-táblára + parser → tételek, a `(b)`-döntés determinista validációs rétegével
-(fejléc-assert, %-összeg, tartomány, mintaméret, dátum, sor-sanity — ld. fent). RED teszt a valós
-`hu.html` fixture-rel (15,6 KB, `<thead>`: Fieldwork Period · Polling Firm · Commissioner · Sample Size
-· TISZA · Fidesz–KDNP · MH · DK · MKKP…) ÉS **külön RED teszt a validátor MINDEN guardjára** (elrontott
-fixture: átnevezett oszlop, %-összeg≠100, rossz dátum → SKIPPED_VALIDATION). A forrás MÉG NEM aktív.
-Levél-semleges.
+**E1 — europeelects adapter + parser + FAIL-CLOSED validátor + fixture-tesztek (LEVÉL-SEMLEGES) — ✅ SHIPPELVE `f031760`:**
+`src/sources/europeelects.js`: `parseEuropeElects` (tiszta HTML-tábla → 50 poll, párt-%, mintaméret,
+fieldwork — a számok bájtra a forrásból), `validateEuropeElects` (6 guard), `fetchNew` (fail-closed:
+guard-bukás → `SKIPPED_VALIDATION`, 0 tétel). Valós fixture `europeelects_hu.html` (15641 B, bájtazonos
+a 08-16 ASN-próbával); a 6 guard MINDEGYIKE külön RED-teszt egy célzott mutációval (fejléc-átnevezés,
+69%→9%/169%, mintaméret 50, dátum 1899, üres tbody → a helyes guard-név). A forrás MÉG NEM aktív
+(sources.json érintetlen). Levél-semleges. **Mért bounds a valós fixture-ön:** %-összeg 93–101,
+mintaméret 1000–3332 → a [90,110]/[300,5000] sávok biztonságosak.
 
 **E2 — europeelects AKTIVÁLÁS (ez a nap EGYETLEN levél-ható változása):**
 `status: OK`, a tételek belépnek a triázs→kapu→jelentés folyamba. Verifikáció: batch-szám + TPM-headroom
@@ -318,11 +326,23 @@ sajtó-tételekkel — [[f2-fix-round-decisions]] intézet-guard), kapu helyes. 
 CLAUDE.md 3.: az aktiválás a MAI ablak polljait húzza be; a historikus poll-backfill KÜLÖN, idempotens
 migráció, jóváhagyással.)*
 
-**B1 — eurobarometer fetch-lánc + XLSX-parser + fixture-tesztek (LEVÉL-SEMLEGES):**
-`survey/get/latest` → `get/one` → `openDataPublicationUrl` → `data.europa.eu` dataset → `volumeA.xlsx`
-→ V-oszlop parse. RED tesztek valós fixture-ökkel (a JSON-válaszok + egy `volumeA.xlsx` minta). A
-letöltő-key futásidőben a hub-API-ból; `openDataPublicationUrl` hiányában a HU-Country-results PDF a
-fallback. Nem aktív. Levél-semleges.
+**B1 — eurobarometer fetch-lánc + XLSX-parser + fixture-tesztek (LEVÉL-SEMLEGES) — ✅ SHIPPELVE `d7271dd`:**
+`src/sources/eurobarometer.js`: lánc-feloldó tiszta függvények (`pickLatestSurvey`, `openDataUrlOf`,
+`datasetIdFromOpenDataUrl`, `volumeADownloadUrl`) + `resolveVolumeA` orchesztrátor (injektálható
+fetchImpl). **XLSX-olvasás SAJÁT ZIP+inflate-tel** (nincs xlsx-lib): `unzipXlsx` (EOCD → central
+directory bejárás, `node:zlib.inflateRawSync` deflate + stored), `parseWorksheet` (inline-string +
+numerikus cella), `sheetFileMap`, `findCountryColumn`. A **V oszlop = "HU"** kiválasztás külön tesztelt
+(V9="HU", V10=1020, V13=0.78 a valós volumeA.xlsx-ből). Valós fixture-ök: survey_latest, survey_one_3752,
+odp_dataset, volumeA.xlsx (377 KB). A letöltő-key futásidőben a hub-API-ból; `openDataPublicationUrl`
+hiányában a HU-Country-results PDF a fallback (későbbi). Nem aktív. Levél-semleges.
+
+**pew — agentikus kinyerés-réteg + grounding-verifikáció (LEVÉL-SEMLEGES) — ✅ SHIPPELVE `91d3f9b`:**
+`src/sources/pew_extract.js`: a §3 három rétege — (1) `hasHungarianData` determinista `Hungar`-pre-grep
+kapu (0 LLM, ha nincs magyar); (2) LLM-határ (`extractHungarianData`, injektálható completeFn, hármas-séma);
+(3) `isGrounded`/`normalizeForGrounding` grounding-guard (§2): a szó szerinti idézet whitespace/entity-
+normalizált jelenléte a dokumentumban → fabrikált szám ELVETVE, láthatóan (`rejected`). A fabrikáció-guard
+RED-tesztelve (hihető-de-hamis hármas idézete nincs a dokumentumban → elvetés). A pew-AKTIVÁLÁS (külön
+provider-lánc + a §5 burst-előmérés) későbbi.
 
 **B2 — eurobarometer AKTIVÁLÁS (egy külön nap EGYETLEN levél-ható változása):**
 esemény-vezérelt (új survey megjelenésekor). A grounding-verifikáció (§2) itt is áll a kinyert
