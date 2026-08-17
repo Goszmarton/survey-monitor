@@ -154,7 +154,7 @@ kinyerés is a triázson FELÜL hív.**
 **Összegzés:** a kvóta ma **közös szűk keresztmetszet** a backfill, az europeelects ÉS a pew
 agentikus kinyerés számára is → a groq-plafon újramérése mindhárom előfeltétele.
 
-### 5.1 groq-plafon — az újramérés eredménye (2026-08-15)
+### 5.1 groq-plafon — az újramérés eredménye (2026-08-15) ⚠️ ELAVULT (a modell leállt 08-16 — ld. az 5.2 előtti bannert)
 
 **Path 1 (headerök) bejött, a header-mérés megírva (commit `d244087`, pusholva):** a groq minden
 válaszban visszaadja az `x-ratelimit-*` fejléceket (request=NAPI, token=PERCES limit); az
@@ -177,7 +177,32 @@ TÉNYLEGES fogyasztást tükrözi (a retry-tokeneket is), így a mért-vs-konzer
 a headroom feltételezetten ~0, azaz a backfill/europeelects/pew NEM indítható, amíg a header nem
 igazolja a valós plafont.**
 
-### 5.2 groq-plafon — az ELSŐ ÉLES HEADER-MÉRÉS (2026-08-16) → blokkoló feloldva
+> ⚠️ **ELAVULT (2026-08-17): a teljes §5.1–5.2 groq-elemzés egy MÁR NEM LÉTEZŐ modellre vonatkozik.**
+> A `llama-3.3-70b-versatile`-t a Groq **2026-08-16-án leállította** (docs/deprecations, megerősítve:
+> 08-16 még 11 OK batch, 08-17 **13×HTTP_404 „model does not exist"**). Az ITT rögzített minden szám
+> — **12000 TPM / 100000 TPD / ~2616 tok/batch / ~35–38 batch/nap / a P0-képlet ÷200 paramétere** —
+> erre a modellre igaz, és **NEM vihető át** az új modellre méretlenül. A P0 **15s padló MARAD**
+> (általános biztonsági korlát), de a **token/batch ÷ (TPM/60)** képlet TPM-paramétere ÚJRAMÉRENDŐ.
+>
+> **Groq hivatalos migrációs cél (docs):** `openai/gpt-oss-120b` (a legközelebbi képesség/méret,
+> 131K kontextus, 65K max completion) VAGY `qwen/qwen3.6-27b`. FIGYELEM: a `llama-3.1-8b-instant` is
+> LEÁLLT 08-16-án (→ `openai/gpt-oss-20b`), tehát a naiv „kisebb Llama" fallback SEM él.
+>
+> **AMIT AZ ÚJ MODELLEN ÚJRA KELL MÉRNI (élő header, nem dokumentáció — a memóriából dolgozni itt
+> bizonyítottan veszélyes):**
+> 1. **free-tier RPM/RPD/TPM/TPD** az `x-ratelimit-*` headerből (a docs rate-limit oszlopa nem
+>    egyértelműen free-tier; a másodlagos blogok elavultak);
+> 2. **tényleges tok/batch** az új modellen (a 15 tételes triázs-batchre) → a napi batch-plafon és a
+>    **P0 break-even szünet = tok/batch ÷ (TPM/60)** újraszámolása (ha pl. a free TPM 8000, akkor
+>    ÷133,3 → ~20s a 2600 tok/batchnél, ami a 15s padló FÖLÉ kerül → a padló már nem elég);
+> 3. **KIEMELT/FONTOS/FIGYELENDO kalibráció** — a jelentőség-eloszlás modell-függő (08-17: a haiku-
+>    fallback 0 raw-KIEMELT-et adott 65 friss tételre, szemben a groq korábbi 2-3/nap-jával). Az új
+>    groq-modell raw-KIEMELT arányát össze kell vetni a régi groq-éval ÉS a haikuéval.
+>
+> **Config-váltás CSAK a fenti mérések + közös döntés után** (a modellválasztás nem config-csere:
+> a triázs-kalibráció modell-függő). A lenti §5.1–5.2 történeti referenciaként marad.
+
+### 5.2 groq-plafon — az ELSŐ ÉLES HEADER-MÉRÉS (2026-08-16) → blokkoló feloldva ⚠️ ELAVULT (ld. fent)
 
 A 08-16-i futás `providers_used`-je 11 groq OK-batchet tartalmaz mért `ratelimit`-tel. Baseline
 igazolva: `requests_limit=1000` (RPD), `tokens_limit=12000` (TPM). **MÉRT token/batch: átlag 2 616**
