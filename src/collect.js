@@ -55,8 +55,12 @@ function channelsOf(source) {
 }
 
 // Kombinált státusz több csatornából: a „legjobb" nyer (van-e bárhol új?).
-const RANK = { OK_UJ: 3, OK_NINCS_UJ: 2, RESZLEGES: 1, HIBA: 0 };
-const combineStatus = (statuses) =>
+// SKIPPED_VALIDATION (E2, fail-closed forrás-validáció): a fetch SIKERÜLT, de a guard
+// elutasította az adatot — ez NEM hálózati HIBA, ezért HIBA fölött rangsorolt (0,5), de
+// bármely valódi adat (OK_*/RESZLEGES) felülírja. Enélkül a fail-closed skip HIBA-ként
+// esne be a jelentésbe (undefined rank → sosem nyerne a "HIBA" init fölött).
+const RANK = { OK_UJ: 3, OK_NINCS_UJ: 2, RESZLEGES: 1, SKIPPED_VALIDATION: 0.5, HIBA: 0 };
+export const combineStatus = (statuses) =>
   statuses.reduce((best, s) => (RANK[s] > RANK[best] ? s : best), "HIBA");
 
 /**

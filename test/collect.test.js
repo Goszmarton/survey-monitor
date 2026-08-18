@@ -5,7 +5,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb, startRun } from "../src/state/db.js";
-import { collect } from "../src/collect.js";
+import { collect, combineStatus } from "../src/collect.js";
+
+// E2 előkészítés: az europeelects fail-closed validátora SKIPPED_VALIDATION check-státuszt
+// ad (a fetch sikerült, de a guard elutasította — NEM hálózati HIBA). A combineStatus RANK
+// eddig nem ismerte → RANK[s]=undefined → HIBA-ként esett vissza. Ez a fail-closed skipet
+// hibás fetch-nek tüntetné fel a jelentésben. A SKIPPED_VALIDATION saját, HIBA fölötti rangot
+// kap (de bármely valódi adat OK_* felülírja).
+test("combineStatus: SKIPPED_VALIDATION önálló státusz, NEM esik HIBA-ra (E2)", () => {
+  assert.equal(combineStatus(["SKIPPED_VALIDATION"]), "SKIPPED_VALIDATION");
+});
+
+test("combineStatus: SKIPPED_VALIDATION vs HIBA → a validation-skip informatívabb, az nyer (E2)", () => {
+  assert.equal(combineStatus(["SKIPPED_VALIDATION", "HIBA"]), "SKIPPED_VALIDATION");
+});
+
+test("combineStatus: van valódi adat (OK_UJ) → az felülírja a SKIPPED_VALIDATION-t (E2)", () => {
+  assert.equal(combineStatus(["SKIPPED_VALIDATION", "OK_UJ"]), "OK_UJ");
+  assert.equal(combineStatus(["OK_NINCS_UJ", "SKIPPED_VALIDATION"]), "OK_NINCS_UJ");
+});
 
 const fx = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)));
 
