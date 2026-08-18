@@ -45,7 +45,7 @@ const SIGNIF = {
   FIGYELENDO: { label: "🟡 FIGYELENDO", rank: 2 },
 };
 
-const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "⚠️ részleges", HIBA: "❌ hiba" };
+const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "⚠️ részleges", SKIPPED_VALIDATION: "🚫 validáció elutasította", HIBA: "❌ hiba" };
 
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
@@ -174,11 +174,16 @@ function summarizeProviders(log = []) {
   if (!log.length) return "F2 — LLM-hívás nem történt";
   const ok = log.filter((e) => e.status === "OK").map((e) => `${e.role}: ${e.model ?? e.provider}`);
   const skipped = log.filter((e) => e.status === "SKIPPED_NO_KEY").map((e) => `${e.provider}(nincs kulcs)`);
-  const failed = log.filter((e) => !["OK", "SKIPPED_NO_KEY", "SKIP"].includes(e.status)).map((e) => `${e.provider}:${e.status}`);
+  // WARN külön: a néma provider-degradáció / MAIL_TO-guard a RÉSZLETÉVEL, láthatóan (nem
+  // státusz-címkeként a "váltás:" listában) — hogy a napi 404/fallback ellenőrzés a
+  // jelentésből leolvasható legyen (audit.js).
+  const warned = log.filter((e) => e.status === "WARN").map((e) => `⚠️ ${e.detail ?? e.role}`);
+  const failed = log.filter((e) => !["OK", "SKIPPED_NO_KEY", "SKIP", "WARN"].includes(e.status)).map((e) => `${e.provider}:${e.status}`);
   const parts = [];
   if (ok.length) parts.push(ok.join(" · "));
   if (failed.length) parts.push("váltás: " + failed.join(", "));
   if (skipped.length) parts.push("kihagyva: " + [...new Set(skipped)].join(", "));
+  if (warned.length) parts.push(warned.join(" · "));
   return parts.join(" | ") || "triázs kihagyva";
 }
 

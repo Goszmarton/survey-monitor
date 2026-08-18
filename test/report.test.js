@@ -82,3 +82,34 @@ test("üres futás sem dob (0 tétel, 0 forrás)", () => {
   });
   assert.match(html, /nincs/i);
 });
+
+// A providers_used WARN-bejegyzései (néma provider-degradáció, MAIL_TO-guard) a
+// láblécben LÁTHATÓAN, a részletükkel jelenjenek meg — ne olvadjanak bele a
+// "váltás:" listába státusz-címkeként (detail nélkül). Ez teszi a napi 404/fallback
+// ellenőrzést a jelentésből leolvashatóvá (nem kell kézzel az Actions-logba nézni).
+// E2 előkészítés: a SKIPPED_VALIDATION forrás-státusznak legyen olvasható címkéje az
+// ellenőrzési naplóban (ne a nyers enum-string jelenjen meg).
+test("ellenőrzési napló: SKIPPED_VALIDATION olvasható címkével (E2)", () => {
+  const html = renderReport({
+    ...RUN,
+    sourceChecks: [
+      { source_id: "europeelects", status: "SKIPPED_VALIDATION", detail: "PCT_SUM: 87 nem [90,110]", checked_at: "2026-08-18T04:00:00.000Z" },
+    ],
+  });
+  assert.match(html, /validáció/i, "olvasható 'validáció' címke, nem a nyers SKIPPED_VALIDATION enum");
+  assert.ok(!/>SKIPPED_VALIDATION</.test(html), "a nyers enum-string nem szivárog a cellába");
+});
+
+test("lábléc: a WARN-bejegyzések a részletükkel, láthatóan jelennek meg", () => {
+  const html = renderReport({
+    ...RUN,
+    providersUsed: [
+      { role: "triage", provider: "gemini", model: "gemini-flash-latest", status: "OK" },
+      { role: "triage", status: "WARN", detail: "groq 13× HTTP_404 a triázson — modell-deprecation gyanú" },
+      { role: "mail", status: "WARN", detail: "MAIL_TO pontosvesszőt tartalmaz" },
+    ],
+  });
+  assert.match(html, /groq 13× HTTP_404/, "a triázs-degradáció részlete megjelenik a láblécben");
+  assert.match(html, /MAIL_TO pontosvesszőt tartalmaz/, "a MAIL_TO-guard warning megjelenik");
+  assert.match(html, /⚠️/, "WARN-jelzés a láblécben");
+});

@@ -13,6 +13,7 @@ import { collect, selectActiveSources } from "./collect.js";
 import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
 import { deriveInstitutes } from "./lib/storygroup.js";
+import { auditProviders } from "./audit.js";
 
 const TZ = "Europe/Budapest";
 const DB_PATH = "state/monitor.db";
@@ -104,6 +105,15 @@ async function main() {
     durationMs: 0,
   };
   run.durationMs = Date.now() - startedMs;
+
+  // Néma provider-degradáció + MAIL_TO-guard AUDIT → WARN a providers_used-be (audit.js).
+  // A renderReport ELŐTT, hogy a lábléc kiírja; a finishRun (lentebb) perzisztálja. Ez teszi
+  // a napi "a triázst az ingyenes provider vitte-e, vagy fizetős fallbackre esett?" ellenőrzést
+  // a jelentésből leolvashatóvá (08-16: 13× groq-404 + néma fizetős fallback, csak kézzel derült ki).
+  for (const w of auditProviders({ log: providersUsed, env: process.env })) {
+    providersUsed.push(w);
+    console.warn(`AUDIT ${w.role}: ${w.detail}`);
+  }
 
   // ---- Jelentés: index + dátumozott archív példány (teljes Pages-változat) ----
   const html = renderReport(run);
