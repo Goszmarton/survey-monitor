@@ -39,7 +39,10 @@
     "pew": ["pew"],
     "ipsos": ["ipsos"],
     "eurobarometer": ["eurobarometer", "eurobarometesr"],
-    "europeelects": ["europeelects"],
+    "alapjogokert": ["Alapjogokért Központ"],
+    "atlasintel": ["Atlas Intel"],
+    "mclaughlin": ["McLaughlin Associates", "McLaughlin"],
+    "xxiszazad": ["XXI. Század Intézet"],
     "politico": ["politico"]
   }
 }
