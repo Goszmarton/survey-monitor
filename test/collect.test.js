@@ -5,7 +5,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb, startRun } from "../src/state/db.js";
-import { collect, combineStatus } from "../src/collect.js";
+import { collect, combineStatus, channelsOf } from "../src/collect.js";
+import * as europeelects from "../src/sources/europeelects.js";
+
+// E2/A: dedikált adapter-routing. Egy forrás a `feed`/`list_url` generikus csatornái helyett
+// (vagy mellett) a SAJÁT adapterét használhatja (source.adapter → registry). Az europeelects
+// az ASAPOP-táblát a dedikált parserrel olvassa, NEM a generikus htmllist-tel; a list_url-t az
+// adapter birtokolja, ezért a htmllist-csatorna NEM indul mellette (nincs dupla fetch).
+test("channelsOf: source.adapter → a dedikált adapter az EGYETLEN csatorna (nem htmllist) (E2/A)", () => {
+  const ch = channelsOf({ id: "europeelects", adapter: "europeelects", list_url: "https://x/hu.html" });
+  assert.equal(ch.length, 1, "pontosan egy csatorna");
+  assert.equal(ch[0].fetcher, europeelects, "a dedikált europeelects adapter viszi");
+  assert.equal(ch[0].fetcher.fetchNew, europeelects.fetchNew, "a fetchNew a dedikált adapteré");
+});
+
+test("channelsOf: adapter nélkül a generikus feed/list_url útvonal marad (regresszió)", () => {
+  const ch = channelsOf({ id: "x", feed: "https://x/rss", list_url: "https://x/list" });
+  assert.equal(ch.length, 2);
+  assert.deepEqual(ch.map((c) => c.name), ["feed", "lista"]);
+});
 
 // E2 előkészítés: az europeelects fail-closed validátora SKIPPED_VALIDATION check-státuszt
 // ad (a fetch sikerült, de a guard elutasította — NEM hálózati HIBA). A combineStatus RANK

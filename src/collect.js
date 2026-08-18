@@ -6,6 +6,7 @@
 import { canonicalKey } from "./lib/slug.js";
 import * as rss from "./sources/rss.js";
 import * as htmllist from "./sources/htmllist.js";
+import * as europeelects from "./sources/europeelects.js";
 import {
   upsertItems,
   recordSourceCheck,
@@ -45,9 +46,19 @@ export function applyTitleFilter(items, keywords) {
   return items.filter((it) => matchesTitleFilter(it, keywords));
 }
 
+// Dedikált forrás-adapterek (nem a generikus feed/list_url út): source.adapter → modul.
+// A modul a htmllist/rss-sel azonos szerződést teljesíti: fetchNew(source, opts) → {items, check}.
+const ADAPTERS = { europeelects };
+
 // Egy forrásnak több csatornája is lehet: verifikált RSS ÉS HTML-listaoldal
 // (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
-function channelsOf(source) {
+// Ha a forrásnak dedikált adaptere van (source.adapter), az az EGYETLEN csatorna: a
+// list_url-t az adapter birtokolja (saját parse), a generikus htmllist NEM indul mellette.
+export function channelsOf(source) {
+  if (source.adapter) {
+    const a = ADAPTERS[source.adapter];
+    return a ? [{ name: source.adapter, fetcher: a }] : [];
+  }
   const ch = [];
   if (source.feed) ch.push({ name: "feed", fetcher: rss });
   if (source.list_url) ch.push({ name: "lista", fetcher: htmllist });
