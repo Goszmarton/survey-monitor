@@ -40,6 +40,13 @@ jobs:
 
       - run: npm ci
 
+      # (a) test-gate: a config-blocklist guard (config_llm.test.js — deprecated groq-modell
+      # tiltása) csak akkor VÉD élesben, ha a CI a napi futás ELŐTT lefuttatja. Enélkül egy
+      # leállt modell (mint a 08-16-i llama-deprecation) semmit sem bukna deploy előtt. Bukó
+      # teszt itt megállítja a jobot, MIELŐTT hibás konfiggal levelet küldene.
+      - name: Test-gate (config-blocklist + regresszió)
+        run: npm test
+
       - name: Napi futás (jelentés + email)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

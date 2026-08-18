@@ -31,3 +31,17 @@ test("workflow: a Pages-deploynak van natív retry-ága (F4-C)", () => {
   assert.match(yml, /continue-on-error:\s*true/, "az első deploy nem bukik azonnal");
   assert.match(yml, /steps\.deploy1\.outcome == 'failure'/, "bukáskor fut a retry-lépés");
 });
+
+// (a) test-gate: a config-blocklist guard (config_llm.test.js — deprecated groq-modell
+// tiltása) csak akkor VÉD élesben, ha a CI ténylegesen futtatja a teszteket a napi futás
+// ELŐTT. Enélkül egy leállt modellt (mint a 08-16-i llama-deprecation) semmi nem fog el
+// deploy előtt. Az `npm test` lépésnek a `node src/run.js` lépés ELÉ kell kerülnie, hogy
+// bukó teszt megállítsa a futást, mielőtt hibás konfiggal levelet küldene.
+test("workflow: npm test test-gate a napi futás (node src/run.js) ELŐTT (a-pont)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  const testIdx = yml.search(/run:\s*npm test\b/);
+  const runIdx = yml.search(/node src\/run\.js/);
+  assert.ok(testIdx !== -1, "van 'npm test' lépés a workflow-ban");
+  assert.ok(runIdx !== -1, "van 'node src/run.js' lépés a workflow-ban");
+  assert.ok(testIdx < runIdx, "a test-gate a napi futás ELŐTT fut (bukó teszt megállítja)");
+});
