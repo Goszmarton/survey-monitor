@@ -20,10 +20,17 @@ const KIND = { hivatalos: "hivatalos_adat", sajto: "sajto", intezet: "kutatas", 
 
 const WINDOW_DAYS = 14;
 
-// Aktív forrás: A-kaszt, verifikált feed VAGY list_url. A run.js loadSources ezt
-// használja; a collect() KIZÁRÓLAG az így kiválasztott forrásokat kapja meg — ezért
-// tesztelhető külön, hogy egy config-bejegyzés bekerül-e a gyűjtésbe (pl. intézet-aktiválás).
-export const isActiveSource = (s) => s.kaszt === "A" && Boolean(s.feed || s.list_url);
+// Aktív forrás: (1) A-kaszt, verifikált feed VAGY list_url (a generikus RSS/HTML út), VAGY
+// (2) dedikált adapterrel + status "OK" (E2: europeelects — kaszt B, de determinista gépi
+// csatornája van, a channelsOf az adapterre routol). A (2) status-guardja FAIL-CLOSED: az
+// adapter önmagában NEM aktivál, csak OK mellett — egy NEM_AKTIVALT/hibás adapter-forrás kimarad.
+// Az (1) ág SZÁNDÉKOSAN status-független: a MEGSZUNT/HIBA_TARTOS A-források bekötve maradnak,
+// számítanak a forrásszámba, a source_check naplózza a részlegességet (nem tűnhetnek el némán,
+// CLAUDE.md 2). A run.js loadSources ezt hívja; a collect() KIZÁRÓLAG az így kiválasztott
+// forrásokat kapja — ezért tesztelhető külön, hogy egy config-bejegyzés bekerül-e a gyűjtésbe.
+export const isActiveSource = (s) =>
+  (s.kaszt === "A" && Boolean(s.feed || s.list_url)) ||
+  (Boolean(s.adapter) && s.status === "OK");
 export const selectActiveSources = (sources) => sources.filter(isActiveSource);
 
 // Forrás-szintű cím/leírás-szűrő (opcionális `source.title_filter: string[]`). Ahol egy forrás
