@@ -54,9 +54,13 @@ const ADAPTERS = { europeelects };
 // (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
 // Ha a forrásnak dedikált adaptere van (source.adapter), az az EGYETLEN csatorna: a
 // list_url-t az adapter birtokolja (saját parse), a generikus htmllist NEM indul mellette.
-export function channelsOf(source) {
+// A `adapters` registry INJEKTÁLHATÓ (default a valós ADAPTERS): egy új dedikált forrás
+// routingja így FAKE adapterrel tesztelhető, a modul valós I/O-ja nélkül (B2-előkészítés).
+// Ismeretlen adapter → üres lista (fail-closed): a collect HIBA-t naplóz, NEM esik vissza
+// némán a generikus feed/list_url útra (a dedikált forrás explicit szerződést vár).
+export function channelsOf(source, adapters = ADAPTERS) {
   if (source.adapter) {
-    const a = ADAPTERS[source.adapter];
+    const a = adapters[source.adapter];
     return a ? [{ name: source.adapter, fetcher: a }] : [];
   }
   const ch = [];

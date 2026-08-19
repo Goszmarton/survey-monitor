@@ -25,6 +25,26 @@ test("channelsOf: adapter nélkül a generikus feed/list_url útvonal marad (reg
   assert.deepEqual(ch.map((c) => c.name), ["feed", "lista"]);
 });
 
+// B2-előkészítés (routing-plumbing, LEVÉL-SEMLEGES): a channelsOf adapter-registryje
+// INJEKTÁLHATÓ (opcionális 2. paraméter, default a valós ADAPTERS). Így egy új dedikált
+// forrás (eurobarometer) routingja FAKE adapterrel tesztelhető, a modul valós (még hiányzó)
+// I/O-ja NÉLKÜL. A valódi eurobarometer regisztráció a B2 aktiváláskor jön, amikor a
+// fetchNew adapter-szerződés (→ {items, check}) elkészül — enélkül a registry-be tétel
+// csapda lenne (a hívás elszállna). A collect() a default registryvel hívja → visszafelé kompatibilis.
+test("channelsOf: injektált registry → a fake adapter az EGYETLEN csatorna (B2-előkészítés)", () => {
+  const fake = { fetchNew: async () => ({ items: [], check: { status: "OK_NINCS_UJ", detail: "fake" } }) };
+  const ch = channelsOf({ id: "x", adapter: "myfake", list_url: "https://x/y" }, { myfake: fake });
+  assert.equal(ch.length, 1, "az injektált adapter az egyetlen csatorna (nem htmllist a list_url-re)");
+  assert.equal(ch[0].name, "myfake");
+  assert.equal(ch[0].fetcher, fake, "az injektált fake adapter viszi a fetch-et");
+  assert.equal(ch[0].fetcher.fetchNew, fake.fetchNew);
+});
+
+test("channelsOf: injektált registryben sem szereplő adapter → üres (fail-closed, nem esik htmllistre)", () => {
+  const ch = channelsOf({ id: "x", adapter: "nincs", list_url: "https://x/y" }, { myfake: {} });
+  assert.equal(ch.length, 0, "ismeretlen adapter → nincs csatorna; a list_url NEM indít generikus htmllist-et");
+});
+
 // E2 előkészítés: az europeelects fail-closed validátora SKIPPED_VALIDATION check-státuszt
 // ad (a fetch sikerült, de a guard elutasította — NEM hálózati HIBA). A combineStatus RANK
 // eddig nem ismerte → RANK[s]=undefined → HIBA-ként esett vissza. Ez a fail-closed skipet
