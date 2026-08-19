@@ -176,7 +176,14 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
   // euro-area statisztikai közlemény osztja, ezért hamis bridging-token: e nélkül a 6
   // különböző Eurostat-közlemény egyetlen blobbá láncolódik (dedup(b)). KÜLÖN config-
   // kulcsban, hogy a magyar stoplista tiszta maradjon (nem nyelvi funkciószó).
-  const stop = new Set([...(cfg.stopwords ?? []), ...(cfg.title_generic_tokens ?? [])]);
+  // + name_hub_tokens (2026-08-19 mérés): SZEMÉLYNÉV-hubok (Vitézy, Mészáros, keresztnevek),
+  // amelyek KÜLÖNBÖZŐ sztorikat hidalnak a containment-élen egy mega-blobbá (mért: 28-Vitézy,
+  // 13-Mészáros). Eltávolításuk a nevek MENTÉN vágja szét a hamis blobot, a valódi
+  // parafrázisokat (közös témaszó/magas dice) érintetlenül hagyva. SZÁNDÉKOSAN üres a shippelt
+  // configban (levél-semleges); a feltöltése külön, levél-ható flip. A poliszém 'magyar'
+  // (=Hungarian ÉS Magyar Péter) KIMARAD a listából — kivétele valódi parafrázisokat törne
+  // (dice-él ≥1 közös-salient guard-ja), lásd a name-hub-guard tesztet.
+  const stop = new Set([...(cfg.stopwords ?? []), ...(cfg.title_generic_tokens ?? []), ...(cfg.name_hub_tokens ?? [])]);
   const nodes = items.map((it) => ({
     it,
     stoks: new Set(rawTokens(it.title, stop).map(stem)),

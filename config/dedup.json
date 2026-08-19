@@ -20,6 +20,9 @@
     "euro", "area", "both"
   ],
 
+  "_name_hub_tokens_comment": "SZEMÉLYNÉV-hub tokenek: KÜLÖNBÖZŐ sztorikat hidaló nevek, amelyeket a story-grouping stop-halmazba mergelünk (storygroup.js). SZÁNDÉKOSAN ÜRES = levél-semleges; a feltöltése külön, levél-ható változás (② tétel). Mért (a2) lista a feltöltéshez, slug-alakban (a stop PRE-STEM illeszt): keresztnevek peter/viktor/david/lorinc/janos/gabor/andras/zoltan/donald + nem-poliszém vezetéknevek vitezy/meszaros/orban/szijjarto/tarr/kubatov/baka/lazar. A 'magyar' SZÁNDÉKOSAN KIMARAD (poliszém: Hungarian ÉS Magyar Péter — kivétele valódi parafrázisokat törne, mért 2026-08-19).",
+  "name_hub_tokens": [],
+
   "institute_generic_tokens": [
     "intezet", "research", "kutatokozpont", "kozpont", "kutato", "magyar",
     "tarsadalomkutato", "center"
