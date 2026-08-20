@@ -78,6 +78,14 @@ function instituteKeysOf(item, institutes) {
 
 /** Melyik szabály (ha van) köti össze a és b tételt — vagy null. Intézet-guard felül. */
 function edgeRule(a, b, cfg) {
+  // STANDALONE forrás (poll-adatpont, pl. europeelects): a tételei SOSEM story-merge-elődnek —
+  // két kutatás KÜLÖN mérés, nem „ugyanaz a sztori" (a false-merge egy önálló pollt REJTENE,
+  // ARCHITEKTURA 2–3.). A generikus title-scan amúgy is törékeny itt: a „21 Kutatóközpont" bare
+  // numerikus „21" intézet-tokene illeszkedik más cégek címeiben a párt-százalékra ("Fidesz 21%"),
+  // ami hamisan összekötné a Mediánt a 21kutato-val. Config-vezérelt (dedup.json), üres alapból.
+  const standalone = cfg.standalone_sources ?? [];
+  if (standalone.includes(a.it.source_id) || standalone.includes(b.it.source_id)) return null;
+
   // KEMÉNY intézet-guard: két KÜLÖNBÖZŐ, nem üres intézet-halmaz → soha.
   if (a.inst.size && b.inst.size && disjoint(a.inst, b.inst)) return null;
 

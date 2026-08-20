@@ -208,8 +208,10 @@ export async function triageItems(items, { completeFn, prefilterCfg, log = [], b
     }
 
     // P0 (§5.2): TPM-tudatos szünet a KÖVETKEZŐ batch előtt (az utolsó UTÁN nem, bukott batch
-    // után is — ott is fogyott rate). A szünet = max(padló, mért token/batch ÷ 200). A `continue`-t
-    // szándékosan kerüljük, hogy a bukott batch se ugorja át a szünetet.
+    // után is — ott is fogyott rate). A szünet = max(padló, mért token/batch ÷ TPM_TOKENS_PER_S),
+    // azaz ÷ 133,3 (=8000 TPM / 60s) — az imént lezárt batch TÉNYLEGES usage-én (batchTokens),
+    // nem becslésen: ez adja a ≤8000 TPM konstrukciós garanciát. A `continue`-t szándékosan
+    // kerüljük, hogy a bukott batch se ugorja át a szünetet.
     if (bi < batches.length - 1) {
       const pauseMs = Math.max(MIN_BATCH_PAUSE_MS, Math.ceil(batchTokens(log, logStart) / TPM_TOKENS_PER_S) * 1000);
       await sleepFn(pauseMs);

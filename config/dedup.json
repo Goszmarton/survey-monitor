@@ -7,6 +7,9 @@
   "trigram_min_shared_tokens": 1,
   "decompose_min_component": 30,
 
+  "_standalone_sources_comment": "POLL-ADATPONT források: a tételeik SOSEM story-merge-elődnek (két kutatás külön mérés, nem ugyanaz a sztori; a false-merge egy önálló pollt rejtene). Az europeelects poll-címei ráadásul párt-százalékokat hordoznak, amikre a bare numerikus intézet-tokenek (pl. 21 Kutatóközpont '21'-ese) hamisan illeszkednének. Az eurobarometer ide kerül a B2 aktiváláskor.",
+  "standalone_sources": ["europeelects"],
+
   "stopwords": [
     "a", "az", "egy", "es", "s", "hogy", "is", "nem", "meg", "mar", "csak", "de",
     "ki", "be", "el", "fel", "le", "van", "volt", "lesz", "ha", "vagy", "sem",
