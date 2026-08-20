@@ -79,10 +79,14 @@ test("name-hub: POLISZÉMIA-LOCK — a 'magyar' KIVÉTELE valódi parafrázist t
   assert.ok(!sameGroup(withMagyar, "telex:q1", "index:q2"), "a 'magyar'-t elvéve a valódi helikopter-parafrázis eltörik (poliszémia-kár)");
 });
 
-test("name-hub: a SHIPPELT config (üres name_hub_tokens) LEVÉL-SEMLEGES — a csoportosítás változatlan (②)", () => {
-  // A repo config name_hub_tokens-e üres → a mechanizmus KI; a Vitézy-blob (a mai állapot) marad.
-  assert.deepEqual(cfg.name_hub_tokens, [], "a shippelt lista üres (a feltöltés a holnapi flip)");
+test("name-hub: a SHIPPELT config AKTÍV (name_hub_tokens = a2) — a produkciós út olvassa (② flip 2026-08-21)", () => {
+  // A ② flip UTÁN a repo config name_hub_tokens-e a mért a2 lista. Ez a teszt a PRODUKCIÓS
+  // BEKÖTÉST igazolja (Hibajel A elleni védelem): a shippelt configgal — extra hub INJEKTÁLÁSA
+  // NÉLKÜL — a Vitézy-blobnak SZÉT kell esnie. Ha nem, a config-kulcsot nem olvassa a grouping.
+  assert.deepEqual(cfg.name_hub_tokens, A2, "a shippelt lista a mért a2 (a flip él)");
   const shipped = groupStories(fixture(), { cfg, institutes }).representatives.map(
     (r) => new Set([r.canonical_key, ...(r._pressUrls ?? []).map((p) => p.canonical_key)]));
-  assert.ok(shipped.some((g) => g.has("telex:v1") && g.has("444:v2")), "üres listával a Vitézy-blob merge marad (semmi nem változik ma)");
+  assert.ok(!shipped.some((g) => g.has("telex:v1") && g.has("444:v2")), "a shippelt (a2) configgal a Vitézy-blob SZÉTVÁGVA — a produkciós út olvassa a kulcsot");
+  // a valódi parafrázis a shippelt configgal is egyben marad (nem túlbontás — Hibajel C ellen)
+  assert.ok(shipped.some((g) => g.has("telex:q1") && g.has("index:q2")), "a 'magyar'-guardolt parafrázis a shippelt configgal is egyben");
 });

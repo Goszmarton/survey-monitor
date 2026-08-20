@@ -287,9 +287,12 @@ function cstarFixture() {
 
 test("storygroup: dedup(b)/C-star — a hub-hídon lógó blob szétesik (Romsics ≠ Paks sztori)", () => {
   const items = cstarFixture();
-  const lowGate = { ...cfg, decompose_min_component: 3 };
+  // A C-star MECHANIZMUST izoláljuk a ② név-hub fliptől: a fixture szándékosan „Magyar Péter"
+  // hubbal hidal (a flip a 'peter'-t stoppolná), a name_hub hatását a namehub-teszt fedi.
+  const nh0 = { ...cfg, name_hub_tokens: [] };
+  const lowGate = { ...nh0, decompose_min_component: 3 };
   // baseline (a jelenlegi produkciós gate=30 a 7-tagú komponenst NEM bontja): egyetlen blob
-  assert.equal(groups(items, { cfg, institutes }).length, 1, "gate=30 alatt a 7-tagú komponens érintetlen (egy blob) — a bontás a mega-blobra szabott");
+  assert.equal(groups(items, { cfg: nh0, institutes }).length, 1, "gate=30 alatt a 7-tagú komponens érintetlen (egy blob) — a bontás a mega-blobra szabott");
   // C-star aktív (alacsony gate): a két független sztori KÜLÖN csoport
   const gs = groups(items, { cfg: lowGate, institutes });
   assert.ok(gs.length >= 2, `a blob szétesik (most: ${gs.length} csoport)`);
@@ -297,7 +300,7 @@ test("storygroup: dedup(b)/C-star — a hub-hídon lógó blob szétesik (Romsic
 });
 
 test("storygroup: dedup(b)/C-star — a valódi parafrázis-hármasok EGYBEN maradnak (dice-repair, naiv C-star ellen)", () => {
-  const gs = groups(cstarFixture(), { cfg: { ...cfg, decompose_min_component: 3 }, institutes });
+  const gs = groups(cstarFixture(), { cfg: { ...cfg, name_hub_tokens: [], decompose_min_component: 3 }, institutes });
   // regressziós védő: a dice-repair NÉLKÜL (naiv C-star) ezek a hármasok szétárvázódnának
   assert.ok(sameGroup(gs, "telex:r1", "444:r2") && sameGroup(gs, "444:r2", "hvg:r3"), "a Romsics-hármas egy csoport marad");
   assert.ok(sameGroup(gs, "telex:p1", "444:p2") && sameGroup(gs, "444:p2", "hvg:p3"), "a Paks-hármas egy csoport marad");
@@ -336,7 +339,9 @@ function centralityFixture() {
 }
 
 test("storygroup: rep-centralitás — azonos significance+kind mellett a legcentrálisabb (edgeRule-fok) tag a rep, nem a legkorábbi perifériás", () => {
-  const { representatives } = groupStories(centralityFixture(), { cfg, institutes });
+  // A centralitás-MECHANIZMUST izoláljuk a ② név-hub fliptől: a fixture szándékosan „Magyar
+  // Péter" hub-felhővel épül (a flip a 'peter'-t stoppolná, szétverve a felhőt).
+  const { representatives } = groupStories(centralityFixture(), { cfg: { ...cfg, name_hub_tokens: [] }, institutes });
   const rep = representatives.find((r) => r._groupSize > 1);
   assert.equal(rep._groupSize, 5, "az öt Paks-tétel egy csoport");
   // c foka 4 (p, m1, m2, m3), p foka 1 (csak c) — a régi first_seen p-t adott, a fix c-t.
