@@ -6,7 +6,7 @@ import {
   pickLatestSurvey, openDataUrlOf, datasetIdFromOpenDataUrl, volumeADownloadUrl,
   resolveVolumeA, unzipXlsx, sheetFileMap, parseWorksheet, findCountryColumn, columnLetter,
   parseFieldwork, questionLabelsEN, parseQuestionSheet, isSubstantiveQuestion,
-  validateQuestion, questionToItem, fetchNew,
+  validateQuestion, questionToItem, fetchNew, shortenQuestion,
 } from "../../src/sources/eurobarometer.js";
 
 // VALÓS fixture-ök: a ma (2026-08-17) lakossági IP-ről lekért eurobarometer-lánc élő válaszai,
@@ -164,6 +164,24 @@ test("parseQuestionSheet: a részösszeg-sorok (Total 'Positive') isSubtotal=tru
   assert.ok(q.options.some((o) => /^Very positive$/i.test(o.label) && !o.isSubtotal));
 });
 
+test("parseQuestionSheet: a recap-blokk (első Total-tól) NEM szennyezi a bázist dupla 'Neutral'-lal", () => {
+  const q = parseQuestionSheet(sheetCells("D78"));
+  const baseNeutral = q.options.filter((o) => /^Neutral$/i.test(o.label) && !o.isSubtotal);
+  assert.equal(baseNeutral.length, 1, "pontosan EGY bázis-'Neutral' (a recap-ismétlés isSubtotal)");
+  // a recap-blokk MINDEN sora (Total Positive / ismételt Neutral / Total Negative) részösszeg
+  assert.ok(q.options.filter((o) => /^Neutral$/i.test(o.label)).some((o) => o.isSubtotal), "a recap-Neutral isSubtotal");
+});
+
+test("parseQuestionSheet: a count===1 sor NEM lesz téves pct=1.0 (pozicionális párosítás)", () => {
+  const q = parseQuestionSheet(sheetCells("QA7ab")); // max-answer: az utolsó DK count=1, pct='-'
+  // egyetlen opció-címke sem francia (a pct-sor angol címkéje nyer)
+  assert.ok(!q.options.some((o) => /Ne sait pas|santé|économie/i.test(o.label)), "nincs francia címke");
+  // nincs hamis 100%-os "Ne sait pas"
+  assert.ok(!q.options.some((o) => o.pct === 1), "nincs pct===1.0 bogus opció");
+  const dk = q.options.find((o) => /Don.t know/i.test(o.label));
+  assert.ok(dk && dk.pct === null && dk.count === 1, "a DK: angol címke, pct=null ('-'), count=1");
+});
+
 test("isSubstantiveQuestion: QA* + D78 tartalmi; D11A/D25/B/SD27 demográfia kimarad", () => {
   assert.equal(isSubstantiveQuestion("QA4"), true);
   assert.equal(isSubstantiveQuestion("QA10_1"), true);
@@ -180,6 +198,37 @@ test("validateQuestion: fail-closed — N a [300,5000] sávban ÉS ≥1 érvény
   assert.equal(validateQuestion({ N: 1020, options: [{ label: "Yes", pct: null }] }).ok, false);    // nincs érvényes %
   assert.equal(validateQuestion({ N: 1020, options: [{ label: "Yes", pct: 1.5 }] }).ok, false);     // %>1 (oszlop-eltolás)
   assert.equal(validateQuestion({ N: NaN, options: [{ label: "Yes", pct: 0.78 }] }).ok, false);
+});
+
+// --- title-rövidítés (B2 aktiválás előfeltétele; a levélben olvashatatlan a nyers kérdés) ---
+
+test("shortenQuestion: mátrix (::-) esetén a kettőspont UTÁNI konkrét állítás", () => {
+  const raw = "Please tell me whether you totally agree, tend to agree, tend to disagree or totally disagree with the following statement::-The European Union is a place of stability in a troubled world";
+  assert.equal(shortenQuestion(raw), "The European Union is a place of stability in a troubled world");
+});
+
+test("shortenQuestion: a survey-adminisztrációs farok levágva (Firstly?/And then?/(MAX. N ANSWERS))", () => {
+  const raw = "Which are the main reasons? Firstly? And then? (MAX. 3 ANSWERS)";
+  const out = shortenQuestion(raw);
+  assert.ok(!/Firstly\?|And then\?|MAX\.|ANSWERS/i.test(out), `farok maradt: "${out}"`);
+  assert.match(out, /reasons\?$/);
+});
+
+test("shortenQuestion: a (MULTIPLE ANSWERS POSSIBLE) farok is levágva", () => {
+  assert.match(shortenQuestion("For you, which are most important for a good quality of life? (MULTIPLE ANSWERS POSSIBLE)"), /quality of life\?$/);
+});
+
+test("shortenQuestion: az orphan követő-kérdés (csak 'And then?') üresre redukálódik", () => {
+  assert.equal(shortenQuestion("And then? (MAX. 2 ANSWERS)"), "");
+  assert.equal(shortenQuestion("And then?"), "");
+});
+
+test("shortenQuestion: hossz-cap szó-határon, ellipszissel (struktúra nélküli hosszú kérdés)", () => {
+  const raw = "Regardless of whether you think your country has benefited or not from being a member of the European Union over the past several decades of shared policy";
+  const out = shortenQuestion(raw);
+  assert.ok(out.length <= 91, `túl hosszú: ${out.length}`);
+  assert.match(out, /…$/);
+  assert.ok(!/\s\S*…$/.test(out.slice(0, -1)) || /\s/.test(raw.slice(0, out.length)), "szó-határon vág");
 });
 
 test("questionToItem: europeelects-tükör shape (guid/title/publishedAt/summary/dataBacked/survey)", () => {
@@ -211,6 +260,17 @@ test("questionToItem: a summary KIHAGYJA a részösszegeket (D78 nem duplázza a
   assert.ok(!/Total .Positive./i.test(it.summary), "a summary nem tartalmaz részösszeget");
 });
 
+test("questionToItem: a cím a RÖVIDÍTETT kérdést használja (mátrix → :- utáni állítás)", () => {
+  const q = parseQuestionSheet(sheetCells("QASD"));
+  const it = questionToItem(
+    { code: "QASD", questionEN: "Please tell me whether you totally agree...::-The European Union is a place of stability in a troubled world", N: q.N, options: q.options },
+    { wave: "105.3", fieldworkEnd: "2026-05-04" },
+    { id: "eurobarometer", list_url: "x" },
+  );
+  assert.match(it.title, /place of stability/);
+  assert.ok(!/totally agree, tend to agree/i.test(it.title), "a skála-preambulum nincs a címben");
+});
+
 // --- fetchNew: teljes lánc offline stubbal (a resolveVolumeA fixture-chainje) ---
 
 const chainStub = () => async (url) => {
@@ -236,7 +296,18 @@ test("fetchNew: tartalmi kérdésekből ad tételt (QA4 igen), demográfiából 
   assert.ok(!codes.includes("B"), "B (ország) NINCS tétel");
   // minden tétel bájt-alapú, data_backed, ugyanabból a hullámból
   assert.ok(items.every((it) => it.dataBacked === true && it.survey.wave === "105.3"));
-  assert.ok(items.length >= 30, `elvárt ~36 tartalmi tétel, kapott ${items.length}`);
+  // az orphan "b" követő-kérdések (QA5b/6b/7b/8b/11b/14b, csak "And then?") KIMARADNAK,
+  // az "a" (első) és "ab" (összevont) VÁLTOZAT viszont megmarad (önálló jelentésű).
+  assert.ok(!codes.includes("QA5b"), "QA5b orphan követő NINCS");
+  assert.ok(!codes.includes("QA6b"), "QA6b orphan követő NINCS");
+  assert.ok(codes.includes("QA5a"), "QA5a (első) megvan");
+  assert.ok(codes.includes("QA5ab"), "QA5ab (összevont) megvan");
+  assert.equal(items.length, 30, "35 QA + D78 − 6 orphan 'b' = 30");
+  // a címek a rendszer poll-tétel normájába esnek (europeelects: med 127, max 147; a régi nyers
+  // EB med 288, max 1110 volt). A dinamikus summary-budget garantálja a korlátot.
+  const lens = items.map((it) => it.title.length).sort((a, b) => a - b);
+  assert.ok(lens[lens.length - 1] <= 170, `leghosszabb cím ${lens[lens.length - 1]} > 170`);
+  assert.ok(lens[lens.length >> 1] <= 155, `medián cím ${lens[lens.length >> 1]} > 155`);
 });
 
 test("fetchNew: since-szűrés a fieldwork-vég szerint (az előző hullám után → OK_NINCS_UJ)", async () => {

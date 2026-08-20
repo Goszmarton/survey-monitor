@@ -263,22 +263,22 @@ export function parseQuestionSheet(cells) {
   const nVal = byRow[codeRow + 1]?.[hu];
   const N = typeof nVal === "number" && Number.isInteger(nVal) ? nVal : null;
 
+  // A Total-sor (codeRow+1) alatt a válaszsorok count/pct PÁROKban: count-sor (francia címke,
+  // egész) majd pct-sor (angol címke, tört v. "-"). POZICIONÁLISAN párosítunk — a value-küszöb
+  // törékeny lenne (a count===1 összeütközne a pct=1.0=100%-kal). A címke a pct-sorról (angol).
+  // Az ELSŐ "Total 'X'" recap-sortól kezdve minden opció isSubtotal: a recap-blokk (Total
+  // Positive / ismételt Neutral / Total Negative) csak aggregátum, nem új bázis-opció.
+  const labeled = rows.filter((r) => r > codeRow + 1 && leftmostText(byRow[r]) != null);
   const options = [];
-  let pending = null; // a legutóbbi count-sor
-  for (const r of rows) {
-    if (r <= codeRow + 1) continue; // a kód- és Total-sor fölött
-    const row = byRow[r];
-    const label = leftmostText(row);
-    const v = row[hu];
-    if (label == null && v == null) { pending = null; continue; } // üres elválasztó
-    if (typeof v === "number" && v > PCT_HI) { pending = { count: v, labelFr: label }; continue; } // count-sor
-    let pct = null;
-    if (typeof v === "number" && v >= PCT_LO && v <= PCT_HI) pct = v;
-    else if (v === "-" || v === "–" || v === "—") pct = null;
-    else { pending = null; continue; } // se count, se pct → nem opció-sor
-    if (label == null) { pending = null; continue; }
-    options.push({ label, pct, count: pending?.count ?? null, isSubtotal: /^total\b/i.test(label) });
-    pending = null;
+  let recap = false;
+  for (let i = 0; i + 1 < labeled.length; i += 2) {
+    const label = leftmostText(byRow[labeled[i + 1]]); // pct-sor → angol címke
+    const cv = byRow[labeled[i]][hu];   // count-sor értéke
+    const pv = byRow[labeled[i + 1]][hu]; // pct-sor értéke
+    const count = typeof cv === "number" && Number.isInteger(cv) ? cv : null;
+    const pct = typeof pv === "number" && pv >= PCT_LO && pv <= PCT_HI ? pv : null;
+    if (/^total\b/i.test(label)) recap = true;
+    options.push({ label, pct, count, isSubtotal: recap });
   }
   return { N, options };
 }
@@ -299,17 +299,67 @@ export function validateQuestion({ N, options }) {
 
 const fmtPct = (pct) => { const n = Math.round(pct * 1000) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); };
 
+// A nyers EB-kérdésszöveg a levélben olvashatatlan (mért medián 137, max 253): tartalmazza a
+// teljes válasz-skálát és a survey-adminisztrációs farkot. A rendszer poll-tétel-normája az
+// europeelects (mért med 127, max 147); ide állítjuk be. Determinista rövidítés:
+//   (1) MÁTRIX-alkérdés: a "::-"/":-" UTÁNI konkrét állítás a lényeg (a preambulum csak a skála);
+//   (2) "(OUR COUNTRY)" → "Magyarország" (HU-monitor: ez szó szerint Magyarország);
+//   (3) survey-farok levágása (Firstly?/And then?/(MAX. N ANSWERS)/(MULTIPLE ANSWERS POSSIBLE));
+//   (4) hossz-cap szó-határon, ellipszissel.
+// Ha a maradék ÜRES (pl. a "b" követő-kérdés csak "And then?"), az NEM önálló tétel → a fetchNew
+// kihagyja (látható naplósorral, nem néma eldobás — CLAUDE.md 2).
+const ARTIFACT_TAIL = /\s*(\(MAX\.?\s*\d+\s*ANSWERS?\.?\)|\(MULTIPLE ANSWERS POSSIBLE\)|Firstly\?|And then\?)\s*$/i;
+const QUESTION_CAP = 70;
+
+export function shortenQuestion(questionEN, cap = QUESTION_CAP) {
+  let s = String(questionEN ?? "").trim();
+  const mi = s.lastIndexOf(":-");
+  if (mi >= 0) s = s.slice(mi + 2).trim();
+  s = s.replace(/\(OUR COUNTRY\)/gi, "Magyarország");
+  let prev;
+  do { prev = s; s = s.replace(ARTIFACT_TAIL, "").trim(); } while (s !== prev);
+  if (s.length > cap) s = s.slice(0, cap).replace(/\s+\S*$/, "").trim() + "…";
+  return s;
+}
+
 /**
  * Egy kérdés → gyűjtött tétel (europeelects pollToItem tükre). A strukturált survey a tételen
  * marad; a summary a BÁZIS-opciókból (részösszeg és hiányzó-% nélkül). data_backed eleve true.
  */
+const TITLE_MAX = 150;       // cél-címhossz (europeelects-norma: med 127, max 147)
+const SUMMARY_FLOOR = 40;    // a summary MINDIG kap legalább ennyi helyet (≥ a plurális opció)
+
+// A summary a bázis-opciókból, pct szerint CSÖKKENŐ (a mód/plurális elöl — headline-first),
+// karakter-budgettel vágva. Mivel a számok CSAK a címben perzisztálnak (a collect enriched
+// mapping nem viszi tovább a survey-t), a levágott farok LÁTHATÓ "+K" jelzést kap — nem néma
+// eldobás (CLAUDE.md 2). Az ≤6-opciós ordinális skálák (pl. D78) beleférnek. [A teljes
+// szám-perzisztálás külön séma-lépés, B2/később — ITT csak megjelenítés.]
+function buildSummary(base, cap = Infinity) {
+  const parts = [...base].sort((a, b) => b.pct - a.pct).map((o) => `${o.label} ${fmtPct(o.pct)}%`);
+  const out = [];
+  let len = 0;
+  for (const p of parts) {
+    const add = (out.length ? 2 : 0) + p.length;
+    if (len + add > cap && out.length) break;
+    out.push(p); len += add;
+  }
+  const rest = parts.length - out.length;
+  return out.join(", ") + (rest > 0 ? ` … (+${rest})` : "");
+}
+
 export function questionToItem({ code, questionEN, N, options }, { wave, fieldworkEnd }, source) {
   const base = (options ?? []).filter((o) => !o.isSubtotal && typeof o.pct === "number");
-  const summary = base.map((o) => `${o.label} ${fmtPct(o.pct)}%`).join(", ");
   const q = questionEN || code;
+  const shortQ = shortenQuestion(q) || code; // a cím a rövidített kérdést használja; a teljes a survey-ben marad
+  // A summary a címben a MARADÉK helyhez igazodik (TITLE_MAX), hogy az egész cím olvasható
+  // maradjon; a tételen a TELJES (vágatlan) summary marad meg.
+  const prefix = `Eurobarometer ${wave} – `;
+  const budget = Math.max(SUMMARY_FLOOR, TITLE_MAX - prefix.length - shortQ.length - 2);
+  const summaryTitle = buildSummary(base, budget);
+  const summary = buildSummary(base); // teljes
   return {
     guid: `eurobarometer:${wave}:${code}`,
-    title: `Eurobarometer ${wave} – ${q}: ${summary}`,
+    title: `${prefix}${shortQ}: ${summaryTitle}`,
     url: source.list_url,
     publishedAt: `${fieldworkEnd}T00:00:00.000Z`,
     dateOnly: true,
@@ -353,17 +403,21 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
     if (codes.length === 0) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: "nincs tartalmi (QA*) kérdés-munkalap", url } };
 
     const items = [];
-    let skipped = 0;
+    let skipped = 0, orphan = 0;
     for (const code of codes) {
+      const questionEN = labels.get(code);
+      // orphan követő-kérdés (a rövidített szöveg üres, pl. csak "And then?") → nem önálló tétel
+      if (shortenQuestion(questionEN ?? "") === "") { orphan++; continue; }
       const q = parseQuestionSheet(parseWorksheet(files.get(map.get(code)).toString("utf8")));
       const v = validateQuestion(q);
       if (!v.ok) { skipped++; continue; } // egy anomális kérdés kimarad + számolva, nem öli a többit
-      items.push(questionToItem({ code, questionEN: labels.get(code), N: q.N, options: q.options }, fw, source));
+      items.push(questionToItem({ code, questionEN, N: q.N, options: q.options }, fw, source));
     }
-    if (items.length === 0) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: `mind a ${codes.length} tartalmi kérdés elbukott a validáción`, url } };
+    if (items.length === 0) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: `mind a ${codes.length} tartalmi kérdés elbukott a validáción/orphan`, url } };
 
     const fresh = filterSinceDay(items, since);
-    const base = `hullám ${fw.wave} (${fw.fieldworkEnd}): ${items.length} tétel${skipped ? `, ${skipped} kimaradt` : ""}`;
+    const dropNote = [skipped && `${skipped} validáció-bukás`, orphan && `${orphan} követő-kérdés`].filter(Boolean).join(" + ");
+    const base = `hullám ${fw.wave} (${fw.fieldworkEnd}): ${items.length} tétel${dropNote ? `, ${dropNote} kihagyva` : ""}`;
     if (fresh.length === 0) return { items: [], check: { status: "OK_NINCS_UJ", detail: `${base} — egyik sem újabb`, url } };
     return { items: fresh, check: { status: "OK_UJ", detail: `${base}, ${fresh.length} friss`, url } };
   } catch (err) {
