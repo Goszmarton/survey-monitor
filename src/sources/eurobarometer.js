@@ -13,7 +13,7 @@
 // (EOCD → central directory) járjuk be — a lokális fejlécek streaming-flagje megbízhatatlan.
 
 import zlib from "node:zlib";
-import { httpGet, DEFAULT_TIMEOUT_MS } from "./http.js";
+import { httpGet, describeError, DEFAULT_TIMEOUT_MS } from "./http.js";
 
 const API_BASE = "https://europa.eu/eurobarometer/api";
 const HUB_BASE = "https://data.europa.eu/api/hub/search";
@@ -182,4 +182,191 @@ export function findCountryColumn(cells, code = "HU") {
     if (typeof val === "string" && val.trim() === code) return columnLetter(ref);
   }
   return null;
+}
+
+// ---- 4. item-shape + fetchNew (B2) ----
+//
+// DÖNTÉS (2026-08-20, mérés a valós volumeA.xlsx 78 munkalapján): egy TÉTEL = egy TARTALMI
+// attitűd-kérdés HU-eredménye. A hullám ~35 QA* kérdést + demográfiát tartalmaz; az utóbbi
+// (D11A kor, D8 iskola, foglalkozás…) mintakompozíció, NEM közvélemény → kimarad. Ez az
+// europeelects pollToItem mintája egy szinttel lejjebb: ott EGY poll az összes pártot egy
+// tétel summary-jába csomagolja; itt EGY kérdés az összes válaszopcióját. A számok bájtról
+// bájtra az XLSX-ből (dataBacked=true), az LLM csak jelentőséget címkéz. Kvartális kadencia +
+// since-szűrés → ~36 tétel/hullám, nem árasztás. STÁTUSZ: a forrás MÉG NEM aktív, a
+// collect.js ADAPTERS registryjébe NINCS bekötve; az aktiválás (B2) külön, levél-ható nap.
+
+const SUBSTANTIVE_ALLOW = new Set(["D78"]); // EU-imázs: attitűd, nem demográfia
+const EB_SAMPLE_MIN = 300, EB_SAMPLE_MAX = 5000;
+const PCT_LO = 0, PCT_HI = 1;
+
+/** Content B2 (wave) + B3 fieldwork ("9/4 - 4/5/2026") → { wave, fieldworkEnd:ISO-nap, raw }. */
+export function parseFieldwork(content) {
+  const wave = content.get("B2") != null ? String(content.get("B2")) : null;
+  const raw = content.get("B3") != null ? String(content.get("B3")) : "";
+  // A fieldwork VÉGE az utolsó "-" utáni "D/M/YYYY" token (a kezdet év nélküli D/M).
+  const tail = raw.split(/[-–]/).pop()?.trim() ?? "";
+  const m = tail.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const fieldworkEnd = m ? `${m[3]}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}` : null;
+  return { wave, fieldworkEnd, raw };
+}
+
+/** Content C-oszlopa → Map<sheet-kód, angol kérdésszöveg>. A kód a "KÓD. szöveg" prefix,
+ * a Content pontot használ ott, ahol a munkalapnév aláhúzást (QA10.1 ↔ QA10_1). */
+export function questionLabelsEN(content, sheetNames) {
+  const sheetSet = new Set(sheetNames);
+  const byRow = groupByRow(content);
+  const labels = new Map();
+  for (const r of Object.keys(byRow).map(Number).sort((a, b) => a - b)) {
+    const c = byRow[r].C;
+    if (typeof c !== "string") continue;
+    const idx = c.search(/\.\s/);
+    if (idx < 0) continue;
+    const code = c.slice(0, idx).replace(/\./g, "_").trim();
+    if (!sheetSet.has(code)) continue;
+    labels.set(code, c.slice(idx + 1).trim());
+  }
+  return labels;
+}
+
+/** cellák → { row → { col → val } }. */
+function groupByRow(cells) {
+  const byRow = {};
+  for (const [ref, val] of cells) {
+    const col = columnLetter(ref);
+    const row = Number(ref.slice(col.length));
+    (byRow[row] ??= {})[col] = val;
+  }
+  return byRow;
+}
+
+const leftmostText = (row) => {
+  for (const col of ["A", "B", "C"]) {
+    if (typeof row[col] === "string" && row[col].trim() !== "") return row[col].trim();
+  }
+  return null;
+};
+
+/**
+ * Egy kérdés-munkalap → { N, options }. A HU-oszlopban a sorok count/pct PÁROKban állnak:
+ * a count-sor egész (>1) francia címkével, a pct-sor tört ∈[0,1] (v. hiányzó "-") ANGOL
+ * címkével. Az opció címkéje az ANGOL (pct-sor); a pct a tört; a count a fölötte lévő egész.
+ * A "Total 'X'" részösszeg-sorok isSubtotal=true (a summary kihagyja őket). Hiányzó % → null
+ * (nem 0 — a formátumváltozás nem csúszhat be némán).
+ */
+export function parseQuestionSheet(cells) {
+  const hu = findCountryColumn(cells, "HU");
+  if (!hu) return { N: null, options: [] };
+  const byRow = groupByRow(cells);
+  const rows = Object.keys(byRow).map(Number).sort((a, b) => a - b);
+  const codeRow = rows.find((r) => byRow[r][hu] === "HU");
+  if (codeRow == null) return { N: null, options: [] };
+  const nVal = byRow[codeRow + 1]?.[hu];
+  const N = typeof nVal === "number" && Number.isInteger(nVal) ? nVal : null;
+
+  const options = [];
+  let pending = null; // a legutóbbi count-sor
+  for (const r of rows) {
+    if (r <= codeRow + 1) continue; // a kód- és Total-sor fölött
+    const row = byRow[r];
+    const label = leftmostText(row);
+    const v = row[hu];
+    if (label == null && v == null) { pending = null; continue; } // üres elválasztó
+    if (typeof v === "number" && v > PCT_HI) { pending = { count: v, labelFr: label }; continue; } // count-sor
+    let pct = null;
+    if (typeof v === "number" && v >= PCT_LO && v <= PCT_HI) pct = v;
+    else if (v === "-" || v === "–" || v === "—") pct = null;
+    else { pending = null; continue; } // se count, se pct → nem opció-sor
+    if (label == null) { pending = null; continue; }
+    options.push({ label, pct, count: pending?.count ?? null, isSubtotal: /^total\b/i.test(label) });
+    pending = null;
+  }
+  return { N, options };
+}
+
+/** Tartalmi (attitűd) kérdés-e: QA-prefix VAGY az allowlist (alap: D78 EU-imázs). Demográfia (D, SD, C, B) kimarad. */
+export function isSubstantiveQuestion(code, allow = SUBSTANTIVE_ALLOW) {
+  return /^QA/i.test(code) || allow.has(code);
+}
+
+/** FAIL-CLOSED kérdés-validátor: N plauzibilis mintaméret ÉS ≥1 érvényes % ∈[0,1]. */
+export function validateQuestion({ N, options }) {
+  if (!Number.isFinite(N) || N < EB_SAMPLE_MIN || N > EB_SAMPLE_MAX)
+    return { ok: false, guard: "sample_size", detail: `N=${N} a [${EB_SAMPLE_MIN},${EB_SAMPLE_MAX}] sávon kívül` };
+  const valid = (options ?? []).some((o) => typeof o.pct === "number" && o.pct >= PCT_LO && o.pct <= PCT_HI);
+  if (!valid) return { ok: false, guard: "pct", detail: "nincs érvényes % ∈[0,1] opció" };
+  return { ok: true };
+}
+
+const fmtPct = (pct) => { const n = Math.round(pct * 1000) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); };
+
+/**
+ * Egy kérdés → gyűjtött tétel (europeelects pollToItem tükre). A strukturált survey a tételen
+ * marad; a summary a BÁZIS-opciókból (részösszeg és hiányzó-% nélkül). data_backed eleve true.
+ */
+export function questionToItem({ code, questionEN, N, options }, { wave, fieldworkEnd }, source) {
+  const base = (options ?? []).filter((o) => !o.isSubtotal && typeof o.pct === "number");
+  const summary = base.map((o) => `${o.label} ${fmtPct(o.pct)}%`).join(", ");
+  const q = questionEN || code;
+  return {
+    guid: `eurobarometer:${wave}:${code}`,
+    title: `Eurobarometer ${wave} – ${q}: ${summary}`,
+    url: source.list_url,
+    publishedAt: `${fieldworkEnd}T00:00:00.000Z`,
+    dateOnly: true,
+    summary,
+    dataBacked: true,
+    survey: { wave, code, questionEN: q, N, options },
+  };
+}
+
+// since-szűrés a fieldwork vége szerint, NAP-granularitással (mint az europeelects-nél).
+function filterSinceDay(items, since) {
+  const sinceMs = Number(since) || 0;
+  if (!sinceMs) return items;
+  const s = new Date(sinceMs);
+  const sinceDayMs = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate());
+  return items.filter((it) => {
+    const t = Date.parse(it.publishedAt);
+    return Number.isNaN(t) ? true : t >= sinceDayMs;
+  });
+}
+
+/**
+ * A teljes eurobarometer-adapter (rss/htmllist-szerződés): fetchNew(source, opts) → {items, check}.
+ * @param {{id:string,name?:string,list_url:string}} source
+ * @param {{since?:number, fetchImpl?:function, timeoutMs?:number, now?:number, allow?:Set<string>}} opts
+ */
+export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, allow = SUBSTANTIVE_ALLOW } = {}) {
+  const url = source.list_url;
+  try {
+    const { buffer } = await resolveVolumeA({ fetchImpl, timeoutMs });
+    const files = unzipXlsx(buffer);
+    const wb = files.get("xl/workbook.xml")?.toString("utf8") ?? "";
+    const rels = files.get("xl/_rels/workbook.xml.rels")?.toString("utf8") ?? "";
+    const map = sheetFileMap(wb, rels);
+    const content = parseWorksheet(files.get(map.get("Content"))?.toString("utf8") ?? "");
+    const fw = parseFieldwork(content);
+    if (!fw.fieldworkEnd) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: `fieldwork: "${fw.raw}" nem parse-olható`, url } };
+
+    const labels = questionLabelsEN(content, [...map.keys()]);
+    const codes = [...map.keys()].filter((c) => isSubstantiveQuestion(c, allow));
+    if (codes.length === 0) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: "nincs tartalmi (QA*) kérdés-munkalap", url } };
+
+    const items = [];
+    let skipped = 0;
+    for (const code of codes) {
+      const q = parseQuestionSheet(parseWorksheet(files.get(map.get(code)).toString("utf8")));
+      const v = validateQuestion(q);
+      if (!v.ok) { skipped++; continue; } // egy anomális kérdés kimarad + számolva, nem öli a többit
+      items.push(questionToItem({ code, questionEN: labels.get(code), N: q.N, options: q.options }, fw, source));
+    }
+    if (items.length === 0) return { items: [], check: { status: "SKIPPED_VALIDATION", detail: `mind a ${codes.length} tartalmi kérdés elbukott a validáción`, url } };
+
+    const fresh = filterSinceDay(items, since);
+    const base = `hullám ${fw.wave} (${fw.fieldworkEnd}): ${items.length} tétel${skipped ? `, ${skipped} kimaradt` : ""}`;
+    if (fresh.length === 0) return { items: [], check: { status: "OK_NINCS_UJ", detail: `${base} — egyik sem újabb`, url } };
+    return { items: fresh, check: { status: "OK_UJ", detail: `${base}, ${fresh.length} friss`, url } };
+  } catch (err) {
+    return { items: [], check: { status: "HIBA", detail: describeError(err, timeoutMs), url } };
+  }
 }

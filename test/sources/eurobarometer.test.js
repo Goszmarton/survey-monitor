@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import {
   pickLatestSurvey, openDataUrlOf, datasetIdFromOpenDataUrl, volumeADownloadUrl,
   resolveVolumeA, unzipXlsx, sheetFileMap, parseWorksheet, findCountryColumn, columnLetter,
+  parseFieldwork, questionLabelsEN, parseQuestionSheet, isSubstantiveQuestion,
+  validateQuestion, questionToItem, fetchNew,
 } from "../../src/sources/eurobarometer.js";
 
 // VALÓS fixture-ök: a ma (2026-08-17) lakossági IP-ről lekért eurobarometer-lánc élő válaszai,
@@ -98,4 +100,147 @@ test("findCountryColumn: a HU-oszlop a V (a magyar bontás kiválasztása)", () 
 test("columnLetter: cellahivatkozásból oszlopbetű", () => {
   assert.equal(columnLetter("V13"), "V");
   assert.equal(columnLetter("AA10"), "AA");
+});
+
+// ============================================================================
+// B2 — item-shape + fetchNew (a forrás MÉG NEM aktív, registry-be NEM regisztrált).
+// Döntés (2026-08-20, mérés a valós volumeA.xlsx-en): egy TÉTEL = egy tartalmi
+// attitűd-kérdés HU-eredménye (QA* + D78 EU-imázs). NEM per-hullám (túl durva, egy
+// blob/kvartál, nem triázsolható kérdésenként), NEM per-válaszopció (nincs önálló
+// jelentése), NEM demográfia (D11A kor/foglalkozás = mintakompozíció). Ez az
+// europeelects pollToItem mintája egy szinttel lejjebb: ott egy poll az összes pártot
+// EGY tétel summary-jába csomagolja; itt egy kérdés az összes válaszopciót.
+// ============================================================================
+
+const contentCells = () => {
+  const files = unzipXlsx(XLSX);
+  const map = sheetFileMap(files.get("xl/workbook.xml").toString("utf8"), files.get("xl/_rels/workbook.xml.rels").toString("utf8"));
+  return { files, map, content: parseWorksheet(files.get(map.get("Content")).toString("utf8")) };
+};
+const sheetCells = (code) => {
+  const { files, map } = contentCells();
+  return parseWorksheet(files.get(map.get(code)).toString("utf8"));
+};
+
+test("parseFieldwork: a Content-ből wave (105.3) + fieldwork-vég ISO (2026-05-04)", () => {
+  const { content } = contentCells();
+  const fw = parseFieldwork(content);
+  assert.equal(fw.wave, "105.3");
+  // B3 = "9/4 - 4/5/2026" → a VÉGE 2026. május 4.
+  assert.equal(fw.fieldworkEnd, "2026-05-04");
+});
+
+test("questionLabelsEN: a Content C-oszlopából kód→angol kérdésszöveg (QA4)", () => {
+  const { content, map } = contentCells();
+  const labels = questionLabelsEN(content, [...map.keys()]);
+  assert.match(labels.get("QA4"), /benefited/i);
+  assert.match(labels.get("D78"), /EU conjure up|image/i);
+});
+
+test("parseQuestionSheet: HU mintaméret + %-opciók angol címkével (QA4: Benefited 0.81)", () => {
+  const q = parseQuestionSheet(sheetCells("QA4"));
+  assert.equal(q.N, 1020);
+  // a %-sorok tört értékűek, angol címkével; a részösszeg ("Total 'X'") megjelölve.
+  const benefited = q.options.find((o) => /^Benefited$/i.test(o.label));
+  assert.equal(benefited.pct, 0.81);
+  assert.ok(q.options.some((o) => /Not benefited/i.test(o.label) && o.pct === 0.16));
+  // a "Ne sait pas/Don't know" is opció (itt 0.03)
+  assert.ok(q.options.some((o) => /Don.t know/i.test(o.label)));
+});
+
+test("parseQuestionSheet: a hiányzó % (QA1 Don't know = '-') null, nem 0", () => {
+  const q = parseQuestionSheet(sheetCells("QA1"));
+  const dk = q.options.find((o) => /Don.t know/i.test(o.label));
+  assert.equal(dk.pct, null);
+  assert.ok(q.options.some((o) => /^Yes$/i.test(o.label) && o.pct === 0.78));
+});
+
+test("parseQuestionSheet: a részösszeg-sorok (Total 'Positive') isSubtotal=true", () => {
+  const q = parseQuestionSheet(sheetCells("D78"));
+  const sub = q.options.find((o) => /Total .Positive./i.test(o.label));
+  assert.ok(sub, "van részösszeg-sor D78-ban");
+  assert.equal(sub.isSubtotal, true);
+  // a bázisopciók NEM részösszegek (az opció-címke a pct-sorról ANGOL: "Very positive")
+  assert.ok(q.options.some((o) => /^Very positive$/i.test(o.label) && !o.isSubtotal));
+});
+
+test("isSubstantiveQuestion: QA* + D78 tartalmi; D11A/D25/B/SD27 demográfia kimarad", () => {
+  assert.equal(isSubstantiveQuestion("QA4"), true);
+  assert.equal(isSubstantiveQuestion("QA10_1"), true);
+  assert.equal(isSubstantiveQuestion("D78"), true);   // EU-imázs, allowlist
+  assert.equal(isSubstantiveQuestion("D11A"), false); // kor
+  assert.equal(isSubstantiveQuestion("D25"), false);
+  assert.equal(isSubstantiveQuestion("B"), false);    // ország
+  assert.equal(isSubstantiveQuestion("SD27"), false);
+});
+
+test("validateQuestion: fail-closed — N a [300,5000] sávban ÉS ≥1 érvényes %", () => {
+  assert.equal(validateQuestion({ N: 1020, options: [{ label: "Yes", pct: 0.78 }] }).ok, true);
+  assert.equal(validateQuestion({ N: 50, options: [{ label: "Yes", pct: 0.78 }] }).ok, false);      // minta túl kicsi
+  assert.equal(validateQuestion({ N: 1020, options: [{ label: "Yes", pct: null }] }).ok, false);    // nincs érvényes %
+  assert.equal(validateQuestion({ N: 1020, options: [{ label: "Yes", pct: 1.5 }] }).ok, false);     // %>1 (oszlop-eltolás)
+  assert.equal(validateQuestion({ N: NaN, options: [{ label: "Yes", pct: 0.78 }] }).ok, false);
+});
+
+test("questionToItem: europeelects-tükör shape (guid/title/publishedAt/summary/dataBacked/survey)", () => {
+  const q = parseQuestionSheet(sheetCells("QA4"));
+  const it = questionToItem(
+    { code: "QA4", questionEN: "QA4. ...has benefited...", N: q.N, options: q.options },
+    { wave: "105.3", fieldworkEnd: "2026-05-04" },
+    { id: "eurobarometer", list_url: "https://europa.eu/eurobarometer/" },
+  );
+  assert.equal(it.guid, "eurobarometer:105.3:QA4");
+  assert.match(it.title, /Eurobarometer 105\.3/);
+  assert.match(it.title, /81%/);                         // a summary a címben
+  assert.equal(it.publishedAt, "2026-05-04T00:00:00.000Z");
+  assert.equal(it.dateOnly, true);
+  assert.equal(it.dataBacked, true);
+  assert.match(it.summary, /Benefited 81%/i);
+  // a részösszeg NEM szennyezi a summary-t (D78-nál lenne releváns; QA4-nél nincs)
+  assert.equal(it.survey.wave, "105.3");
+  assert.equal(it.survey.N, 1020);
+});
+
+test("questionToItem: a summary KIHAGYJA a részösszegeket (D78 nem duplázza a %-ot)", () => {
+  const q = parseQuestionSheet(sheetCells("D78"));
+  const it = questionToItem(
+    { code: "D78", questionEN: "D78. EU image", N: q.N, options: q.options },
+    { wave: "105.3", fieldworkEnd: "2026-05-04" },
+    { id: "eurobarometer", list_url: "x" },
+  );
+  assert.ok(!/Total .Positive./i.test(it.summary), "a summary nem tartalmaz részösszeget");
+});
+
+// --- fetchNew: teljes lánc offline stubbal (a resolveVolumeA fixture-chainje) ---
+
+const chainStub = () => async (url) => {
+  let body, ct = "application/json";
+  if (url.includes("survey/get/latest")) body = fx("survey_latest.json");
+  else if (url.includes("survey/get/one")) body = fx("survey_one_3752.json");
+  else if (url.includes("api/hub/search/datasets/")) body = fx("odp_dataset.json");
+  else if (url.includes("webgate.ec.europa.eu")) { body = XLSX; ct = "application/octet-stream"; }
+  else throw new Error(`váratlan URL: ${url}`);
+  return { ok: true, status: 200, headers: { get: () => ct }, text: async () => body.toString("utf8"),
+    bytes: async () => body, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) };
+};
+const SRC = { id: "eurobarometer", name: "Eurobarometer", list_url: "https://europa.eu/eurobarometer/", kind: "nemzetkozi" };
+
+test("fetchNew: tartalmi kérdésekből ad tételt (QA4 igen), demográfiából NEM (D11A/D25 nem)", async () => {
+  const { items, check } = await fetchNew(SRC, { fetchImpl: chainStub(), now: Date.parse("2026-05-10") });
+  assert.equal(check.status, "OK_UJ");
+  const codes = items.map((it) => it.survey.code);
+  assert.ok(codes.includes("QA4"), "QA4 tétel megvan");
+  assert.ok(codes.includes("D78"), "D78 (EU-imázs) tétel megvan");
+  assert.ok(!codes.includes("D11A"), "D11A (kor) NINCS tétel");
+  assert.ok(!codes.includes("D25"), "D25 (demográfia) NINCS tétel");
+  assert.ok(!codes.includes("B"), "B (ország) NINCS tétel");
+  // minden tétel bájt-alapú, data_backed, ugyanabból a hullámból
+  assert.ok(items.every((it) => it.dataBacked === true && it.survey.wave === "105.3"));
+  assert.ok(items.length >= 30, `elvárt ~36 tartalmi tétel, kapott ${items.length}`);
+});
+
+test("fetchNew: since-szűrés a fieldwork-vég szerint (az előző hullám után → OK_NINCS_UJ)", async () => {
+  const { items, check } = await fetchNew(SRC, { fetchImpl: chainStub(), since: Date.parse("2026-06-01"), now: Date.parse("2026-06-10") });
+  assert.equal(items.length, 0);
+  assert.equal(check.status, "OK_NINCS_UJ");
 });
