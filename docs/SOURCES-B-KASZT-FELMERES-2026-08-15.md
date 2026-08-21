@@ -372,6 +372,12 @@ aggregátumhoz mérve) — determinista, de ez későbbi lépés; az alap a grou
 pew-kinyerés (`91d3f9b`). A két AKTIVÁLÁS (E2, B2) NEM ma — azok levél-hatók, külön napokra esnek.
 
 **P0 — TPM-tudatos batch-szünet a triázs-hurokban (LEVÉL-SEMLEGES, ELSŐNEK) — ✅ SHIPPELVE `0b94b45`:**
+> ⚠️ **KORREKCIÓ (§259 felülírja):** az alábbi `÷ 200` / `15 s padló` az EREDETI (llama-3.3-70b,
+> 12000 TPM) kalibráció. A modell 08-16-i leállása óta a MÉRT free-tier TPM `openai/gpt-oss-120b`-n
+> **8000** → a képlet `÷ 133,3` (=8000/60), a padló **25 s** (a 19,6 s break-even fölé). A kód ezt
+> `TPM_TOKENS_PER_S` / `MIN_BATCH_PAUSE_MS`-ben hordozza (adaptív a tényleges usage-re). A lenti
+> `÷200`/`15s` megfogalmazás történeti, NE azt vedd aktuálisnak.
+
 `triage.js`: a batchek KÖZT `max(15s padló, mért token/batch ÷ 200)` szünet, a token/batch a
 completeFn logba fűzött `usage.total_tokens`-éből; injektálható `sleepFn`. RED: sleepFn-spy
 (token-alapú szünet / usage-nélküli padló / egy-batch=nincs-szünet). Kimenet bájtazonos.

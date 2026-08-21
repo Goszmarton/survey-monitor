@@ -34,16 +34,17 @@ const DATASET_CODE = /^[A-Z][A-Z0-9_]{2,}\b.*\bDataset\b/i; // pl. 'EI_ISBR_M - 
 const DEFAULT_MAX_ITEMS = 600; // cap = 40 batch × 15 (backstop; a prioritás védi a fontosat)
 
 // P0 — TPM-tudatos batch-szünet (§5.2). A kötő korlát KETTŐS: a napi TPD bő, DE a perces
-// TPM (groq: 12000 tok/perc, ~200 tok/s utántöltés) a per-run burst-plafon. Több forrás →
-// hosszabb futás → a batch-löket a TPM-limithez közelít. Ezért a batchek KÖZT kényszerített
-// minimum-szünet: a mért token/batch ÷ 200 (a break-even, ahol a vödör nem ürül tartósan),
-// egy konzervatív ~15s padlóval (cél 15–20s / 3–4 batch/perc, tartalékkal). Levél-semleges:
-// a szünet csak a futás sebességét változtatja, a verdikteket nem (kimenet bájtazonos).
-// A groq free-tier TPM az openai/gpt-oss-120b-n MÉRT 8000 (groq-limits-probe 2026-08-17) — a
-// korábbi llama-3.3-70b 12000-e ELAVULT (a modell 08-16-án leállt). A padló 15s→25s: a break-even
-// (2616 tok/batch ÷ 133,3 ≈ 19,6s) FÖLÉ, tartalékkal; a 8000 TPM-nél a 15s már nem elég. A képlet
-// ADAPTÍV: a tényleges token/batch a usage-ből → ha a gpt-oss-120b (reasoning) többet fogyaszt,
-// a szünet automatikusan nő (a TPM-et így akkor is védi, ha a tok/batch a padló fölé viszi).
+// TPM (groq openai/gpt-oss-120b: MÉRT 8000 tok/perc, ~133,3 tok/s utántöltés) a per-run
+// burst-plafon. Több forrás → hosszabb futás → a batch-löket a TPM-limithez közelít. Ezért a
+// batchek KÖZT kényszerített minimum-szünet: a mért token/batch ÷ TPM_TOKENS_PER_S (=÷133,3,
+// a break-even, ahol a vödör nem ürül tartósan), egy 25s padlóval (a 2616 tok/batch-es baseline
+// ≈19,6s break-even fölé, tartalékkal). Levél-semleges: a szünet csak a futás sebességét
+// változtatja, a verdikteket nem (kimenet bájtazonos).
+// TÖRTÉNET: az EREDETI kalibráció llama-3.3-70b / 12000 TPM / ÷200 / 15s padló volt; a modell
+// 08-16-i leállása óta a groq-limits-probe (2026-08-17) MÉRTE a 8000-et → a fenti 133,3/25s az
+// ÉRVÉNYES. A képlet ADAPTÍV: a tényleges token/batch a usage-ből → ha a gpt-oss-120b (reasoning)
+// többet fogyaszt (mért 08-21: átlag ~3860 tok/batch → ~29s szünet, a padló FÖLÉ), a szünet
+// automatikusan nő (a TPM-et így akkor is védi, ha a tok/batch a padló fölé viszi).
 const GROQ_TPM_LIMIT = 8000;                     // MÉRT free-tier TPM (openai/gpt-oss-120b), §5.3
 const TPM_TOKENS_PER_S = GROQ_TPM_LIMIT / 60;    // ~133,3 tok/s utántöltés
 const MIN_BATCH_PAUSE_MS = 25000;                // padló a break-even (19,6s) fölé, tartalékkal
