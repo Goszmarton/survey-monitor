@@ -92,6 +92,24 @@ test("guard sor-sanity: üres tbody → SKIPPED", () => {
   assert.equal(v.guard, "rows");
 });
 
+// EGYDÁTUMOS FIELDWORK (08-21 éles eset): az Europion 08-11-i pollja egyetlen dátumot ad
+// ("2026-08-11", nem "start – end" tartomány). A split("–") ekkor end=null-t adott → a date-guard
+// az EGÉSZ forrást eldobta (SKIPPED_VALIDATION), pont az egyetlen friss pollt. Az egydátum LEGITIM
+// (egynapos poll) → end := start. RED a fix előtt (end===null); a valós fixture-ön, célzott mutációval.
+test("parseEuropeElects: EGYDÁTUMOS fieldwork → end := start (nem null) (08-21 Europion-eset)", () => {
+  const single = HTML.replace("<td>2026-07-22 – 2026-07-27</td>", "<td>2026-07-27</td>");
+  const { polls } = parseEuropeElects(single);
+  assert.equal(polls[0].fieldwork.start, "2026-07-27", "az egyetlen dátum a start");
+  assert.equal(polls[0].fieldwork.end, "2026-07-27", "egydátum → end = start (NEM null)");
+  assert.equal(polls[0].fieldwork.raw, "2026-07-27", "a raw az egyetlen dátum");
+});
+
+test("validateEuropeElects: egydátumos fieldwork ÁTMEGY (nem eszi meg a friss pollt) (08-21)", () => {
+  const single = HTML.replace("<td>2026-07-22 – 2026-07-27</td>", "<td>2026-07-27</td>");
+  const v = validateEuropeElects(parseEuropeElects(single), { now: NOW });
+  assert.equal(v.ok, true, `az egydátumos sor valid, de: ${v.guard} — ${v.detail}`);
+});
+
 // --- fetchNew: adapter (a source MÉG NEM aktív; a fetchNew standalone tesztelt) ---
 
 test("fetchNew: valid HTML → OK_UJ, a tételek determinista poll-számokat hordoznak (data_backed)", async () => {

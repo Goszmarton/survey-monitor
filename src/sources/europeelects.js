@@ -47,8 +47,11 @@ export function parseEuropeElects(html) {
     if (c.length === 0) continue;
     const [raw, pollingFirm, commissioner, sampleRaw, ...partyCells] = c;
     // A fieldwork "start – end": en-dash (U+2013) az elválasztó; az ISO-dátumok ASCII '-'-ei
-    // érintetlenek, ezért az en-dash-en darabolunk, nem a hyphenen.
-    const [start, end] = raw.split("–").map((s) => s.trim());
+    // érintetlenek, ezért az en-dash-en darabolunk, nem a hyphenen. EGYDÁTUMOS fieldwork (nincs
+    // en-dash, pl. Europion "2026-08-11" egynapos poll) LEGITIM → end := start (08-21 éles eset:
+    // a korábbi end=null a date-guardon az EGÉSZ forrást eldobta, pont az egyetlen friss pollt).
+    const [start, endRaw] = raw.split("–").map((s) => s.trim());
+    const end = endRaw ?? start;
     const sampleSize = /^\d+$/.test(sampleRaw) ? Number(sampleRaw) : NaN;
     const parties = partyNames.map((name, i) => ({ name, pct: partyCells[i] === undefined ? null : parsePct(partyCells[i]) }));
     polls.push({
