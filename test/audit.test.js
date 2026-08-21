@@ -56,6 +56,47 @@ test("auditTriageProviders: 1-2 fizetős batch a küszöb ALATT → nincs zajos 
   assert.ok(!r.warnings.some((w) => /fizetős/i.test(w)), "2 batch (küszöb alatt) → nincs fizetős-warning");
 });
 
+// HARMADIK JEL (08-21): lánc-sorrend sérülés. A 08-21-i eset: gemini (elsődleges) 10× HTTP_503,
+// a groq (INGYENES) vitte a triázs 10/13 batch-ét. Mindkét meglévő jel átcsúszott — a gemini 503
+// nem 404, a fallback groq nem fizetős → 0 WARN, holott az elsődleges provider teljesen kiesett.
+test("auditTriageProviders: az elsődleges provider <50%-ot visz (fallbackre csúszott) → WARN (③)", () => {
+  const log = [];
+  for (let i = 0; i < 10; i++) { // 10 batch: gemini bukik 503, groq (ingyenes) viszi
+    log.push({ role: "triage", provider: "gemini", status: "HTTP_503" });
+    log.push({ role: "triage", provider: "groq", status: "OK", usage: { total_tokens: 100 } });
+  }
+  for (let i = 0; i < 3; i++) log.push({ role: "triage", provider: "gemini", status: "OK", usage: { total_tokens: 100 } });
+  const r = auditTriageProviders(log, { primary: "gemini" });
+  // gemini OK 3/13 = 23% < 50% → tüzel; a 404 és a fizetős jel NEM (groq ingyenes, 503≠404)
+  assert.equal(r.groq404, 0, "nincs 404");
+  assert.equal(r.paidBatches, 0, "nincs fizetős batch");
+  assert.ok(r.warnings.some((w) => /elsődleges|lánc/i.test(w) && /gemini/.test(w)), "van lánc-sorrend WARN a primaryval");
+});
+
+test("auditTriageProviders: az elsődleges viszi a többséget (≥50%) → nincs lánc-WARN (③)", () => {
+  const log = [];
+  for (let i = 0; i < 8; i++) log.push({ role: "triage", provider: "gemini", status: "OK", usage: { total_tokens: 100 } });
+  for (let i = 0; i < 2; i++) log.push({ role: "triage", provider: "groq", status: "OK", usage: { total_tokens: 100 } });
+  const r = auditTriageProviders(log, { primary: "gemini" });
+  assert.ok(!r.warnings.some((w) => /elsődleges|lánc/i.test(w)), "8/10 → nincs lánc-WARN");
+});
+
+test("auditTriageProviders: az elsődleges NINCS kulccsal (csak SKIPPED_NO_KEY) → nincs lánc-WARN (③, lokális/konfig, nem degradáció)", () => {
+  const log = [];
+  for (let i = 0; i < 5; i++) {
+    log.push({ role: "triage", provider: "gemini", status: "SKIPPED_NO_KEY" });
+    log.push({ role: "triage", provider: "groq", status: "OK", usage: { total_tokens: 100 } });
+  }
+  const r = auditTriageProviders(log, { primary: "gemini" });
+  assert.ok(!r.warnings.some((w) => /elsődleges|lánc/i.test(w)), "no-key primary → nem degradáció, nincs zaj");
+});
+
+test("auditTriageProviders: primary NÉLKÜL a lánc-check kimarad (visszafelé kompat) (③)", () => {
+  const log = [{ role: "triage", provider: "groq", status: "OK", usage: { total_tokens: 100 } }];
+  const r = auditTriageProviders(log); // nincs primary
+  assert.ok(!r.warnings.some((w) => /elsődleges|lánc/i.test(w)), "primary nélkül nincs lánc-check");
+});
+
 test("auditMailTo: pontosvessző-elválasztó → WARN (eddig csak console.warn látta)", () => {
   const ws = auditMailTo({ MAIL_TO: "a@b.hu; c@d.hu" });
   assert.ok(ws.some((w) => /pontosvessző/i.test(w)), "a pontosvessző-guard warning felszínre kerül");

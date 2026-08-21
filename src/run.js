@@ -110,7 +110,11 @@ async function main() {
   // A renderReport ELŐTT, hogy a lábléc kiírja; a finishRun (lentebb) perzisztálja. Ez teszi
   // a napi "a triázst az ingyenes provider vitte-e, vagy fizetős fallbackre esett?" ellenőrzést
   // a jelentésből leolvashatóvá (08-16: 13× groq-404 + néma fizetős fallback, csak kézzel derült ki).
-  for (const w of auditProviders({ log: providersUsed, env: process.env })) {
+  // A triázs-lánc ELSŐDLEGES providere (chain[0]) — a ③ lánc-sorrend audithoz (az elsődleges
+  // kiesését az ingyenes/nem-404 fallback eddig elrejtette). Config-hiba → null → a check kimarad.
+  let triagePrimary = null;
+  try { triagePrimary = (await loadJson("../config/llm.json"))?.roles?.triage?.chain?.[0]?.provider ?? null; } catch { /* nincs config → lánc-check kimarad */ }
+  for (const w of auditProviders({ log: providersUsed, env: process.env, primary: triagePrimary })) {
     providersUsed.push(w);
     console.warn(`AUDIT ${w.role}: ${w.detail}`);
   }
