@@ -306,12 +306,12 @@ export function renderReport(run) {
   </section>
 
   <section id="24h">
-    <h2>Mi jelent meg az utolsó 24 órában?</h2>
+    <h2>📰 Napi narratíva (utolsó 24 óra)</h2>
     ${synth}${degradedNote}
   </section>
 
   <section id="tablak">
-    <h2>Tételek jelentőség szerint</h2>
+    <h2>📊 Adatjelentőség szerint, kapuzott</h2>
     ${table("📈 Hivatalos adatközlések", hivatalos, sourceNames)}
     ${table("📰 Sajtószemle", sajto, sourceNames)}
   </section>
@@ -393,8 +393,8 @@ export function renderDigest(run) {
 <body><main>
   <header><h1>📊 Napi monitor — elmúlt 24 óra</h1>
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
-  <section><h2>Mi jelent meg az utolsó 24 órában?</h2>${synth}</section>
-  <section><h2>Friss tételek jelentőség szerint</h2>${digestItemList(fresh, sourceNames)}</section>
+  <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
+  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestItemList(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
 `;

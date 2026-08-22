@@ -29,6 +29,17 @@ test("renderReport: valid HTML, cím és fázis", () => {
   assert.match(html, /F1 — A-kaszt mag/);
 });
 
+test("renderReport: élesített szekció-címek (narratíva + kapuzott adatjelentőség)", () => {
+  const html = renderReport(RUN);
+  // A cél: a cím jelezze, mi a szekció TERMÉSZETE — szerkesztői narratíva vs kapuzott
+  // adatjelentőség — ne generikus „mi jelent meg" / „tételek jelentőség szerint".
+  assert.match(html, /📰 Napi narratíva \(utolsó 24 óra\)/);
+  assert.match(html, /📊 Adatjelentőség szerint, kapuzott/);
+  // A régi generikus címek eltűntek (nincs néma kettősség: kód és szándék nem térhet el).
+  assert.ok(!html.includes("Mi jelent meg az utolsó 24 órában?"), "régi szintézis-cím eltűnt");
+  assert.ok(!html.includes("<h2>Tételek jelentőség szerint</h2>"), "régi táblák-cím eltűnt");
+});
+
 test("tételek megjelennek, HTML-escape helyes", () => {
   const html = renderReport(RUN);
   assert.match(html, /KSH közlés &amp; &lt;b&gt;/);

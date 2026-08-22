@@ -36,6 +36,15 @@ test("renderDigest: szintézis felül, majd UJ_24H tételek jelentőség szerint
   assert.ok(html.indexOf("nagy fordulat") < html.indexOf("Havi infláció"));
 });
 
+test("renderDigest: élesített szekció-címek (narratíva + kapuzott adatjelentőség)", () => {
+  const html = renderDigest(RUN);
+  // Ugyanaz az élesítés, mint a Pages-riportban — a két felület címei ne térjenek el.
+  assert.match(html, /📰 Napi narratíva \(utolsó 24 óra\)/);
+  assert.match(html, /📊 Adatjelentőség szerint, kapuzott/);
+  assert.ok(!html.includes("Mi jelent meg az utolsó 24 órában?"), "régi szintézis-cím eltűnt");
+  assert.ok(!html.includes("Friss tételek jelentőség szerint"), "régi táblák-cím eltűnt");
+});
+
 test("renderKiemelt: csak a KIEMELT tételek", () => {
   const html = renderKiemelt(RUN);
   assert.match(html, /nagy fordulat/);
