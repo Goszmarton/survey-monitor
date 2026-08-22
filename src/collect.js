@@ -7,6 +7,7 @@ import { canonicalKey } from "./lib/slug.js";
 import * as rss from "./sources/rss.js";
 import * as htmllist from "./sources/htmllist.js";
 import * as europeelects from "./sources/europeelects.js";
+import * as eurobarometer from "./sources/eurobarometer.js";
 import {
   upsertItems,
   recordSourceCheck,
@@ -55,7 +56,7 @@ export function applyTitleFilter(items, keywords) {
 
 // Dedikált forrás-adapterek (nem a generikus feed/list_url út): source.adapter → modul.
 // A modul a htmllist/rss-sel azonos szerződést teljesíti: fetchNew(source, opts) → {items, check}.
-const ADAPTERS = { europeelects };
+const ADAPTERS = { europeelects, eurobarometer };
 
 // Egy forrásnak több csatornája is lehet: verifikált RSS ÉS HTML-listaoldal
 // (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
