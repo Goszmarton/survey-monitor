@@ -66,11 +66,28 @@ Mindhárom jel **levél-semleges**: a láblécben látszik, de NEM állítja meg
 |---|---|---|---|
 | **groq HTTP_404** | a groq-modell deprecated (megszűnt az endpoint) | a groq-hívások 404-et adnak | modell-ID frissítése `config/llm.json`-ban a groq aktuális modelljére; addig a lánc anthropic-ra (fizetős) esik — ld. lenti jel |
 | **fizetős fallback >2 batch** | az anthropic (fizetős) vitte a triázs >2 batch-ét → a két ingyenes réteg (gemini+groq) egyszerre gyenge | anthropic-batch szám > 2 | nézd meg melyik ingyenes réteg esett ki (kvóta? tranziens 503/429?). Nem azonnali beavatkozás, de ha tartós → provider-kvóták |
-| **lánc-sorrend <50% (③)** | az elsődleges provider (gemini) az OK-batch-ek <50%-át vitte — **néma degradáció**, amit a másik két jel nem lát | primary-share < 50% | tranziens gemini-kiesés → magától rendeződik. Tartós (több nap) → provider-sorrend felülvizsgálat |
+| **lánc-sorrend <50% (③)** | az elsődleges provider (gemini) az OK-batch-ek <50%-át vitte — **néma degradáció**, amit a másik két jel nem lát | primary-share < 50% | 1–2 nap → tranziens, magától rendeződik. **„Tartós" = ≥3 egymást követő nap <50%** → §2 alatti döntési lépés (NEM automatikus csere) |
 
 **③ első éles tüzelése (2026-08-22):** gemini 503×12 → az OK-batch-ek 1/13 = 8%-a ment
 gemini-n → WARN. Ez a jel pontosan azért van, mert a gemini 503 (≠404) a groq-404-jelet és
 a fizetős-fallback-jelet is elkerülhette volna. A 08-22-i tüzelés helyes, nem hiba.
+
+**Mért trend:** 08-21 = 23%, 08-22 = 8%, 08-23 = 15% — mindhárom <50%. **A „tartós" küszöb
+(≥3 egymást követő nap) tehát 2026-08-23-ra MÁR teljesült** — de a helyes teendő NEM
+mechanikus provider-csere:
+
+1. **Állapítsd meg a MIÉRT-et** a láblécből: ha a primary **503/429**-cel esik ki
+   (kvóta/overload — ez a jelenlegi eset, gemini szaturált), az a fallback-lánc *tervezett*
+   működése (groq átveszi). Ha **404** (deprecation), az a groq-jel, más teendő.
+2. **Provider-sorrend csere** (`config/llm.json` → `roles.triage.chain`, a fallbacket előre)
+   **CSAK akkor javít, ha a fallbacknek TARTÓS TPM-headroomja van.** A groq TPM viszont
+   **szűk** (a `tokens_remaining` margó 08-23-on 458-ig esett, közel a 12k/perc fojtáshoz) —
+   így a groq-first a burst-plafonba ütközne, 429-eket okozva. **A jelenlegi adaton a csere
+   ellenjavallt.**
+3. **Amíg a groq megbízhatóan átveszi a terhet és a jelentés hibátlan (mint 08-21…23),
+   a helyes teendő: SEMMI** — a WARN itt a fallback-lánc *sikerét* jelzi, nem működési hibát.
+   Beavatkozás (primary kvóta emelése / harmadik ingyenes provider / sorrend-csere) csak
+   akkor, ha a fallback is fogy (③ mellett fizetős-fallback >2 jel is tüzel).
 
 ---
 
@@ -132,9 +149,12 @@ Nem félbehagyott feladatok — lezárt döntések, indoklással:
 - **Gmail MCP token lejárt** — csak akkor számít, ha a levelet MCP-n keresztül akarod
   olvasni/kezelni; újra-auth kell. A **kézbesítést NEM érinti** (az nodemailer/SMTP-n megy).
 - **`/doctor` npm prefix warning** — kozmetikai, nincs funkcionális hatás.
-- **(watch) `szazadveg` feed HTTP 500** — 2026-08-22 tranziens A-forrás hiba. **Lejárat: ha
-  2026-08-25-ig nem ismétlődik, ez a sor törölhető.** (Különben egy év múlva is itt ül, és
-  senki nem meri kivenni.)
+- **`szazadveg` feed HTTP 500 — ISMÉTLŐDŐ** (2026-08-22 ÉS 08-23, két egymást követő nap →
+  NEM tranziens). Szerver-oldali (5xx) hiba, nem a mi oldalunkon; egyetlen forrás hibája nem
+  dönti el a futást (a `source_checks` láthatóan `HIBA`-ként naplózza — nincs néma eltűnés).
+  Teendő: ha tartósan áll, a `config/sources.json` szazadveg-bejegyzésének felülvizsgálata
+  (feed-URL változott? végleg megszűnt? → `HIBA_TARTOS`/`MEGSZUNT` státusz, hogy a napló
+  pontos legyen). Addig figyelendő — ha magától rendeződik, ez a sor törölhető.
 
 ---
 
