@@ -1,0 +1,155 @@
+# Survey Monitor — Üzemeltetési leírás
+
+**Státusz:** üzemben, önjáró (2026-08-24-től)
+**Ritmus:** cron **08:43 UTC** (`.github/workflows/monitor.yml`), levél **~09:20–10:00 UTC**
+**Ez a fájl az operatív igazság forrása.** A `docs/ARCHITEKTURA.md` a „hogyan épül fel",
+ez a „hogyan üzemel naponta". A fejlesztési naplók (memória-fájlok, `docs/DONTES-*`,
+`docs/SOURCES-*`, `docs/BESZAMOLO*`) TÖRTÉNET — a döntések *miértje*, nem napi teendő.
+
+---
+
+## 0. Rendszerkép — mi fut, mikor, hova
+
+Minden nap 08:43 UTC-kor egy GitHub Actions futás (`monitor.yml`) végigméri a forrásokat,
+LLM-mel triázsol, jelentést renderel, kiteszi GitHub Pages-re, és emailt küld. A futás a
+végén visszacommitolja az állapotot (`state/monitor.db`) a `main`-re.
+
+| Artefakt | Hol |
+|---|---|
+| Élő jelentés (mindig a legfrissebb) | `https://goszmarton.github.io/survey-monitor/` |
+| Aznapi archív | `https://goszmarton.github.io/survey-monitor/ÉÉÉÉ/HH/NN.html` |
+| Napi digest email | a `MAIL_TO` címzettekhez |
+| 🔴 KIEMELT email | külön levél, CSAK ha aznap volt KIEMELT tétel |
+| Futási napló | GitHub → Actions → „monitor" workflow |
+| Állapot (DB) | `state/monitor.db` a repo `main` ágán (a futás commitolja) |
+
+### Levél-adminisztráció — a leggyakoribb valódi kérés
+
+A címzettek a **`MAIL_TO` GitHub Actions secret**-ben vannak (repo → Settings → Secrets and
+variables → Actions → `MAIL_TO`). A rendszer nodemailer-en, Gmail SMTP-vel küld
+(`SMTP_USER`/`SMTP_PASS` secret, `smtp.gmail.com:465`).
+
+- **Címzettet cserélni / hozzáadni:** a `MAIL_TO` secret értékét írod át. Formátum:
+  **vesszővel** elválasztott lista (`a@x.hu, b@y.hu`). A guard (`src/email.js`
+  `parseRecipients`) trimmeli a szóközöket, dobja az üres tagokat; pontosvesszőt is elfogad,
+  de a láblécben ⚠️-t jelez („használj vesszőt"); a @-nélküli gyanús címet MEGTARTJA, de
+  jelzi (nincs néma dobás).
+- **Levelet szüneteltetni** (a jelentés és a Pages menjen tovább, csak email ne):
+  a `MAIL_TO`-t (vagy `SMTP_USER`/`SMTP_PASS`-t) ürítsd/töröld → `buildTransport` `null`-t
+  ad, email nem megy, de a futás és a Pages változatlan.
+- **Az egész napi futást leállítani:** a `.github/workflows/monitor.yml`-ben a
+  `schedule` (`- cron: "43 8 * * *"`) kivétele/kommentelése, vagy a workflow letiltása az
+  Actions felületen. (A manuális `workflow_dispatch` így is elérhető marad.)
+
+---
+
+## 1. Napi minimum-ellenőrzés — *NEM fejlesztési verifikáció*
+
+Három pipa annak, aki csak **látni akarja, hogy egészséges** — kód és DB nélkül:
+
+- ☐ **Levél megjött** (~09:20–10:00 UTC).
+- ☐ **Pages 200** — a **gyökér-URL** (`…/survey-monitor/`) él. (Az aznapi archív-URL is 200,
+  de a gyökér a mérvadó — az mindig a legfrissebb.)
+- ☐ **Audit-lábléc WARN-jai** — a levél/Pages láblécében van-e ⚠️. Ha igen → §2.
+
+Ha mind a három OK → **nincs teendő**. A rendszer nem küld „zöld futás"-riportot; a
+**hallgatás a jó hír** (becsületes részlegesség: a napló magától igaz).
+
+---
+
+## 2. A három audit-jel — jelentés és teendő
+
+Mindhárom jel **levél-semleges**: a láblécben látszik, de NEM állítja meg a jelentést
+(3. vezérelv — a jelentés sosem marad el).
+
+| Jel (lábléc ⚠️) | Mit jelent | Mikor tüzel | Teendő |
+|---|---|---|---|
+| **groq HTTP_404** | a groq-modell deprecated (megszűnt az endpoint) | a groq-hívások 404-et adnak | modell-ID frissítése `config/llm.json`-ban a groq aktuális modelljére; addig a lánc anthropic-ra (fizetős) esik — ld. lenti jel |
+| **fizetős fallback >2 batch** | az anthropic (fizetős) vitte a triázs >2 batch-ét → a két ingyenes réteg (gemini+groq) egyszerre gyenge | anthropic-batch szám > 2 | nézd meg melyik ingyenes réteg esett ki (kvóta? tranziens 503/429?). Nem azonnali beavatkozás, de ha tartós → provider-kvóták |
+| **lánc-sorrend <50% (③)** | az elsődleges provider (gemini) az OK-batch-ek <50%-át vitte — **néma degradáció**, amit a másik két jel nem lát | primary-share < 50% | tranziens gemini-kiesés → magától rendeződik. Tartós (több nap) → provider-sorrend felülvizsgálat |
+
+**③ első éles tüzelése (2026-08-22):** gemini 503×12 → az OK-batch-ek 1/13 = 8%-a ment
+gemini-n → WARN. Ez a jel pontosan azért van, mert a gemini 503 (≠404) a groq-404-jelet és
+a fizetős-fallback-jelet is elkerülhette volna. A 08-22-i tüzelés helyes, nem hiba.
+
+---
+
+## 3. Tudatosan elfogadott viselkedés — *NE hibának nézd*
+
+Mérési hivatkozással, hogy három hónap múlva se tűnjön regressziónak:
+
+- **KIEMELT 14-napos ablak öregít, nem frissít.** A napi KIEMELT-darab csökken/stagnál, ha
+  nincs friss tétel (`UJ_24H=0`) — az ablak kigördül, nem frissül. *Mérés: 2026-08-20/21 =
+  11, 08-22/23 = 10, azóta változatlan; `UJ_24H=0` négy egybevágó nap (bitre azonos halmaz).*
+  Termékdöntés (a KIEMELT a 14 nap legfontosabbjait tartja), nem hiba.
+- **Dedup precision-erős / recall-gyenge — tudatos kompromisszum** (CLAUDE.md 5: a hamis
+  összevonás egy fontos tételt a rep alá temet ≫ megmaradt duplikátum). *Két counterfactual
+  igazolta, hogy a baseline (`harness([])`) alatt IS bont, tehát NEM a ② name-hub flip
+  túlbontása: Baka-hármas 2026-08-21, Vitézy-négyes 2026-08-22.* Ha ugyanaz a sztori több
+  soron jelenik meg `+N` nélkül, az recall-hiány, nem elrontott merge.
+- **A levél elolvasása önálló ellenőrzési csatorna.** Nem hangulat, hanem mért: az elmúlt
+  három nap mindhárom megfigyelése (Vitézy-négyes, Baka-hármas, KIEMELT-ismétlés) **a
+  levélből tűnt fel elsőként** — nem tesztből és nem DB-ből. A minimum-ellenőrzés (§1)
+  elég az „egészséges-e" kérdésre; de aki átfutja a levél tartalmát, olyan mintázatot lát,
+  amit egyik automata jel sem fog meg.
+- **Synthesis ↔ triázs rangsor tervezetten diszjunkt** (C döntés, `docs/DONTES-SZINTEZIS-VS-RANGSOR.md`):
+  a „📰 Napi narratíva" szekció szerkesztői (újságírói szaliencia), a „📊 Adatjelentőség
+  szerint, kapuzott" adatjelentőségi. A kettő eltérhet — ez szándék, nem inkonzisztencia.
+  **De a diszjunkció NEM állandó szerkezeti szakadék, hanem a napi hírhelyzet függvénye:**
+  adat-gazdag napon a két szekció fedésbe kerül (pl. 2026-08-23 mindkettő Paksot vitte). Ne
+  számíts állandó eltérésre — hol elválik, hol egybeesik, a nap tartalmától függően.
+- **B2 (eurobarometer) aktív, de első valódi tétele még nem futott át élesben.** A wave-nap
+  egy jövőbeli EB-publikációhoz kötött; az **egészséges** állapot `OK_NINCS_UJ` (wave
+  detektálva, semmi újabb a `since`-nél), NEM tétel. (Aktiválva a 2026-08-24-es futással.)
+
+---
+
+## 4. Amit tudatosan elhagytunk
+
+Nem félbehagyott feladatok — lezárt döntések, indoklással:
+
+- **Historikus backfill** — a napi ág kezeli a jövőbeli EE-pollokat (a `filterSinceDay`
+  nap-granularitása a jövőbeli pollt átengedi); a backfill kizárólag a 2026-08-11-i
+  Europiont mentené, egyetlen aggregát pollt, ami 08-25-re kigördül az ablakból → nem éri
+  meg egy külön ág kockázata.
+- **pew** — a „külön provider-lánc" premisszája **mérésen megdőlt**: a gemini-first lánc két
+  napja gyakorlatilag néma (23% → 8% share), tehát nincs szabad kapacitás egy külön láncra.
+- **21-token kollízió policy-fix** — mért **blast-radius 0** (2 kontaminált tétel, 0 valódi
+  cross-intézet hamis merge); a `standalone_sources` strukturális kerülőút elég.
+- **Dinamikus hub-kritérium / üres-intézet-osztály** — nincs mért haszon a jelenlegi
+  forráskörön.
+- **① `decompose_min_component` 30→20** — a ② name-hub token teljesen lefedte, külön
+  paraméter-hangolás fölösleges.
+- **KIEMELT-freshness / rendezési sorrend** — termék-kérdés (mit mutasson elöl), nem hiba.
+- **politico + 21kutato** — datacenter-ASN blokk (Actions + Hetzner 403, lakossági IP 200);
+  rezidens runner kellene. Jelenleg kézi laptop-fetch, újranyitás ha lakossági futtató-
+  környezet vagy heti kadencia.
+
+---
+
+## 5. Ismert környezeti tételek
+
+- **Gmail MCP token lejárt** — csak akkor számít, ha a levelet MCP-n keresztül akarod
+  olvasni/kezelni; újra-auth kell. A **kézbesítést NEM érinti** (az nodemailer/SMTP-n megy).
+- **`/doctor` npm prefix warning** — kozmetikai, nincs funkcionális hatás.
+- **(watch) `szazadveg` feed HTTP 500** — 2026-08-22 tranziens A-forrás hiba. **Lejárat: ha
+  2026-08-25-ig nem ismétlődik, ez a sor törölhető.** (Különben egy év múlva is itt ül, és
+  senki nem meri kivenni.)
+
+---
+
+## 6. Hibaelhárítás dióhéjban — *ha a §1 minimum-ellenőrzés bukik*
+
+Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít, amikor nem az.
+
+- **Levél nem jött** → GitHub → Actions → „monitor" run státusza. Ha a run sikeres, de nincs
+  levél: `MAIL_TO`/`SMTP_*` secret (ürült? elgépelt?), a lábléc MAIL_TO-guard ⚠️-je. Ha a run
+  bukott: a lépés-log.
+- **Pages 404 a gyökéren** → deploy-gap (a Pages-backend néha késik; nézd a „deploy" job-ot,
+  van natív retry). **Fontos apróság:** az archív-URL az **`archive` prefix NÉLKÜL** él:
+  `…/survey-monitor/ÉÉÉÉ/HH/NN.html` — a `buildDist` a másoláskor lestrippeli az `archive`
+  könyvtárat. A `…/survey-monitor/archive/…` MINDIG 404, ez nem hiba.
+- **Minden provider kiesett** → a jelentés **degradáltan akkor is megjön** (3. vezérelv), a
+  lábléc jelzi melyik réteg esett ki. Nincs azonnali teendő; ha tartós → provider-kvóták.
+- **Forrás HIBA/RESZLEGES a naplóban** → egyetlen forrás hibája nem dönti el a futást; a
+  `source_checks` napló láthatóan rögzíti (nincs néma eltűnés). Tranziens → magától rendeződik.

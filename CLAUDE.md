@@ -2,6 +2,12 @@
 
 A projekt leírása: `docs/ARCHITEKTURA.md`. Ez a fájl arról szól, **hogyan** dolgozz itt.
 
+> **A rendszer 2026-08-24-től önjáró.** A napi üzemeltetés (mit néz meg valaki, aki nem
+> fejleszt: minimum-ellenőrzés, audit-jelek, levél-adminisztráció, hibaelhárítás) a
+> `docs/UZEMELTETES.md`-ben van — az az operatív igazság forrása. Az alábbi Szabályok 1–6
+> időtállóak: **minden jövőbeli fejlesztési körre érvényesek** (ezek nem a fejlesztési
+> fázis kadenciája, hanem tartós mérnöki elvek).
+
 ## Szabályok
 
 1. **Minden viselkedésmódosításhoz regressziós teszt** — akkor is, ha a hiba

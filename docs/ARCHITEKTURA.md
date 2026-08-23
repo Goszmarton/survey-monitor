@@ -2,7 +2,9 @@
 
 **Projekt:** automatizált magyar közéleti kutatás- és adatmonitor
 **Alap:** a `SURVEY_figyelés_prompt.docx` specifikáció (26 szekció) gépi megvalósítása
-**Státusz:** tervezési dokumentum, v0.1 — a repo indulása előtt
+**Státusz:** v1 — üzemben (2026-08). Ez a fájl a „hogyan épül fel"; a napi
+üzemeltetés (minimum-ellenőrzés, audit-jelek, levél-adminisztráció,
+hibaelhárítás) a `docs/UZEMELTETES.md`-ben.
 
 ---
 
@@ -458,11 +460,11 @@ keretében is bőven elfér.
 Minden fázis végén a rendszer önmagában használható — az F1 már
 minden nap küld valamit, ami igaz.
 
-## 11. Nyitott döntések induláskor
+## 11. Nyitott döntések induláskor — LEZÁRVA
 
-1. Repo neve és láthatósága (Pages-korlát miatt: publikus monitor-repo
-   vagy külön publikus output-repo).
-2. Email-küldő: Gmail SMTP vagy Resend.
-3. Free tier providerek aktuális kvótái és modellnevei (implementáció
-   napján ellenőrizve, configba rögzítve).
-4. Melyik intézetnek van gépbarát listaoldala (F1/F3 határvonal).
+Az induláskori négy nyitott döntés eldőlt (a rendszer 2026-08 óta üzemben):
+repo publikus + GitHub Pages; email Gmail SMTP (nodemailer); free-tier
+providerek `config/llm.json`-ban rögzítve (a kötő korlát a kvóta/rate limit,
+nem a $); a gépbarát intézeti listaoldalak az F1/F3 során bekötve. A további
+üzemeltetési döntések (tudatosan elfogadott viselkedés, elhagyott irányok
+indoklással) a `docs/UZEMELTETES.md` §3–4-ben.
