@@ -36,8 +36,9 @@ test("E2: FAIL-CLOSED — adapter status OK NÉLKÜL NEM aktivál (pl. eurobarom
 
 test("E2: regresszió — a többi B-kaszt/adapter nélküli forrás MARAD inaktív", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  // eurobarometer 2026-08-22-től AKTÍV (B2, adapter+OK) → kikerült e listából, ld. b2_activation.test.js
-  for (const id of ["politico_pop", "idea", "zavecz"]) {
+  // eurobarometer 2026-08-24-től PARKOLVA (a B2-aktiválás incidens miatt visszavonva) →
+  // visszakerült e listába; ld. b2_activation.test.js (parkolt-őrző).
+  for (const id of ["politico_pop", "idea", "zavecz", "eurobarometer"]) {
     assert.ok(!activeIds.has(id), `${id} NEM aktív (nincs adapter+OK, se A-kaszt feed/list_url)`);
   }
 });

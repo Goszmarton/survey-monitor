@@ -5,53 +5,45 @@ import { fileURLToPath } from "node:url";
 import { selectActiveSources, isActiveSource, channelsOf } from "../src/collect.js";
 import * as eurobarometer from "../src/sources/eurobarometer.js";
 
-// B2 AKTIVÁLÁS (levél-ható változás): az eurobarometer determinista B-kaszt forrás bekötése,
-// az E2 (europeelects) mintáját követve. Két lépés EGYÜTT teszi aktívvá:
-//   (1) collect.js ADAPTERS registry: eurobarometer felvétele → channelsOf a dedikált adapterre routol;
-//   (2) sources.json flip: adapter=eurobarometer + status OK (+ list_url a megjelenítéshez).
-// PIROS a flip/registry-bővítés ELŐTT (kaszt B, NEM_AKTIVALT, nincs az ADAPTERS-ben); ZÖLD utána.
+// B2 PARKOLVA (2026-08-24 incidens) — az eurobarometer AKTIVÁLÁS ideiglenesen VISSZAVONVA.
+// Az első éles B2-futás (32711742333) 30 percig némán beragadt (a http.js törzs-olvasása
+// időtlen volt egy fojtott volumeA.xlsx body-streamnél a datacenter-IP-ről), a job-timeout
+// CANCELLED-del ölte meg, a napi levél elmaradt. A fix (http.js törzs-timeout + workflow
+// step-timeout/cancelled()-ág) shippelve; az ÚJRAAKTIVÁLÁS külön nap, éles bizonyítás után.
 //
-// A lánc élő smoke-teszttel igazolt (2026-08-22, lakossági IP): fetchNew → OK_UJ, hullám 105.3
-// (fieldwork 2026-05-04), 30 HU-tétel. A fetch-lánc (resolveVolumeA) BELSŐ (API_BASE/HUB_BASE),
-// nem a source.list_url-ből fetch-el — a list_url csak a check/item megjelenítés-URL-je.
-//
-// LEVÉL-BIZTONSÁG: a `since` globális (getLastRunStartedAt, ~előző futás), a filterSinceDay a
-// fieldwork-véget (2026-05-04) hasonlítja a since-naphoz → egy régi hullám mind kiszűrve →
-// OK_NINCS_UJ, 0 tétel. Tételek CSAK egy új hullámnál (fieldwork ≥ előző futás) jönnek → nincs burst.
+// Ez a teszt a PARKOLT állapotot ŐRZI: (1) eurobarometer jelenleg NEM aktív; (2) az
+// adapter-kód + ADAPTERS-registry ÉRINTETLEN, így az újraaktiválás EGYETLEN status-flip
+// (NEM_AKTIVALT→OK) — ezt a routing-teszt egy szintetikus OK-státuszú forráson igazolja.
 
 const { sources } = JSON.parse(readFileSync(fileURLToPath(new URL("../config/sources.json", import.meta.url)), "utf8"));
 
-test("B2: az eurobarometer AKTÍV forrás (adapter=eurobarometer + status OK) — a collect felveszi", () => {
+test("B2 parkolva: az eurobarometer JELENLEG NEM aktív (status != OK) — a napi futás nem hívja", () => {
   const active = selectActiveSources(sources);
-  const eb = active.find((s) => s.id === "eurobarometer");
-  assert.ok(eb, "eurobarometer a kiválasztott aktív források közt");
-  assert.equal(eb.adapter, "eurobarometer", "dedikált adapter-mező");
-  assert.equal(eb.status, "OK", "status OK (fail-closed guard átengedi)");
-  assert.ok(typeof eb.list_url === "string" && eb.list_url.length > 0, "van megjelenítés-URL (check/item url)");
+  assert.ok(!active.find((s) => s.id === "eurobarometer"), "eurobarometer NINCS a kiválasztott aktív források közt");
+  const eb = sources.find((s) => s.id === "eurobarometer");
+  assert.ok(eb, "a config-bejegyzés megmarad (parkolva, nem törölve)");
+  assert.equal(eb.adapter, "eurobarometer", "a dedikált adapter-mező ÉRINTETLEN (újraaktiváláshoz)");
+  assert.notEqual(eb.status, "OK", "a status NEM OK (parkolt) — ez tartja ki a fail-closed adapter-ágból");
 });
 
-test("B2: az aktivált eurobarometer a dedikált adapterre routol (REAL ADAPTERS, nem generikus)", () => {
-  const eb = selectActiveSources(sources).find((s) => s.id === "eurobarometer");
-  const ch = channelsOf(eb);
+test("B2 parkolva: a routing ÉP — egy OK-státuszú eurobarometer a dedikált adapterre menne (reaktiválás = 1 flip)", () => {
+  // A live config parkolt; a routingot szintetikus OK-forráson igazoljuk, hogy az
+  // újraaktiváláskor a channelsOf a valós eurobarometer modulra routol (nem generikus).
+  const synthetic = { id: "eurobarometer", kaszt: "B", adapter: "eurobarometer", status: "OK", list_url: "https://europa.eu/eurobarometer/" };
+  assert.equal(isActiveSource(synthetic), true, "adapter + OK → aktív lenne");
+  const ch = channelsOf(synthetic);
   assert.equal(ch.length, 1, "pontosan egy csatorna");
-  assert.equal(ch[0].fetcher, eurobarometer, "a dedikált eurobarometer adapter viszi");
+  assert.equal(ch[0].fetcher, eurobarometer, "a dedikált eurobarometer adapter viszi (registry ép)");
 });
 
-test("B2: FAIL-CLOSED — adapter status OK NÉLKÜL NEM aktivál", () => {
+test("B2 parkolva: FAIL-CLOSED — adapter status OK NÉLKÜL NEM aktivál (ez tartja parkoltan)", () => {
   assert.equal(isActiveSource({ id: "x", kaszt: "B", adapter: "eurobarometer", status: "NEM_AKTIVALT" }), false, "adapter + nem-OK → inaktív");
   assert.equal(isActiveSource({ id: "x", kaszt: "B", adapter: "eurobarometer" }), false, "status hiánya → inaktív");
   assert.equal(isActiveSource({ id: "x", kaszt: "B", adapter: "eurobarometer", status: "OK" }), true, "adapter + OK → aktív");
 });
 
-test("B2: regresszió — a többi NEM_AKTIVALT B-forrás MARAD inaktív", () => {
-  const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  for (const id of ["politico_pop", "idea", "zavecz"]) {
-    assert.ok(!activeIds.has(id), `${id} NEM aktív (nincs adapter+OK)`);
-  }
-});
-
-test("B2: regresszió — az E2 (europeelects) továbbra is aktív, a két adapter nem üti egymást", () => {
+test("B2 parkolva: regresszió — az E2 (europeelects) továbbra is aktív (a park nem érinti)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
   assert.ok(activeIds.has("europeelects"), "europeelects marad aktív");
-  assert.ok(activeIds.has("eurobarometer"), "eurobarometer is aktív");
+  assert.ok(!activeIds.has("eurobarometer"), "eurobarometer parkolt");
 });
