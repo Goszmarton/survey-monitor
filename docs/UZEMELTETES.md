@@ -101,11 +101,20 @@ Mérési hivatkozással, hogy három hónap múlva se tűnjön regressziónak:
   `UJ_24H=0` nap (adat-szegénység); majd **2026-08-24: friss KIEMELT érkezett (`UJ_24H`-KIEMELT = 1),
   a lista 10→9 (egy régi kigördült, egy friss belépett)** → a mechanizmus bizonyítottan frissít, nem
   ragad be.* Termékdöntés (a KIEMELT a 14 nap legfontosabbjait tartja), nem hiba.
-- **Dedup precision-erős / recall-gyenge — tudatos kompromisszum** (CLAUDE.md 5: a hamis
-  összevonás egy fontos tételt a rep alá temet ≫ megmaradt duplikátum). *Két counterfactual
-  igazolta, hogy a baseline (`harness([])`) alatt IS bont, tehát NEM a ② name-hub flip
-  túlbontása: Baka-hármas 2026-08-21, Vitézy-négyes 2026-08-22.* Ha ugyanaz a sztori több
-  soron jelenik meg `+N` nélkül, az recall-hiány, nem elrontott merge.
+- **Dedup viselkedése ABLAKMÉRET-FÜGGŐ — tudatos kompromisszum** (CLAUDE.md 5: a hamis
+  összevonás egy fontos tételt a rep alá temet ≫ megmaradt duplikátum):
+  - **Normál napi ablakon: precision-erős / recall-gyenge.** *Két counterfactual igazolta,
+    hogy a baseline (`harness([])`) alatt IS bont, tehát NEM a ② name-hub flip túlbontása:
+    Baka-hármas 2026-08-21, Vitézy-négyes 2026-08-22.* Ha ugyanaz a sztori több soron
+    jelenik meg `+N` nélkül, az recall-hiány, nem elrontott merge.
+  - **Nagy klaszterek esetén megjelennek OVER-MERGE-ek numerikus és név-hidakon.** *Mérés:
+    2026-08-24 kétnapos ablak (126 merge / 284 tag): akkugyár +11 HÁROM sztorit fúzionál a
+    „bírságot kapott"/„225 milliós" hídon (Debrecen CATL + Iváncsa + eMAG GVH-bírság); Posta
+    +10 a „nagy"/„Nagy"/„magyar" hídon (Posta-vezér-menesztés + idegen tételek).* **Eltemetett
+    KIEMELT NINCS** — a beolvadt idegen tételek FIGYELENDO/FONTOS (a drága hibamód nem sült el).
+  - **A kiváltó kétnapos ablak INCIDENS-EREDETŰ** (a 08-24-i hang miatt maradt el az aznapi
+    futás → a #47 két nap tételét egyszerre hozta), **nem normál üzem.** Egynapos ablakon a
+    híd-tokenek ritkábban láncolnak át sztori-határon.
 - **A levél elolvasása önálló ellenőrzési csatorna.** Nem hangulat, hanem mért: az elmúlt
   három nap mindhárom megfigyelése (Vitézy-négyes, Baka-hármas, KIEMELT-ismétlés) **a
   levélből tűnt fel elsőként** — nem tesztből és nem DB-ből. A minimum-ellenőrzés (§1)
@@ -147,6 +156,14 @@ Nem félbehagyott feladatok — lezárt döntések, indoklással:
   forráskörön.
 - **① `decompose_min_component` 30→20** — a ② name-hub token teljesen lefedte, külön
   paraméter-hangolás fölösleges.
+- **Dedup over-merge tuning (numerikus token-drop + „nagy"/„Nagy" hub-token)** — a 08-24-i
+  nagy-klaszter over-merge-ek (§3) kézenfekvő ellenszere, DE **kétélű, mérés nélkül nem
+  shippelhető:** a numerikus token gyakran a sztori LÉNYEGE, nem zaj (a „225 milliós" épp a
+  bírság azonosítója → drop-ja false SPLITet okozna a valódi eMAG-parafrázisok közt); a „nagy"
+  pedig poliszém melléknév — ugyanaz a csapda, ami miatt a „magyar" kimaradt az a2 name-hub
+  listából (hub-tokenként legitim merge-eket bontana). A kiváltó ablakméret egyszeri
+  (incidens-eredetű), a drága hibamód (eltemetett KIEMELT) nem sült el → nem éri meg a
+  kockázat. Ha visszatérő nagy-ablak lenne, korpusz-mérés után újranyitható.
 - **KIEMELT-freshness / rendezési sorrend** — termék-kérdés (mit mutasson elöl), nem hiba.
 - **politico + 21kutato** — datacenter-ASN blokk (Actions + Hetzner 403, lakossági IP 200);
   rezidens runner kellene. Jelenleg kézi laptop-fetch, újranyitás ha lakossági futtató-
