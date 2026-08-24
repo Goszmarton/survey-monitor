@@ -95,10 +95,12 @@ mechanikus provider-csere:
 
 Mérési hivatkozással, hogy három hónap múlva se tűnjön regressziónak:
 
-- **KIEMELT 14-napos ablak öregít, nem frissít.** A napi KIEMELT-darab csökken/stagnál, ha
-  nincs friss tétel (`UJ_24H=0`) — az ablak kigördül, nem frissül. *Mérés: 2026-08-20/21 =
-  11, 08-22/23 = 10, azóta változatlan; `UJ_24H=0` négy egybevágó nap (bitre azonos halmaz).*
-  Termékdöntés (a KIEMELT a 14 nap legfontosabbjait tartja), nem hiba.
+- **KIEMELT 14-napos ablak: a mechanizmus FRISSÍT — az azonosság adat-szegénység, nem beragadás.**
+  Ha nincs friss tétel (`UJ_24H=0`), a lista változatlant ismétel (az ablak kigördül); de amint
+  friss KIEMELT jön, azonnal beépül. *Mérés: 2026-08-20/21 = 11, 08-22/23 = 10 — négy egybevágó
+  `UJ_24H=0` nap (adat-szegénység); majd **2026-08-24: friss KIEMELT érkezett (`UJ_24H`-KIEMELT = 1),
+  a lista 10→9 (egy régi kigördült, egy friss belépett)** → a mechanizmus bizonyítottan frissít, nem
+  ragad be.* Termékdöntés (a KIEMELT a 14 nap legfontosabbjait tartja), nem hiba.
 - **Dedup precision-erős / recall-gyenge — tudatos kompromisszum** (CLAUDE.md 5: a hamis
   összevonás egy fontos tételt a rep alá temet ≫ megmaradt duplikátum). *Két counterfactual
   igazolta, hogy a baseline (`harness([])`) alatt IS bont, tehát NEM a ② name-hub flip
@@ -122,6 +124,10 @@ Mérési hivatkozással, hogy három hónap múlva se tűnjön regressziónak:
   és a registry érintetlen**, az újraaktiválás egyetlen `status`-flip lesz, **külön napon**,
   miután a fix élesben legalább egy tiszta futással bizonyított ÉS a webgate-letöltés a
   datacenter-IP-ről (Actions) verifikált. Addig a napi levél a B2 nélküli, ismert-jó körön megy.
+  *Reaktiválási kapu **1. feltétel TELJESÜLT** 2026-08-24: a kézi futás #47 (run 32751426091) a
+  http-fixszel TISZTA lement — 15m41s (< a 25 perces step-timeout), 27 forrás, levél kiment,
+  Pages+archív 200, a step-timeout/`cancelled()`-ág NEM tüzelt. A **2. feltétel** (volumeA.xlsx
+  a datacenter-IP-ről) még külön mérés.*
 
 ---
 
