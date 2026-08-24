@@ -45,3 +45,20 @@ test("workflow: npm test test-gate a napi futás (node src/run.js) ELŐTT (a-pon
   assert.ok(runIdx !== -1, "van 'node src/run.js' lépés a workflow-ban");
   assert.ok(testIdx < runIdx, "a test-gate a napi futás ELŐTT fut (bukó teszt megállítja)");
 });
+
+// 2026-08-24 incidens: a napi futás beragadt és a job timeout-minutes:30 CANCELLED-del
+// ölte meg. A hiba-email `if: failure()`-e cancellationre NEM fut → a beragadt futás NÉMA
+// volt (se levél, se hiba-jelzés). A guardnak a cancellationt (timeout) is fednie kell.
+test("workflow: a hiba-email cancellationre (timeout) is fut, nem csak failure()-re", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  assert.match(yml, /if:\s*failure\(\)\s*\|\|\s*cancelled\(\)/, "a hiba-email if-je failure() VAGY cancelled()");
+});
+
+// Belt-and-suspenders: a "Napi futás" lépés SAJÁT timeout-minutese kisebb a job-énál (30),
+// hogy egy beragadás a LÉPÉST buktassa (failure()) — tartalékkal a hiba-email lefutására —
+// a job-szintű cancel ELŐTT. A cancel-ág (fent) így csak a végső védőháló.
+test("workflow: a Napi futás lépésnek saját (a job alatti) timeout-minutese van", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  const runStep = yml.slice(yml.indexOf("Napi futás"), yml.indexOf("Állapot-DB"));
+  assert.match(runStep, /timeout-minutes:\s*\d+/, "a napi futás lépésnek van step-szintű timeoutja");
+});

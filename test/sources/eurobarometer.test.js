@@ -315,3 +315,29 @@ test("fetchNew: since-szűrés a fieldwork-vég szerint (az előző hullám utá
   assert.equal(items.length, 0);
   assert.equal(check.status, "OK_NINCS_UJ");
 });
+
+// 2026-08-24 incidens: a volumeA.xlsx body-download némán beragadt; a HIBA-detail a puszta
+// megjelenítés-URL-t adta, NEM azt, hogy a lánc MELYIK lépése akadt el. A lánc-lépés
+// log-jelzése: egy elakadt lépés HIBA-detailje NEVESÍTI a lépést (itt a webgate volumeA).
+test("fetchNew: a lánc-lépés hibája NEVESÍTI a lépést (volumeA body-timeout → diagnosztizálható)", async () => {
+  const abortOnWebgate = async (url) => {
+    let body, ct = "application/json";
+    if (url.includes("survey/get/latest")) body = fx("survey_latest.json");
+    else if (url.includes("survey/get/one")) body = fx("survey_one_3752.json");
+    else if (url.includes("api/hub/search/datasets/")) body = fx("odp_dataset.json");
+    else if (url.includes("webgate.ec.europa.eu")) {
+      // a fejléc megjön, a TÖRZS elakad → időtúllépés (a http.js törzs-timeout-ja utánozva)
+      return { ok: true, status: 200, headers: { get: () => "application/octet-stream" },
+        text: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; },
+        bytes: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; },
+        arrayBuffer: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } };
+    } else throw new Error(`váratlan URL: ${url}`);
+    return { ok: true, status: 200, headers: { get: () => ct }, text: async () => body.toString("utf8"),
+      bytes: async () => body, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) };
+  };
+  const { items, check } = await fetchNew(SRC, { fetchImpl: abortOnWebgate });
+  assert.equal(items.length, 0);
+  assert.equal(check.status, "HIBA");
+  assert.match(check.detail, /volumeA/i, "a HIBA-detail nevesíti az elakadt lánc-lépést (webgate volumeA)");
+  assert.match(check.detail, /időtúllépés/, "és jelzi, hogy időtúllépés volt");
+});

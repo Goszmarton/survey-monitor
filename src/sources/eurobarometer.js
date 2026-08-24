@@ -64,20 +64,35 @@ async function getJson(url, { fetchImpl, timeoutMs }) {
   return JSON.parse(await res.text());
 }
 
+// Lánc-lépés log-jelzés (2026-08-24 incidens): ha egy lépés elakad (pl. a volumeA.xlsx
+// body-download időtúllépik a datacenter-IP-ről), az első elakadt lépés címkéje ráragad a
+// hibára (err.step) → a fetchNew HIBA-detailje NEVESÍTI, melyik lépés akadt el (nem csak a
+// megjelenítés-URL-t adja). A címke az ELSŐ elakadásé marad (a belső lépés győz a külső fölött).
+async function chainStep(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err && !err.step) err.step = label;
+    throw err;
+  }
+}
+
 /**
  * Végigjárja a láncot és a volumeA.xlsx bufferét adja.
  * @returns {Promise<{survey:object, datasetId:string, xlsxUrl:string, buffer:Buffer}>}
  */
 export async function resolveVolumeA({ fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, apiBase = API_BASE, hubBase = HUB_BASE } = {}) {
-  const latest = await getJson(`${apiBase}/survey/get/latest?nb=5`, { fetchImpl, timeoutMs });
+  const latest = await chainStep("survey/get/latest", () => getJson(`${apiBase}/survey/get/latest?nb=5`, { fetchImpl, timeoutMs }));
   const survey = pickLatestSurvey(latest);
-  const one = await getJson(`${apiBase}/survey/get/one?id=${survey.id}`, { fetchImpl, timeoutMs });
+  const one = await chainStep("survey/get/one", () => getJson(`${apiBase}/survey/get/one?id=${survey.id}`, { fetchImpl, timeoutMs }));
   const datasetId = datasetIdFromOpenDataUrl(openDataUrlOf(one));
-  const dataset = await getJson(`${hubBase}/datasets/${datasetId}`, { fetchImpl, timeoutMs });
+  const dataset = await chainStep("data.europa.eu dataset", () => getJson(`${hubBase}/datasets/${datasetId}`, { fetchImpl, timeoutMs }));
   const xlsxUrl = volumeADownloadUrl(dataset);
-  const res = await httpGet(xlsxUrl, { fetchImpl, timeoutMs });
-  if (!res.ok) throw Object.assign(new Error(`volumeA letöltés HTTP ${res.status}`), { status: res.status });
-  const buffer = await res.bytes();
+  const buffer = await chainStep("volumeA letöltés (webgate)", async () => {
+    const res = await httpGet(xlsxUrl, { fetchImpl, timeoutMs });
+    if (!res.ok) throw Object.assign(new Error(`volumeA letöltés HTTP ${res.status}`), { status: res.status });
+    return res.bytes(); // a törzs-olvasás (http.js törzs-timeout) ITT sül el egy fojtott streamnél
+  });
   return { survey, datasetId, xlsxUrl, buffer };
 }
 
@@ -421,6 +436,7 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
     if (fresh.length === 0) return { items: [], check: { status: "OK_NINCS_UJ", detail: `${base} — egyik sem újabb`, url } };
     return { items: fresh, check: { status: "OK_UJ", detail: `${base}, ${fresh.length} friss`, url } };
   } catch (err) {
-    return { items: [], check: { status: "HIBA", detail: describeError(err, timeoutMs), url } };
+    const where = err?.step ? `${err.step}: ` : "";
+    return { items: [], check: { status: "HIBA", detail: `${where}${describeError(err, timeoutMs)}`, url } };
   }
 }

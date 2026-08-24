@@ -7,27 +7,51 @@ export const DEFAULT_TIMEOUT_MS = 20_000;
 /**
  * Egy GET-lekérés timeouttal. A választ nyersen adja vissza (status + testolvasók),
  * a hívó dönt bytes/text között. Hiba/timeout esetén dob — a fetcher kapja el.
+ *
+ * A timeout MINDKÉT fázist fedi: a fejléc-megérkezést ÉS a törzs-olvasást. Régen a
+ * timert a fejléc után (finally) törölte a kód, mielőtt a hívó a törzset (bytes()/
+ * text() → arrayBuffer()/text()) beolvasta — így egy megállt/fojtott body-stream
+ * IDŐTLENÜL függött (2026-08-24: webgate volumeA.xlsx a datacenter-IP-ről → a napi
+ * futás 30 percig némán beragadt, job-timeout ölte meg). Most az abort-signal a
+ * törzs-olvasás alatt is él: minden olvasás ÚJRA felhúzza a timert UGYANAZON a
+ * controlleren (a body-stream a fetch signaljára abortál), és a végén törli.
  * @returns {Promise<{status:number, ok:boolean, contentType:string|null, bytes:()=>Promise<Buffer>, text:()=>Promise<string>}>}
  */
 export async function httpGet(url, { fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const arm = () => setTimeout(() => controller.abort(), timeoutMs);
+  let timer = arm();
+  let res;
   try {
-    const res = await fetchImpl(url, {
+    res = await fetchImpl(url, {
       signal: controller.signal,
       redirect: "follow",
       headers: { "User-Agent": USER_AGENT, Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.5" },
     });
-    return {
-      status: res.status,
-      ok: res.ok,
-      contentType: res.headers?.get?.("content-type") ?? null,
-      bytes: async () => Buffer.from(await res.arrayBuffer()),
-      text: async () => res.text(),
-    };
-  } finally {
+  } catch (err) {
     clearTimeout(timer);
+    throw err;
   }
+  clearTimeout(timer); // fejléc megvan; a törzs-olvasás saját (újra-felhúzott) korlátot kap
+
+  // A törzs-olvasót UGYANAZZAL a controllerrel korlátozzuk (a body-stream a fetch
+  // signaljára abortál) — külön controller nem szakítaná meg az undici stream-jét.
+  const readBody = async (consume) => {
+    const t = arm();
+    try {
+      return await consume();
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  return {
+    status: res.status,
+    ok: res.ok,
+    contentType: res.headers?.get?.("content-type") ?? null,
+    bytes: () => readBody(async () => Buffer.from(await res.arrayBuffer())),
+    text: () => readBody(() => res.text()),
+  };
 }
 
 /**

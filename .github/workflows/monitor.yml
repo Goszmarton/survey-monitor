@@ -48,6 +48,12 @@ jobs:
         run: npm test
 
       - name: Napi futás (jelentés + email)
+        # A LÉPÉS saját timeoutja kisebb a job-énál (30) — így egy beragadt fetch a LÉPÉST
+        # buktatja (failure()), tartalékkal a hiba-email lefutására, a job-szintű cancel
+        # ELŐTT. (2026-08-24: egy időtlen body-stream 30 percig némán függött, a job-cancel
+        # skippelt MINDENT, a failure()-höz kötött hiba-email is elmaradt.) Az egy-hívásos
+        # body-timeout már a http.js-ben ül; ez a step-timeout a második védővonal.
+        timeout-minutes: 25
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -92,7 +98,10 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Hiba-email (ha a futás elhasalt)
-        if: failure()
+        # failure() ÉS cancelled(): a job-szintű timeout CANCELLED-del öl (nem failure), így
+        # a puszta failure() a beragadt futást NÉMÁVÁ tette (2026-08-24). A cancelled()-ág a
+        # végső védőháló, ha a step-timeout (fent) valamiért nem buktatná előbb a lépést.
+        if: failure() || cancelled()
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}

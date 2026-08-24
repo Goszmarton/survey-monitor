@@ -115,9 +115,13 @@ Mérési hivatkozással, hogy három hónap múlva se tűnjön regressziónak:
   **De a diszjunkció NEM állandó szerkezeti szakadék, hanem a napi hírhelyzet függvénye:**
   adat-gazdag napon a két szekció fedésbe kerül (pl. 2026-08-23 mindkettő Paksot vitte). Ne
   számíts állandó eltérésre — hol elválik, hol egybeesik, a nap tartalmától függően.
-- **B2 (eurobarometer) aktív, de első valódi tétele még nem futott át élesben.** A wave-nap
-  egy jövőbeli EB-publikációhoz kötött; az **egészséges** állapot `OK_NINCS_UJ` (wave
-  detektálva, semmi újabb a `since`-nél), NEM tétel. (Aktiválva a 2026-08-24-es futással.)
+- **B2 (eurobarometer) 2026-08-24 óta PARKOLVA** (az aktiválás visszavonva). Az első éles
+  B2-futás 30 percig némán beragadt (fojtott `volumeA.xlsx` body-download a datacenter-IP-ről,
+  időtlen törzs-olvasás), a job-timeout ölte meg, a levél elmaradt — ld. §6. A gyök-ok
+  javítva (`http.js` törzs-timeout + workflow step-timeout/`cancelled()`-ág); az **adapter-kód
+  és a registry érintetlen**, az újraaktiválás egyetlen `status`-flip lesz, **külön napon**,
+  miután a fix élesben legalább egy tiszta futással bizonyított ÉS a webgate-letöltés a
+  datacenter-IP-ről (Actions) verifikált. Addig a napi levél a B2 nélküli, ismert-jó körön megy.
 
 ---
 
@@ -169,6 +173,13 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   van natív retry). **Fontos apróság:** az archív-URL az **`archive` prefix NÉLKÜL** él:
   `…/survey-monitor/ÉÉÉÉ/HH/NN.html` — a `buildDist` a másoláskor lestrippeli az `archive`
   könyvtárat. A `…/survey-monitor/archive/…` MINDIG 404, ez nem hiba.
+- **A levél megjött (vagy elmaradt), de a Pages a TEGNAPit mutatja** → a run **a DB-commit
+  ELŐTT állt le** (a `node src/run.js` lépés beragadt/időtúllépett → a job cancelled, és a
+  DB-commit + Pages-artifact + deploy MIND skipped). Ilyenkor **a GHA-run STÁTUSZA a mérvadó,
+  nem a deploy-lépés**: Actions → a run zöld-e? Ha „cancelled" / a „Napi futás" lépés elakadt,
+  a Pages azért mutat régit, mert aznap nem is épült új. (2026-08-24: egy időtlen body-stream
+  30 percig némán függött; azóta van egy-hívásos törzs-timeout (`http.js`) + step-timeout(25)
+  a futás-lépésen + `cancelled()`-ág a hiba-emailen, így egy ilyen beragadás már NEM néma.)
 - **Minden provider kiesett** → a jelentés **degradáltan akkor is megjön** (3. vezérelv), a
   lábléc jelzi melyik réteg esett ki. Nincs azonnali teendő; ha tartós → provider-kvóták.
 - **Forrás HIBA/RESZLEGES a naplóban** → egyetlen forrás hibája nem dönti el a futást; a
