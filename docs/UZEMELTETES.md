@@ -203,6 +203,15 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   a Pages azért mutat régit, mert aznap nem is épült új. (2026-08-24: egy időtlen body-stream
   30 percig némán függött; azóta van egy-hívásos törzs-timeout (`http.js`) + step-timeout(25)
   a futás-lépésen + `cancelled()`-ág a hiba-emailen, így egy ilyen beragadás már NEM néma.)
+- **Kimaradt nap után a következő futás a step-timeout közelébe kerülhet — MENNYISÉG, nem hiba.**
+  A wall-clockot a TPM-szünet dominálja, tehát nagyjából **lineáris a tételszámmal**. *Mérés:
+  normál egynapos ablak ~9 perc (08-23: 532s); kétnapos ablak 16m8s (#47, 08-24).* A 25 perces
+  step-timeout így a normálra ~2,8x ráhagyás, de egy kétnapos ablakra már csak ~1,5x — egy
+  **háromnapos** kimaradás utáni behozó-futás pedig BIZTOSAN a limitbe ütközne, nem hibából,
+  hanem a mennyiségtől. **Teendő:** kimaradt nap (cancelled/skipped futás) UTÁN a következő
+  futást figyelni kell; ha a „Napi futás" lépés a 25 perc közelébe ér, a helyes eszköz a
+  **step-timeout átmeneti megemelése** (`monitor.yml` → `timeout-minutes`), NEM a pipeline
+  hibakeresése. A behozás után a következő egynapos ablak visszaáll a ~9 perces normálra.
 - **Minden provider kiesett** → a jelentés **degradáltan akkor is megjön** (3. vezérelv), a
   lábléc jelzi melyik réteg esett ki. Nincs azonnali teendő; ha tartós → provider-kvóták.
 - **Forrás HIBA/RESZLEGES a naplóban** → egyetlen forrás hibája nem dönti el a futást; a
