@@ -203,15 +203,25 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   a Pages azért mutat régit, mert aznap nem is épült új. (2026-08-24: egy időtlen body-stream
   30 percig némán függött; azóta van egy-hívásos törzs-timeout (`http.js`) + step-timeout(25)
   a futás-lépésen + `cancelled()`-ág a hiba-emailen, így egy ilyen beragadás már NEM néma.)
-- **Kimaradt nap után a következő futás a step-timeout közelébe kerülhet — MENNYISÉG, nem hiba.**
-  A wall-clockot a TPM-szünet dominálja, tehát nagyjából **lineáris a tételszámmal**. *Mérés:
-  normál egynapos ablak ~9 perc (08-23: 532s); kétnapos ablak 16m8s (#47, 08-24).* A 25 perces
-  step-timeout így a normálra ~2,8x ráhagyás, de egy kétnapos ablakra már csak ~1,5x — egy
-  **háromnapos** kimaradás utáni behozó-futás pedig BIZTOSAN a limitbe ütközne, nem hibából,
-  hanem a mennyiségtől. **Teendő:** kimaradt nap (cancelled/skipped futás) UTÁN a következő
-  futást figyelni kell; ha a „Napi futás" lépés a 25 perc közelébe ér, a helyes eszköz a
-  **step-timeout átmeneti megemelése** (`monitor.yml` → `timeout-minutes`), NEM a pipeline
-  hibakeresése. A behozás után a következő egynapos ablak visszaáll a ~9 perces normálra.
+- **A „Napi futás" lépés a step-timeout közelébe kerülhet — a hajtóerő NEM a tételszám,
+  hanem a per-batch költség.** *KORÁBBI HIPOTÉZIS (2026-08-25 reggel, ELVETVE): „a wall-clock
+  ~lineáris a tételszámmal". A 08-25-i futás CÁFOLTA: a „Napi futás" 22m20s volt (a 25 perces
+  step-timeout ~2m40s margóján belül — near-miss), MIKÖZBEN a triázs-batchszám 13 = pontosan
+  annyi, mint a 8m57s-es 08-23-i napon. A per-batch wall-clock triplázódott (08-23: 41s/batch
+  → 08-25: 103s/batch), a batch-szám lapos maradt → a tételszám NEM batchen keresztül hat.*
+  A batch-szünet (`triage.js`) token-alapú (mért tok/batch ÷133,3 ≈30s), napok közt ~azonos;
+  a provider-láncban nincs backoff (`complete.js`). A tripla wall-clock legvalószínűbb oka a
+  teljesen kieső elsődleges provider (08-25: gemini 0/13, minden batch 503→groq round-tripet
+  fizetett) és/vagy egy lassú collect-fázis — **de amíg a run.js nem írt fázis-időbélyeget, ez
+  nem volt lokalizálható.** *ESZKÖZ (shippelve 2026-08-25, `phaselog.js` + `run.js`): a futás
+  most fázisonként (`collect` / `triázs+szintézis` / `render+dedup` / `email`) kiír egy
+  `⏱ fázis "…": …s` sort a Napi-futás-logba — a következő lassú futásnál a fázis azonnal
+  látszik.* **Teendő:** ha a „Napi futás" a 25 perc közelébe ér, a Napi-futás-logból olvasd ki,
+  MELYIK fázis vitte az időt: ha triázs (provider-kiesés) → §2/provider-kvóták; ha collect →
+  forrás-timeout. Átmeneti tűzoltás bármelyik esetben a **step-timeout megemelése** (`monitor.yml`
+  → `timeout-minutes`), NEM a pipeline vak hibakeresése. (A tételszám/kimaradt-nap hatását külön
+  még nem tudtuk tisztán mérni — a 08-24/08-25 mind incidens-eredetű átfedő ablak volt; az első
+  tiszta összehasonlító adatpont a 08-26 normál egynapos ablak.)
 - **Minden provider kiesett** → a jelentés **degradáltan akkor is megjön** (3. vezérelv), a
   lábléc jelzi melyik réteg esett ki. Nincs azonnali teendő; ha tartós → provider-kvóták.
 - **Forrás HIBA/RESZLEGES a naplóban** → egyetlen forrás hibája nem dönti el a futást; a

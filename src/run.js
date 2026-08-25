@@ -14,6 +14,7 @@ import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
 import { deriveInstitutes } from "./lib/storygroup.js";
 import { auditProviders } from "./audit.js";
+import { phaseLine } from "./lib/phaselog.js";
 
 const TZ = "Europe/Budapest";
 const DB_PATH = "state/monitor.db";
@@ -38,6 +39,11 @@ async function loadSources() {
 
 async function main() {
   const startedMs = Date.now();
+  // Fázis-időbélyeg (levél-semleges, csak stdout): a 08-24/08-25 tanulság — a run.js
+  // NÉMA volt a szakaszhatárokon, így egy lassú futás fázisa nem volt visszakereshető.
+  // A `mark(label)` az előző mark ÓTA eltelt időt írja ki, gépi-parse-olható formában.
+  let phaseMark = startedMs;
+  const mark = (label) => { const t = Date.now(); console.log(phaseLine(label, t - phaseMark)); phaseMark = t; };
   const now = nowBudapest();
   const runId = now.ymd;
 
@@ -48,6 +54,7 @@ async function main() {
   const sources = await loadSources();
 
   const collected = await collect({ db, sources, now: now.ms, runId, runStartedAt: now.iso, since });
+  mark("collect");
 
   // ---- F2: LLM-triázs + szintézis (degradál, ha nincs elérhető provider) ----
   const prefilterCfg = await loadJson("../config/triage.json");
@@ -55,6 +62,7 @@ async function main() {
   const { items, synthesisText, kiemeltCount, triageDegraded } = await enrichWithTriage({
     db, items: collected.items, completeFn: complete, prefilterCfg, providersUsed,
   });
+  mark("triázs+szintézis");
 
   // Cross-source story-dedup config (spec 13.). Betöltési hiba ÉLES futásban NE legyen
   // csendes (mint a régi silent dedup-kiesés): WARN a naplóba + console, a dedup kimarad
@@ -138,6 +146,7 @@ async function main() {
   await mkdir(`archive/${y}/${m}`, { recursive: true });
   await writeFile(`archive/${reportPath}`, html);
   await buildDist({ archiveDir: "archive", distDir: "dist" });
+  mark("render+dedup");
   console.log(`Jelentés kész: ${items.length} tétel, ${kiemeltCount} KIEMELT${triageDegraded ? " (triázs degradált)" : ""}, ${collected.sourceChecks.length} forrás.`);
 
   // A digest linkje a Pages-GYÖKÉRRE mutat (nem a napi archívra): a deploy-pages NEM additív,
@@ -154,6 +163,7 @@ async function main() {
     kiemeltSent = await sendMail(`🔴 KIEMELT — ${runId} — ${kiemeltCount} tétel`, renderKiemelt(run));
     console.log(kiemeltSent ? "KIEMELT-email elküldve." : "KIEMELT-email kihagyva (nincs SMTP-konfig).");
   }
+  mark("email");
 
   finishRun(db, {
     runId,
