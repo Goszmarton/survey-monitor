@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderDigest, renderKiemelt, digestSubject, PAGES_BASE } from "../src/report.js";
+import { renderDigest, renderKiemelt, renderCombined, combinedSubject, digestSubject, PAGES_BASE } from "../src/report.js";
 
 const RUN = {
   runId: "2026-07-22",
@@ -103,4 +103,56 @@ test("renderKiemelt guard: unset pagesUrl → fallback-szöveg, nem törik (a le
   assert.ok(html.includes("A teljes jelentés a GitHub Pages-archívumban."));
   assert.ok(!html.includes("Legfrissebb jelentés →"));
   assert.ok(!html.includes("Teljes jelentés →"));
+});
+
+// ---- EGY összevont levél (2026-08-26 döntés: a digest + KIEMELT egy levélbe) ----
+// A user már nem akar KÉT levelet; a KIEMELT szekció a digest TETEJÉRE kerül (ha van
+// kiemelt tétel), a digest teljes egészében alatta marad. A tartalom a két korábbi levél
+// UNIÓJA, ugyanazokból a helperekből (storyGroups KIEMELT-reprezentánsai + freshRepresentatives
+// + digestItemList + pagesLink) — hogy egy jövőbeli render-változásnál ne csússzon szét (CLAUDE.md 2).
+
+test("renderCombined: EGY HTML-dokumentum (nem két <!doctype> egymás után)", () => {
+  const html = renderCombined({ ...RUN, pagesUrl: PAGES_BASE });
+  assert.equal((html.match(/<!doctype html>/gi) || []).length, 1, "pontosan egy doctype");
+  // a Pages-link (helper) is egyszer szerepel — nem duplikálva a két ágból
+  assert.equal((html.match(/Legfrissebb jelentés →/g) || []).length, 1, "egy jelentés-link");
+});
+
+test("renderCombined: KIEMELT szekció FELÜL, alatta a teljes digest (narratíva + kapuzott)", () => {
+  const html = renderCombined(RUN);
+  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
+  const narrativaIdx = html.indexOf("📰 Napi narratíva (utolsó 24 óra)");
+  const kapuzottIdx = html.indexOf("📊 Adatjelentőség szerint, kapuzott");
+  assert.ok(kiemeltSectionIdx > 0, "van KIEMELT szekció");
+  assert.ok(kiemeltSectionIdx < narrativaIdx, "a KIEMELT szekció a narratíva ELŐTT (felül)");
+  assert.ok(narrativaIdx < kapuzottIdx, "a digest szekciók a megszokott sorrendben");
+  // a KIEMELT tétel a szekcióban; a nem-KIEMELT (Havi infláció) csak a digest-listában
+  assert.match(html, /nagy fordulat/);
+  assert.match(html, /Havi infláció/);
+});
+
+test("renderCombined: nincs kiemelt → NINCS KIEMELT szekció, de a digest megvan", () => {
+  const noKiemelt = {
+    ...RUN,
+    items: [
+      { canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+  };
+  const html = renderCombined(noKiemelt);
+  assert.ok(!html.includes("🔴 KIEMELT tételek"), "nincs üres KIEMELT szekció");
+  assert.match(html, /📊 Adatjelentőség szerint, kapuzott/);
+  assert.match(html, /Havi infláció/);
+});
+
+test("combinedSubject: 🔴 előtag CSAK ha van KIEMELT szekció", () => {
+  assert.match(combinedSubject(RUN), /^🔴 Survey Monitor — /); // RUN-ban van KIEMELT
+  const noKiemelt = { ...RUN, items: [{ canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" }] };
+  assert.ok(!combinedSubject(noKiemelt).startsWith("🔴"), "kiemelt nélkül nincs előtag");
+  assert.match(combinedSubject(noKiemelt), /^Survey Monitor — /);
+});
+
+test("renderCombined: a Pages-link a helperből jön (gyökér, nem napi archív)", () => {
+  const html = renderCombined({ ...RUN, pagesUrl: PAGES_BASE });
+  assert.match(html, /href="https:\/\/goszmarton\.github\.io\/survey-monitor\/"/);
+  assert.ok(!/\/\d{4}\/\d{2}\/\d{2}\.html/.test(html), "nincs napi archív-URL");
 });

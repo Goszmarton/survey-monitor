@@ -400,6 +400,42 @@ export function renderDigest(run) {
 `;
 }
 
+// ---- EGY összevont levél (2026-08-26): 🔴 KIEMELT szekció FELÜL (ha van) + teljes digest ----
+// A korábbi két külön levél (renderDigest + renderKiemelt) helyett egy levél. A tartalom a kettő
+// UNIÓJA, UGYANAZOKBÓL a helperekből (storyGroups KIEMELT-reprezentánsai a szekcióhoz + a digest
+// freshRepresentatives-listája + digestItemList + a KÖZÖS pagesLink), hogy egy jövőbeli
+// render-változásnál a két ág ne csússzon szét (CLAUDE.md 2). renderDigest/renderKiemelt
+// exportok megmaradnak (teszteltek), csak a küldés-ág nem használja őket külön.
+export function combinedSubject(run) {
+  // 🔴 előtag CSAK ha van KIEMELT szekció (= a levélben ténylegesen megjelenő KIEMELT-reprezentáns).
+  const hasKiemelt = storyGroups(run).representatives.some((i) => i.significance === "KIEMELT");
+  return hasKiemelt ? `🔴 ${digestSubject(run)}` : digestSubject(run);
+}
+
+export function renderCombined(run) {
+  const sourceNames = run.sourceNames ?? {};
+  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
+  const fresh = freshRepresentatives(run);
+  const synth = run.synthesisText
+    ? `<p class="synth">${esc(run.synthesisText)}</p>`
+    : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
+  const kiemeltSection = kiemelt.length
+    ? `<section><h2>🔴 KIEMELT tételek</h2>${digestItemList(kiemelt, sourceNames)}</section>`
+    : "";
+  return `<!doctype html>
+<html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(combinedSubject(run))}</title><style>${STYLE}</style></head>
+<body><main>
+  <header><h1>📊 Napi monitor — elmúlt 24 óra</h1>
+    <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
+  ${kiemeltSection}
+  <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
+  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestItemList(fresh, sourceNames)}</section>
+  ${pagesLink(run)}
+</main></body></html>
+`;
+}
+
 // ---- 🔴 KIEMELT e-mail: csak a kiemelt tételek (csak ha van ilyen) ----
 export function renderKiemelt(run) {
   const sourceNames = run.sourceNames ?? {};

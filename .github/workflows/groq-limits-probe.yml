@@ -8,7 +8,7 @@ name: groq-limits-probe
 #
 # NINCS schedule (sose fut magától). Csak a GROQ kulcsot használja; nincs checkout/DB/email/Pages.
 # Csak-olvasó repo-jog. Elfogyaszt ~3 apró kérést (max_tokens:1) + pár tokent a napi keretből
-# (RPD ~1000 mellett elhanyagolható); NE futtasd közvetlenül a 08:43 UTC cron ELŐTT.
+# (RPD ~1000 mellett elhanyagolható); NE futtasd közvetlenül a 14:33 UTC napi cron ELŐTT.
 #
 # FONTOS SZEMANTIKA (a saját 08-15/08-16-i méréssel igazolva, openai_compat.js): a Groq CSAK KÉT
 # limitet ad headerben — `x-ratelimit-limit-requests` = NAPI (RPD), `x-ratelimit-limit-tokens` =

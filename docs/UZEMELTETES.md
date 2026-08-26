@@ -1,7 +1,7 @@
 # Survey Monitor — Üzemeltetési leírás
 
-**Státusz:** üzemben, önjáró (2026-08-24-től)
-**Ritmus:** cron **08:43 UTC** (`.github/workflows/monitor.yml`), levél **~09:20–10:00 UTC**
+**Státusz:** üzemben, önjáró (2026-08-24-től) · **fejlesztési fázis lezárva: 2026-08-26** (ld. §7)
+**Ritmus:** cron **14:33 UTC** (16:33 CEST / 15:33 CET, `.github/workflows/monitor.yml`), levél **kora este** (a sorállás a 14:33-as slotra üzemeltetés közben mérendő)
 **Ez a fájl az operatív igazság forrása.** A `docs/ARCHITEKTURA.md` a „hogyan épül fel",
 ez a „hogyan üzemel naponta". A fejlesztési naplók (memória-fájlok, `docs/DONTES-*`,
 `docs/SOURCES-*`, `docs/BESZAMOLO*`) TÖRTÉNET — a döntések *miértje*, nem napi teendő.
@@ -10,7 +10,7 @@ ez a „hogyan üzemel naponta". A fejlesztési naplók (memória-fájlok, `docs
 
 ## 0. Rendszerkép — mi fut, mikor, hova
 
-Minden nap 08:43 UTC-kor egy GitHub Actions futás (`monitor.yml`) végigméri a forrásokat,
+Minden nap 14:33 UTC-kor egy GitHub Actions futás (`monitor.yml`) végigméri a forrásokat,
 LLM-mel triázsol, jelentést renderel, kiteszi GitHub Pages-re, és emailt küld. A futás a
 végén visszacommitolja az állapotot (`state/monitor.db`) a `main`-re.
 
@@ -18,8 +18,7 @@ végén visszacommitolja az állapotot (`state/monitor.db`) a `main`-re.
 |---|---|
 | Élő jelentés (mindig a legfrissebb) | `https://goszmarton.github.io/survey-monitor/` |
 | Aznapi archív | `https://goszmarton.github.io/survey-monitor/ÉÉÉÉ/HH/NN.html` |
-| Napi digest email | a `MAIL_TO` címzettekhez |
-| 🔴 KIEMELT email | külön levél, CSAK ha aznap volt KIEMELT tétel |
+| Napi jelentés email | a `MAIL_TO` címzettekhez — **EGY levél** (2026-08-26-tól): 🔴 KIEMELT szekció felül, ha aznap volt KIEMELT, alatta a teljes digest |
 | Futási napló | GitHub → Actions → „monitor" workflow |
 | Állapot (DB) | `state/monitor.db` a repo `main` ágán (a futás commitolja) |
 
@@ -38,7 +37,7 @@ variables → Actions → `MAIL_TO`). A rendszer nodemailer-en, Gmail SMTP-vel k
   a `MAIL_TO`-t (vagy `SMTP_USER`/`SMTP_PASS`-t) ürítsd/töröld → `buildTransport` `null`-t
   ad, email nem megy, de a futás és a Pages változatlan.
 - **Az egész napi futást leállítani:** a `.github/workflows/monitor.yml`-ben a
-  `schedule` (`- cron: "43 8 * * *"`) kivétele/kommentelése, vagy a workflow letiltása az
+  `schedule` (`- cron: "33 14 * * *"`) kivétele/kommentelése, vagy a workflow letiltása az
   Actions felületen. (A manuális `workflow_dispatch` így is elérhető marad.)
 
 ---
@@ -47,7 +46,7 @@ variables → Actions → `MAIL_TO`). A rendszer nodemailer-en, Gmail SMTP-vel k
 
 Három pipa annak, aki csak **látni akarja, hogy egészséges** — kód és DB nélkül:
 
-- ☐ **Levél megjött** (~09:20–10:00 UTC).
+- ☐ **Levél megjött** (kora este, Budapest — a pontos sáv a 14:33 UTC slot sorállásától függ; **egy** levél, a KIEMELT a tetején szekcióként, ha volt aznap).
 - ☐ **Pages 200** — a **gyökér-URL** (`…/survey-monitor/`) él. (Az aznapi archív-URL is 200,
   de a gyökér a mérvadó — az mindig a legfrissebb.)
 - ☐ **Audit-lábléc WARN-jai** — a levél/Pages láblécében van-e ⚠️. Ha igen → §2.
@@ -168,6 +167,12 @@ Nem félbehagyott feladatok — lezárt döntések, indoklással:
 - **politico + 21kutato** — datacenter-ASN blokk (Actions + Hetzner 403, lakossági IP 200);
   rezidens runner kellene. Jelenleg kézi laptop-fetch, újranyitás ha lakossági futtató-
   környezet vagy heti kadencia.
+- **Provider circuit-breaker (`complete.js`)** — a 08-26 step-timeout-bukás ellen a lánc
+  ismételt gemini-bukását vághatná (N hiba után a futás hátralévő batchjeire kihagyni a
+  providert). **Nem implementált, mert a per-hívás timeout (30s, §6) MAGA elég:** worst-case
+  gemini-hang 13×30s ≈ 6,5 perc a ~9 perces alapra rakva ~14,5 perc < 25. A breaker csak a
+  margót növelné (2×30s a lánc-fixnél), nem old meg új hibamódot; ha a degradáció tovább
+  romlik és a timeout-margó szűkül, akkor újranyitható (a kód-hely készen áll a lánc-loopban).
 
 ---
 
@@ -203,26 +208,55 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   a Pages azért mutat régit, mert aznap nem is épült új. (2026-08-24: egy időtlen body-stream
   30 percig némán függött; azóta van egy-hívásos törzs-timeout (`http.js`) + step-timeout(25)
   a futás-lépésen + `cancelled()`-ág a hiba-emailen, így egy ilyen beragadás már NEM néma.)
-- **A „Napi futás" lépés a step-timeout közelébe kerülhet — a hajtóerő NEM a tételszám,
-  hanem a per-batch költség.** *KORÁBBI HIPOTÉZIS (2026-08-25 reggel, ELVETVE): „a wall-clock
-  ~lineáris a tételszámmal". A 08-25-i futás CÁFOLTA: a „Napi futás" 22m20s volt (a 25 perces
-  step-timeout ~2m40s margóján belül — near-miss), MIKÖZBEN a triázs-batchszám 13 = pontosan
-  annyi, mint a 8m57s-es 08-23-i napon. A per-batch wall-clock triplázódott (08-23: 41s/batch
-  → 08-25: 103s/batch), a batch-szám lapos maradt → a tételszám NEM batchen keresztül hat.*
-  A batch-szünet (`triage.js`) token-alapú (mért tok/batch ÷133,3 ≈30s), napok közt ~azonos;
-  a provider-láncban nincs backoff (`complete.js`). A tripla wall-clock legvalószínűbb oka a
-  teljesen kieső elsődleges provider (08-25: gemini 0/13, minden batch 503→groq round-tripet
-  fizetett) és/vagy egy lassú collect-fázis — **de amíg a run.js nem írt fázis-időbélyeget, ez
-  nem volt lokalizálható.** *ESZKÖZ (shippelve 2026-08-25, `phaselog.js` + `run.js`): a futás
-  most fázisonként (`collect` / `triázs+szintézis` / `render+dedup` / `email`) kiír egy
-  `⏱ fázis "…": …s` sort a Napi-futás-logba — a következő lassú futásnál a fázis azonnal
-  látszik.* **Teendő:** ha a „Napi futás" a 25 perc közelébe ér, a Napi-futás-logból olvasd ki,
-  MELYIK fázis vitte az időt: ha triázs (provider-kiesés) → §2/provider-kvóták; ha collect →
-  forrás-timeout. Átmeneti tűzoltás bármelyik esetben a **step-timeout megemelése** (`monitor.yml`
-  → `timeout-minutes`), NEM a pipeline vak hibakeresése. (A tételszám/kimaradt-nap hatását külön
-  még nem tudtuk tisztán mérni — a 08-24/08-25 mind incidens-eredetű átfedő ablak volt; az első
-  tiszta összehasonlító adatpont a 08-26 normál egynapos ablak.)
+- **A „Napi futás" step-timeout-bukása — GYÖK-OK MEGTALÁLVA ÉS JAVÍTVA (2026-08-26).** A
+  08-25-i 22m20s near-miss 08-26-on **HIT** lett: a „Napi futás" 25m30s-nél a step-timeoutba
+  futott (a run bukott, DB-commit/Pages kihagyva, de a `failure()||cancelled()` **hiba-email
+  elment** — a védőháló működött). *A fázis-log (shippelve 08-25) most először élesben és
+  egyértelmű:* `⏱ fázis "collect": 6.6s`, **utána semmi** — a triázs-mark ki sem íródott, tehát
+  a maradék ~25 percet a **triázs fázis** vitte, és be sem fejeződött. Terhelés-független:
+  08-26 **normál egynapos ablak** volt (a 144-es tegnapi átfedés MÚLT), mégis hosszabb és
+  bukott → a futásidő **nem** a tételszámmal nő, hanem **naponta romlik**, degradálódó
+  providerrel. **Gyök-ok (kódból):** a triázs-lánc minden batch a **geminivel kezd**
+  (`llm.json`), a `complete.js`-ben nincs breaker (minden batch újra a halott geminit
+  próbálja), és **az LLM-adapterek `fetch`-et hívtak timeout NÉLKÜL** (szemben a forrás-
+  réteggel, `sources/http.js`, a0ad31a) → a beragadó gemini-kapcsolat batchenként az undici-
+  defaultig lógott. *JAVÍTVA (2026-08-26): per-hívás bounded timeout mindhárom adapterre*
+  (`gemini.js` + `openai_compat.js` AbortControllerrel a fejléc- ÉS törzs-olvasásra;
+  `anthropic.js` SDK-timeout), `LLM_TIMEOUT_MS = 30s` (`errors.js`). 30s egészséges hívásra
+  bőven elég, de 13 batchen át is korlátos (worst-case ~14,5 perc < 25). **Teendő ma már:**
+  ha a „Napi futás" MÉGIS a 25 perc közelébe érne, a Napi-futás-logból olvasd ki, MELYIK fázis
+  vitte az időt (`⏱ fázis`-sorok): triázs → §2/provider-kvóták; collect → forrás-timeout.
+  Átmeneti tűzoltás a **step-timeout megemelése** (`monitor.yml` → `timeout-minutes`), NEM a
+  pipeline vak hibakeresése. (A `complete.js` circuit-breaker külön eszköz — §4, nem
+  implementált: a timeout maga elég volt.)
 - **Minden provider kiesett** → a jelentés **degradáltan akkor is megjön** (3. vezérelv), a
   lábléc jelzi melyik réteg esett ki. Nincs azonnali teendő; ha tartós → provider-kvóták.
 - **Forrás HIBA/RESZLEGES a naplóban** → egyetlen forrás hibája nem dönti el a futást; a
   `source_checks` napló láthatóan rögzíti (nincs néma eltűnés). Tranziens → magától rendeződik.
+
+---
+
+## 7. Fejlesztési fázis lezárva — 2026-08-26
+
+**A fejlesztési fázist lezártuk; a RENDSZER üzemel tovább.** Innentől az alapállapot az
+üzemeltetés, nem a fejlesztés.
+
+**Mit jelent a gyakorlatban:**
+- A napi teendő a **§1 három pipája** (levél megjött / Pages 200 / audit-lábléc WARN), **nem**
+  a fejlesztési verifikáció (futásidő-mérés, TPM-headroom, klaszter-audit stb. — azok a
+  fejlesztési naplóban TÖRTÉNET-ként maradnak, nem napi rutin).
+- **Kód csak akkor változik, ha valamelyik pipa TARTÓSAN hiányzik** (egy tranziens bukás nem
+  ok fejlesztésre — a rendszer degradáltan is ad jelentést, 3. vezérelv). A `hogyan dolgozz`
+  elvek (CLAUDE.md 1–6) minden jövőbeli javító körre érvényesek maradnak.
+
+**Hol tart a rendszer (pillanatkép, 2026-08-26):**
+- **27 aktív forrás** (A-kaszt). **B2 (europeelects + eurobarometer) parkolva:** a kód kész
+  és a csatorna Actions-ból bizonyítottan elérhető, de a futtatókörnyezet blokkolhat — mint a
+  politico/21kutato (datacenter-ASN). Egyetlen `NEM_AKTIVALT→OK` státusz-váltás aktiválná,
+  külön napon, a reaktiválási kapu 2. feltétele (volumeA.xlsx datacenter-IP-ről) után.
+- **A három audit-jel él** (groq HTTP_404 / fizetős fallback >2 batch / ③ lánc-sorrend),
+  mind levél-semleges (csak a lábléc jelez).
+- **A gemini tartósan degradált, de a groq viszi** a triázst. A 08-26-i step-timeout-bukás
+  gyök-oka (timeout nélküli LLM-adapterek) **javítva** (§6): per-hívás 30s bounded timeout.
+- **Ütemezés:** cron **14:33 UTC** (esti kézbesítés, 2026-08-26 óta); **egy** összevont
+  levél (KIEMELT-szekció + digest).

@@ -2,19 +2,21 @@ name: daily-monitor
 
 on:
   schedule:
-    # 08:43 UTC = 10:43 nyáron (CEST) / 09:43 télen (CET), Europe/Budapest.
-    # A "ferde" perc (43) szándékos: a kerek órák zsúfoltak az Actions sorában.
+    # 14:33 UTC = 16:33 nyáron (CEST) / 15:33 télen (CET), Europe/Budapest.
+    # A "ferde" perc (33) szándékos: a kerek órák zsúfoltak az Actions sorában.
     #
-    # Cél-SLA: az email a postaládában 15:00 (Budapest) ELŐTT. A szűkebb korlát
-    # a NYÁR: 15:00 CEST = 13:00 UTC (télen 15:00 CET = 14:00 UTC, bővebb), ezért
-    # a nyári korlátra méretezünk. A késleltetés domináns tagja a GitHub Actions
-    # ütemező sorállása (a futás maga ~2 perc). Mért sorállás-sáv: 112–218 perc;
-    # a MÉRT MAXIMUMRA tervezünk, nem a kedvező végre:
-    #   08:43 UTC + 218 perc = 12:21 UTC = 14:21 CEST → ~40 perc tartalék 15:00-ig.
-    #   (A 2026-08-08-i 112 perc a kedvező vég; télen a 218 is csak 13:21 CET.)
-    # Korábban 00:43 UTC / 7:00-s SLA volt; az SLA-t 15:00-ra toltuk, a cron 08:43-ra.
-    # Lásd ARCHITEKTURA.md 3.
-    - cron: "43 8 * * *"
+    # KÉZBESÍTÉSI CÉL (2026-08-26 user-döntés): a jelentés DÉLUTÁN/ESTE érkezzen, ezért
+    # a futás a helyi 16:30 UTÁNRA került. A korábbi 15:00-s SLA (és a hozzá méretezett
+    # 08:43 UTC cron) ELÉVÜLT — az esti kézbesítés a szándék. A késleltetés domináns
+    # tagja továbbra is a GitHub Actions sorállása (a futás maga ~2 perc); az EHHEZ a
+    # slothoz tartozó sorállást üzemeltetés közben mérjük (a 08:43-ra mért 112–218 perc
+    # NEM feltétlen ugyanez). 14:33 UTC + sorállás → jellemzően kora este (Budapest).
+    #
+    # DST-figyelmeztetés: egy fix UTC-cron nem tud egész évben 16:33 helyit. 14:33 UTC
+    # nyáron 16:33 (CEST), TÉLEN 15:33 (CET) — télen a "16:30 után" invariáns egy cronnal
+    # nem tartható; ha a téli 16:30-utániság KELL, 15:33 UTC-re kell váltani. Korábban
+    # 08:43 UTC / 15:00-s SLA volt (ld. git-történet, ARCHITEKTURA.md 3).
+    - cron: "33 14 * * *"
   workflow_dispatch: {}
 
 permissions:

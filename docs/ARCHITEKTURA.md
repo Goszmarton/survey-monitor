@@ -10,7 +10,8 @@ hibaelhárítás) a `docs/UZEMELTETES.md`-ben.
 
 ## 1. Cél és vezérelvek
 
-A rendszer minden nap 15:00 (Europe/Budapest) előtt kézbesít egy jelentést
+A rendszer minden nap egy jelentést kézbesít (2026-08-26-tól délutáni/esti
+kézbesítéssel, ld. 3. Ütemezés — korábban 15:00 Europe/Budapest előtt)
 az előző napi futás óta megjelent magyar és nemzetközi közvélemény-kutatásokról,
 intézeti felmérésekről és hivatalos statisztikai adatközlésekről, a
 specifikáció frissességi és jelentőségi besorolásai szerint.
@@ -40,7 +41,7 @@ architektúra épül:
 
 ```mermaid
 flowchart TD
-    CRON["GitHub Actions cron\n43 8 * * * UTC"] --> RUN[run.js — napi futás]
+    CRON["GitHub Actions cron\n33 14 * * * UTC"] --> RUN[run.js — napi futás]
 
     subgraph GYUJTES["1. Gyűjtőréteg"]
         A["A-kaszt: determinisztikus fetcherek\nRSS · KSH · Eurostat · MNB"]
@@ -80,19 +81,21 @@ flowchart TD
 
 **GitHub Actions, ütemezett workflow.** Nincs saját szerver.
 
-- **Cron:** `43 8 * * *` (UTC). Nyáron 10:43, télen 9:43 budapesti
+- **Cron:** `33 14 * * *` (UTC). Nyáron 16:33, télen 15:33 budapesti
   indulás. A "ferde" perc szándékos: a kerek órák a legzsúfoltabbak az
-  Actions megosztott sorában. **A cron-időt a mérés vezérli, nem becslés:**
-  az ütemezett futások ténylegesen 112–218 perccel a cron után indultak
-  (nem a korábban feltételezett 10–40 perccel) — az Actions ütemezett sora
-  ennyit csúszik. **Cél-SLA: email a postaládában 15:00 Europe/Budapest
-  előtt.** A szűkebb korlát a nyár: 15:00 CEST = **13:00 UTC** (télen 15:00
-  CET = 14:00 UTC, bővebb), ezért a nyári korlátra méretezünk. A `43 8 * * *`
-  a MÉRT 218 perces maximummal is tart: 08:43 + 3:38 = 12:21 UTC = 14:21
-  CEST → ~40 perc tartalék 15:00-ig (télen 13:21 CET, ~100 perc). A
-  2026-08-08-i 112 perc a kedvező vég — nem erre tervezünk. A korábbi
-  `43 0 * * *` a 7:00-s SLA-hoz tartozott; az SLA-t 15:00-ra tolva a cron
-  08:43-ra kerül. Mellékhatás: a jelentés az előző futás óta megjelent
+  Actions megosztott sorában. **Kézbesítési cél (2026-08-26 user-döntés):
+  DÉLUTÁNI/ESTI jelentés — a futás a helyi 16:30 UTÁN.** A korábbi 15:00-s
+  SLA elévült; az esti sáv a szándék. A késleltetés domináns tagja továbbra
+  is az Actions ütemezett sorállása (a futás maga ~2 perc); **az EHHEZ a
+  slothoz tartozó csúszást üzemeltetés közben mérjük** — a 08:43-ra MÉRT
+  **112–218 perc** (történeti adat, nem a korábbi 10–40-es becslés) nem
+  feltétlen ugyanez a 14:33-as slotra. 14:33 UTC + sorállás → jellemzően
+  kora este (Budapest). **DST:** egy fix UTC-cron nem tud egész évben 16:33
+  helyit — 14:33 UTC nyáron 16:33 (CEST), TÉLEN 15:33 (CET), tehát télen a
+  "16:30 után" invariáns egy cronnal nem tartható; ha a téli 16:30-utániság
+  kell, 15:33 UTC-re kell váltani. Történet: `43 0 * * *` (7:00-s SLA) →
+  `43 8 * * *` (15:00-s SLA, 2026-08-08) → `33 14 * * *` (esti, 2026-08-26).
+  Mellékhatás: a jelentés az előző futás óta megjelent
   termést fedi. A "since last run" ablak a tényleges előző futás
   `started_at`-jához kötött (nem a cron-időhöz), ezért az átállás nem hagy
   ki és nem duplikál tartalmat: az ablak folytonos marad. Az átállás napján
@@ -331,10 +334,10 @@ szövegét írja:
 
 - **GitHub Pages:** dátumozott HTML-archívum + index (legfrissebb),
   egyszerű lista a korábbi napokról. v1-ben statikus, keresés nélkül.
-- **Napi digest email:** a jelentés tömörített HTML-változata + link a
-  teljes oldalra. Tárgy: `📊 Monitor 2026.07.22 — 2 új kutatás, 1 KSH`.
-- **🔴 KIEMELT email:** külön, rövid levél csak akkor, ha aznap volt
-  KIEMELT tétel — a tárgysorból látszik, kell-e aznap megnyitni bármit.
+- **Napi jelentés email (2026-08-26-tól EGY összevont levél):** a jelentés tömörített
+  HTML-változata + link a teljes oldalra. Ha aznap volt **🔴 KIEMELT** tétel, annak a
+  szekciója a levél TETEJÉN áll (a tárgysor 🔴 előtaggal jelzi, kell-e aznap megnyitni
+  bármit), alatta a teljes digest. (Korábban ez két külön levél volt — digest + KIEMELT.)
 - **Hiba-email:** elhasalt futásnál.
 - **Küldő szolgáltatás — döntés induláskor:** (a) SMTP Gmail
   app-jelszóval (0 Ft, legegyszerűbb), (b) Resend/Postmark free tier
@@ -449,7 +452,7 @@ keretében is bőven elfér.
    SQLite-állapot, dedup, frissességi státuszok, ellenőrzési napló.
    Jelentés még triázs nélkül, nyers tétellistával.
 3. **F2 — LLM-réteg:** provider-absztrakció + fallback-lánc, batch-elt
-   triázs JSON-sémával, jelentőségi besorolás, digest + KIEMELT email.
+   triázs JSON-sémával, jelentőségi besorolás, jelentés-email (2026-08-26-tól összevont).
 4. **F3 — B-kaszt + rejtett magyar adat:** agentikus
    intézet-ellenőrzések, PDF/grep pipeline, mély audit, token-alapú
    költségbecslés a lábléchez (a 8. pont ígérete ide kötve), a story-dedup

@@ -2,19 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// #1 SLA: a cron 08:43 UTC-re került (2026-08-08: az SLA-t 15:00 Budapestre
-// toltuk, a mért 112–218 perces Actions-sorállás max-jára tervezve), és az
-// ARCHITEKTURA.md indoklása a MÉRT adatra hivatkozik, nem a régi becslésre.
-test("workflow: a daily cron 08:43 UTC (43 8 * * *) — az SLA-fix (#1)", () => {
+// A daily cron 14:33 UTC-re került (2026-08-26 user-döntés: esti kézbesítés, a futás a
+// helyi 16:30 UTÁN). A korábbi 08:43 UTC / 15:00-s SLA elévült; a régi cron nem maradhat.
+test("workflow: a daily cron 14:33 UTC (33 14 * * *) — esti kézbesítés (2026-08-26)", () => {
   const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
-  assert.match(yml, /cron:\s*"43 8 \* \* \*"/, "a cron 08:43 UTC-re állítva");
-  assert.ok(!/cron:\s*"43 0 \* \* \*"/.test(yml), "a régi 00:43 UTC nincs többé");
+  assert.match(yml, /cron:\s*"33 14 \* \* \*"/, "a cron 14:33 UTC-re állítva (16:33 CEST)");
+  assert.ok(!/cron:\s*"43 8 \* \* \*"/.test(yml), "a régi 08:43 UTC nincs többé");
+  assert.ok(!/cron:\s*"43 0 \* \* \*"/.test(yml), "a legrégebbi 00:43 UTC sincs többé");
 });
 
-test("ARCHITEKTURA 3.: a cron-indoklás a mért 112–218 perces sorállásra és a 15:00 SLA-ra hivatkozik (#1)", () => {
+// A cron-indoklás továbbra is a MÉRT sorállás-adatra hivatkozik (112–218 perc — most
+// történeti kontextusként), és a DST-figyelmeztetést is rögzíti (egy fix UTC-cron nem
+// tud egész évben 16:33 helyit). A doksi az új cront írja.
+test("ARCHITEKTURA 3.: a cron-indoklás az új 14:33 cront + a mért sorállást + a DST-t rögzíti", () => {
   const md = readFileSync(new URL("../docs/ARCHITEKTURA.md", import.meta.url), "utf8");
-  assert.match(md, /112–218/, "a mért Actions-sorállás sávja szerepel az indoklásban");
-  assert.match(md, /43 8 \* \* \*/, "a doksi a 08:43 cront írja");
+  assert.match(md, /112–218/, "a mért Actions-sorállás sávja szerepel (történeti kontextus)");
+  assert.match(md, /33 14 \* \* \*/, "a doksi az új 14:33 cront írja");
+  assert.match(md, /DST/, "a DST-eltolódás dokumentálva");
 });
 
 // F4-B: a nem-additív Pages-deployhoz az archive/-ot vissza KELL commitolni, különben

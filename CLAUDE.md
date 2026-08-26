@@ -2,8 +2,11 @@
 
 A projekt leírása: `docs/ARCHITEKTURA.md`. Ez a fájl arról szól, **hogyan** dolgozz itt.
 
-> **A rendszer 2026-08-24-től önjáró.** A napi üzemeltetés (mit néz meg valaki, aki nem
-> fejleszt: minimum-ellenőrzés, audit-jelek, levél-adminisztráció, hibaelhárítás) a
+> **A rendszer 2026-08-24-től önjáró; a FEJLESZTÉSI FÁZIST 2026-08-26-án lezártuk**
+> (részletek + pillanatkép: `docs/UZEMELTETES.md` §7). Innentől az alapállapot az
+> üzemeltetés; kód csak akkor változik, ha a §1 minimum-ellenőrzés valamelyik pipája
+> TARTÓSAN hiányzik. A napi üzemeltetés (mit néz meg valaki, aki nem fejleszt:
+> minimum-ellenőrzés, audit-jelek, levél-adminisztráció, hibaelhárítás) a
 > `docs/UZEMELTETES.md`-ben van — az az operatív igazság forrása. Az alábbi Szabályok 1–6
 > időtállóak: **minden jövőbeli fejlesztési körre érvényesek** (ezek nem a fejlesztési
 > fázis kadenciája, hanem tartós mérnöki elvek).

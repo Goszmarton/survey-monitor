@@ -5,9 +5,12 @@
 // ~30%-kal több tokent számol — ezt a költségbecslés veszi figyelembe.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { LLM_TIMEOUT_MS } from "./errors.js";
 
 export async function anthropic({ apiKey, model, prompt, client }) {
-  const c = client ?? new Anthropic({ apiKey });
+  // Bounded timeout a valódi kliensre: az SDK-default 10 perc — 13 batchen át túl sok
+  // (2026-08-26 step-timeout tanulság). Injektált klienst (teszt) érintetlenül hagyunk.
+  const c = client ?? new Anthropic({ apiKey, timeout: LLM_TIMEOUT_MS });
   const res = await c.messages.create({
     model,
     max_tokens: 2048,

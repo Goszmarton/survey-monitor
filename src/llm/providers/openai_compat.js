@@ -2,7 +2,7 @@
 // Séma esetén json_object mód (a prompt tartalmazza a séma-utasítást); a
 // tényleges séma-ellenőrzést a complete() végzi a validátorral.
 
-import { httpError } from "./errors.js";
+import { httpError, LLM_TIMEOUT_MS } from "./errors.js";
 
 // Rate-limit-mérés (groq-plafon): a groq (és az OpenRouter) MINDEN válaszban visszaadja az
 // x-ratelimit-* headereket. Groq-szemantika: a request-headerek NAPI, a token-headerek PERCES
@@ -23,7 +23,7 @@ function parseRateLimit(headers) {
   return Object.values(rl).some((v) => v !== undefined) ? rl : undefined;
 }
 
-export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fetchImpl = fetch }) {
+export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fetchImpl = fetch, timeoutMs = LLM_TIMEOUT_MS }) {
   const body = {
     model,
     messages: [{ role: "user", content: prompt }],
@@ -36,19 +36,28 @@ export async function openaiCompat({ apiKey, model, prompt, schema, endpoint, fe
   // a JSON-tömböt, a complete() extractJson-je pedig a szövegből is kinyeri.
   if (schema && schema.type !== "array") body.response_format = { type: "json_object" };
 
-  const res = await fetchImpl(`${endpoint}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw await httpError(res, "openai_compat");
+  // Per-hívás időkorlát (a0ad31a mintája az LLM-rétegre): a signal fedi a fejléc- ÉS a
+  // törzs-olvasást (a timert a json() UTÁN töröljük) — bare fetch enélkül percekig lógna.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(`${endpoint}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw await httpError(res, "openai_compat");
 
-  const json = await res.json();
-  const text = json?.choices?.[0]?.message?.content ?? "";
-  // Token-mérés (backfill-headroom): az OpenAI-kompatibilis válasz usage-objektuma;
-  // normalizálva {input,output,total}. Hiánynál undefined — a hívó nem számol vele.
-  const u = json?.usage;
-  const usage = u ? { input_tokens: u.prompt_tokens ?? 0, output_tokens: u.completion_tokens ?? 0, total_tokens: u.total_tokens ?? 0 } : undefined;
-  const ratelimit = parseRateLimit(res.headers);
-  return { text, usage, ratelimit };
+    const json = await res.json();
+    const text = json?.choices?.[0]?.message?.content ?? "";
+    // Token-mérés (backfill-headroom): az OpenAI-kompatibilis válasz usage-objektuma;
+    // normalizálva {input,output,total}. Hiánynál undefined — a hívó nem számol vele.
+    const u = json?.usage;
+    const usage = u ? { input_tokens: u.prompt_tokens ?? 0, output_tokens: u.completion_tokens ?? 0, total_tokens: u.total_tokens ?? 0 } : undefined;
+    const ratelimit = parseRateLimit(res.headers);
+    return { text, usage, ratelimit };
+  } finally {
+    clearTimeout(timer);
+  }
 }
