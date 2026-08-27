@@ -47,14 +47,18 @@ test("report: azonos KIEMELT-sztori 3 forrásból → 1 sor +2 és press_urls a 
   assert.match(html, /forrás:/);
 });
 
-// --- Ítélet nélküli tétel: külön megjelölve, nem csendes ---
-test("report: triage_missing tétel megjelölve + naplóban a darabszám (#2)", () => {
+// --- Ítélet nélküli tétel: PER-SOR megjelölve, nem csendes ---
+// A „Ellenőrzési napló" összegző sora (⏳ N tétel ítélet nélkül maradt) 2026-08-27-én
+// KIKERÜLT a nézetből; a per-tétel jel (sigLabel „⏳ ítélet nélkül") a táblázat SORÁBAN
+// MEGMARAD → a tétel továbbra sem tűnik el csendben (CLAUDE.md 2), csak az összegzés nélkül.
+test("report: triage_missing tétel PER-SOR megjelölve (nem csendes) (#2)", () => {
   const items = [
     { canonical_key: "telex:m", source_id: "telex", kind: "sajto", title: "Ítélet nélküli hír", relevant: 1, significance: null, triage_missing: true, freshness: "UJ_24H", first_seen_at: NOW },
   ];
   const html = renderReport(makeRun(items, { dedupCfg: cfg, institutes }));
-  assert.match(html, /ítélet nélkül/i, "a tétel megjelölve (nem tűnik el csendben)");
-  assert.match(html, /1 tétel ítélet nélkül maradt/, "az ellenőrzési naplóban a darabszám");
+  assert.match(html, /Ítélet nélküli hír/, "a tétel megjelenik (nem esik ki)");
+  assert.match(html, /ítélet nélkül/i, "a per-sor jel (sigLabel) megvan");
+  assert.ok(!/tétel ítélet nélkül maradt/.test(html), "az összegző napló-sor eltűnt (nézet-tisztítás)");
 });
 
 // --- "Mi változott": három populáció (begyűjtött / releváns / sztori) ---

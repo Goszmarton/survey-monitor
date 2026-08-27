@@ -23,10 +23,34 @@ const RUN = {
   durationMs: 1234,
 };
 
-test("renderReport: valid HTML, cím és fázis", () => {
+test("renderReport: valid HTML, cím — NINCS fázis-badge (eltávolítva a nézetből)", () => {
   const html = renderReport(RUN);
   assert.match(html, /^<!doctype html>/i);
-  assert.match(html, /F1 — A-kaszt mag/);
+  assert.match(html, /Magyar közéleti kutatás- és adatmonitor/);
+  assert.ok(!/class="phase"/.test(html), "a fázis-badge eltűnt a fejlécből");
+  assert.ok(!html.includes("F1 — A-kaszt mag"), "a phase szöveg nincs a fejlécben");
+});
+
+test("renderReport: UTOLSÓ ÚJ KUTATÁS a legfrissebb kutatás-tételből (bekötve, nem statikus)", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, median: "Medián" },
+    items: [
+      { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Medián pártpreferencia-kutatás", url: "https://median.hu/1", published_at: "2026-07-22T02:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H" },
+      ...RUN.items,
+    ],
+  };
+  const html = renderReport(run);
+  assert.match(html, /UTOLSÓ ÚJ KUTATÁS[\s\S]*Medián pártpreferencia-kutatás/, "a legfrissebb kutatás címe a fejlécben");
+  assert.ok(!html.includes("intézeti kutatásfigyelés az F3-tól"), "a régi statikus placeholder eltűnt");
+});
+
+test("renderReport: az eltávolított nézet-szekciók nincsenek (kapu / napló / nem-lefedett)", () => {
+  const html = renderReport(RUN);
+  assert.ok(!/Kapu lehúzta/i.test(html), "nincs 'Kapu lehúzta' szekció");
+  assert.ok(!html.includes("Ellenőrzési napló"), "nincs 'Ellenőrzési napló' cím");
+  assert.ok(!html.includes("Még nem lefedett"), "nincs 'Még nem lefedett' szekció");
+  assert.match(html, /Forrás-ellenőrzés/, "a forrás-táblázat megmaradt (új cím alatt)");
 });
 
 test("renderReport: élesített szekció-címek (narratíva + kapuzott adatjelentőség)", () => {

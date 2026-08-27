@@ -219,11 +219,15 @@ export function renderReport(run) {
   // Story-dedup EGYSZER, run-szinten: minden szekció a reprezentánsokból válogat,
   // így a groupStories nem fut szekciónként újra, és a merges-napló egységes.
   const visibleRaw = visibleItems(run);
-  const { representatives: visible, merges } = storyGroups(run);
+  const { representatives: visible } = storyGroups(run);
 
   const hivatalos = visible.filter((i) => i.kind === "hivatalos_adat");
   const sajto = visible.filter((i) => i.kind === "sajto");
   const latestHivatalos = sortItems(hivatalos)[0];
+  // UTOLSÓ ÚJ KUTATÁS a fejlécben — a legfrissebb kutatás-tétel (intézeti közlemény vagy a
+  // sajtóból kutatásként azonosított), a LEGFRISSEBB HIVATALOS ADAT párja (kind==="kutatas").
+  const kutatas = visible.filter((i) => i.kind === "kutatas");
+  const latestKutatas = sortItems(kutatas)[0];
   const uj24 = visible.filter((i) => i.freshness === "UJ_24H");
   // Új sztori: a csoport LEGKORÁBBI tagja most jelent meg (egyetlen tagját sem
   // láttuk a mai futás előtt). A _groupFirstSeen a csoport-min; singletonnál a saját.
@@ -232,25 +236,9 @@ export function renderReport(run) {
   // a countNewInRun-tól (ami a teljes DB-t számolja, a kód-DROP-olt churnnel együtt).
   const newRelevant = visibleRaw.filter((i) => i.first_seen_at === run.runStartedAt).length;
 
-  // Kapu-lehúzás szekció (cap- és dedup-független, tétel-szinten): a per-forrás cap a
-  // FIGYELENDO-farkat levágja a Sajtószemléből, így a lehúzások a fő táblákban láthatatlanok.
-  // Itt a teljes látható halmazból (visibleRaw) soroljuk fel őket, kapu ELŐTTI érték + reason.
-  const RAWRANK = { KIEMELT: 0, FONTOS: 1 };
-  const downgraded = visibleRaw.filter(isDowngraded)
-    .sort((a, b) => (RAWRANK[rawSignificance(a)] - RAWRANK[rawSignificance(b)]) || (Date.parse(b.published_at) || 0) - (Date.parse(a.published_at) || 0));
-  const unassessableDown = visibleRaw.filter(isUnassessableDowngrade).length;
-  const downRows = downgraded.map((it) =>
-    `<li>${esc(sourceNames[it.source_id] ?? it.source_id)}: ${titleLink(it)} <span class="empty">↳ ${esc(rawSignificance(it))}→FIGYELENDO — ${esc(triageReason(it))}</span></li>`).join("");
-  const gateSection = `<section id="kapu">
-    <h2>🔻 Kapu lehúzta (adat nélkül → FIGYELENDO)</h2>
-    ${downgraded.length
-      ? `<p class="empty">${downgraded.length} tétel: a modell FONTOS/KIEMELT-nek ítélte, de data_backed=false → a kapu FIGYELENDO-ra húzta (spec 1./15.).</p><ul>${downRows}</ul>`
-      : `<p class="empty">nincs lehúzott tétel ebben az ablakban</p>`}
-    ${unassessableDown > 0
-      ? `<p class="empty">⚠️ további ${unassessableDown} FIGYELENDO tétel lehúzása nem megállapítható (significance_raw nélküli, korábbi triázs) — a 14-napos ablakból fokozatosan kigördül.</p>`
-      : ""}
-  </section>`;
-
+  // (A „🔻 Kapu lehúzta" szekció 2026-08-27-én kikerült a nézetből — nézet-tisztítás. A
+  //  kapu-LOGIKA a triage-ben változatlanul fut, a lehúzott tétel FIGYELENDO-ként a
+  //  Sajtószemlében jelenik meg. A DB-oldali audit-nyom megmarad; ld. triage_gate.test.js.)
   const naploRows = checks.length
     ? checks.map((c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`).join("\n")
     : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`;
@@ -259,25 +247,6 @@ export function renderReport(run) {
     ? `<ul>${newStories.slice(0, 20).map((i) => `<li>${esc(sourceNames[i.source_id] ?? i.source_id)}: ${esc(i.title)}${pressUrlsHtml(i)}</li>`).join("")}</ul>`
     : `<p class="empty">nincs új tétel az előző futás óta</p>`;
 
-  const unjudged = visible.filter((i) => i.triage_missing).length;
-  const unjudgedNote = unjudged > 0
-    ? `<p class="empty">⏳ ${unjudged} tétel ítélet nélkül maradt (bukott triázs-batch) — a következő futás újrapróbálja, addig megjelölve szerepel.</p>`
-    : "";
-
-  // Összevonás-napló (spec 13.): összegzés + részletes lista, hogy egy esetleges
-  // hamis összevonás felfedezhető legyen (nem csak „eltűnt egy tétel"). A providers_used
-  // részletes bejegyzését a run.js írja a runs-ba; itt a jelentésbe kerül.
-  let mergeNote = "";
-  if (merges.length) {
-    const totalMembers = merges.reduce((a, m) => a + m.members.length, 0);
-    const byRule = {};
-    for (const m of merges) for (const mem of m.members) { const k = mem.rule.split(" ")[0]; byRule[k] = (byRule[k] ?? 0) + 1; }
-    const rules = Object.entries(byRule).map(([k, v]) => `${esc(k)}: ${v}`).join(", ");
-    const list = merges.map((m) => `<li><strong>${esc(m.story)}</strong> ← ${m.members.map((x) => esc(sourceNames[x.source_id] ?? x.source_id)).join(", ")}</li>`).join("");
-    mergeNote = `<p class="empty">🔗 ${merges.length} sztori összevonva ${totalMembers} további forrásból (${rules}) — cross-source dedup (spec 13.):</p><ul>${list}</ul>`;
-  }
-
-  const notCovered = (run.notCovered ?? []).map((s) => `<li>${esc(s)}</li>`).join("\n");
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
   const synth = run.synthesisText
@@ -296,13 +265,12 @@ export function renderReport(run) {
 <main>
   <header>
     <h1>📊 Magyar közéleti kutatás- és adatmonitor</h1>
-    <div class="meta">futás: ${esc(run.runId)} · generálva: ${esc(run.generatedAt)} (Budapest)
-      · <span class="phase">${esc(run.phase ?? "F2 — LLM-réteg")}</span></div>
+    <div class="meta">futás: ${esc(run.runId)} · generálva: ${esc(run.generatedAt)} (Budapest)</div>
   </header>
 
   <section id="fejlec">
     <div class="headline"><span>🕒</span><span class="label">UTOLSÓ ÚJ KUTATÁS:</span>
-      <span class="empty">intézeti kutatásfigyelés az F3-tól</span></div>
+      <span>${latestKutatas ? esc(latestKutatas.title) + " — " + esc(fmtTime(latestKutatas.published_at)) : '<span class="empty">nincs friss kutatás</span>'}</span></div>
     <div class="headline"><span>📈</span><span class="label">LEGFRISSEBB HIVATALOS ADAT:</span>
       <span>${latestHivatalos ? esc(latestHivatalos.title) + " — " + esc(fmtTime(latestHivatalos.published_at)) : '<span class="empty">nincs friss hivatalos adat</span>'}</span></div>
   </section>
@@ -318,8 +286,6 @@ export function renderReport(run) {
     ${table("📰 Sajtószemle", sajto, sourceNames)}
   </section>
 
-  ${gateSection}
-
   <section id="valtozas">
     <h2>Mi változott az előző jelentéshez képest?</h2>
     <p>${newRelevant > 0 || newStories.length > 0
@@ -328,18 +294,12 @@ export function renderReport(run) {
     ${changeList}
   </section>
 
-  <section id="naplo">
-    <h2>Ellenőrzési napló</h2>
-    ${unjudgedNote}
-    ${mergeNote}
+  <section id="forrasok">
+    <h2>Forrás-ellenőrzés</h2>
     <table>
       <tr><th>Forrás</th><th>Státusz</th><th>Részlet</th></tr>
       ${naploRows}
     </table>
-    <h2 style="margin-top:22px">Még nem lefedett (becsületes részlegesség)</h2>
-    <ul>
-${notCovered}
-    </ul>
   </section>
 
   <footer>

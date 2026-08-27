@@ -7,6 +7,13 @@ import { openDb, upsertItems } from "../src/state/db.js";
 import { enrichWithTriage } from "../src/enrich.js";
 import { renderReport } from "../src/report.js";
 
+// NÉZET-VÁLTOZÁS 2026-08-27: a dedikált „Kapu lehúzta" SZEKCIÓ KIKERÜLT a jelentés-oldalból
+// (nézet-tisztítás, felhasználói kérés). A kapu-LOGIKÁT (data_backed=false → FIGYELENDO,
+// significance_raw perzisztálás) a triage_gate.test.js fedi; ez a fájl MEGMARAD, és most azt
+// őrzi, hogy (a) a lehúzás DB-oldali nyoma perzisztál, (b) a lehúzott tétel a nézetből NEM
+// esik ki csendben (FIGYELENDO-ként megjelenik), (c) a dedikált szekció valóban nincs többé.
+//
+// [TÖRTÉNET — az eredeti indoklás, amiért a szekció annak idején bekerült:]
 // RED — a kapu-lehúzás (data_backed=false → FONTOS/KIEMELT ⇒ FIGYELENDO) LÁTHATÓSÁGA.
 //
 // A 08-10-i futás mérése: 8 lehúzott tétel közül a report jelenlegi felületén (Sajtószemle,
@@ -75,11 +82,11 @@ test("(1) friss lehúzás: valós enrich-lánc perzisztálja a reason-t, a szekc
     assert.equal(tj.significance_raw, "FONTOS");
     assert.equal(tj.reason, DOWNGRADE_REASON);
 
-    // render: dedikált, cap-független szekció, a reason-nel
+    // A dedikált kapu-lehúzás SZEKCIÓ 2026-08-27-én kikerült a nézetből; a DB-perzisztálás
+    // (fent) marad, a lehúzott tétel FIGYELENDO-ként a Sajtószemlében jelenik meg (nem csendes).
     const html = renderReport(baseRun(r.items));
-    assert.match(html, /kapu lehúzta/i, "van dedikált kapu-lehúzás szekció");
-    assert.match(html, /Pártközi egyeztetés a költségvetésről/);
-    assert.ok(html.includes(DOWNGRADE_REASON), "a reason látszik");
+    assert.ok(!/kapu lehúzta/i.test(html), "a dedikált kapu-lehúzás szekció eltávolítva a nézetből");
+    assert.match(html, /Pártközi egyeztetés a költségvetésről/, "a lehúzott tétel így is megjelenik");
     cleanup();
   } catch (e) { cleanup(); throw e; }
 });
@@ -96,9 +103,8 @@ test("(2) korábbi futás lehúzása: a significance_raw CSAK a triage_json-ben 
     triage_json: JSON.stringify({ relevant: true, significance: "FIGYELENDO", significance_raw: "FONTOS", data_backed: false, reason: DOWNGRADE_REASON }),
   }];
   const html = renderReport(baseRun(items));
-  assert.match(html, /kapu lehúzta/i);
-  assert.match(html, /Kormányzati bejelentés a nyugdíjakról/, "a korábbi lehúzás címe megjelenik (nem esik ki némán)");
-  assert.ok(html.includes(DOWNGRADE_REASON), "a reason a triage_json-ből");
+  assert.ok(!/kapu lehúzta/i.test(html), "a kapu-lehúzás szekció eltávolítva a nézetből");
+  assert.match(html, /Kormányzati bejelentés a nyugdíjakról/, "a korábbi lehúzás címe így is megjelenik (nem esik ki némán)");
 });
 
 test("(3) legacy (nincs significance_raw): külön 'nem megállapítható' darabszám, NEM a lehúzás-listában", () => {
@@ -115,11 +121,10 @@ test("(3) legacy (nincs significance_raw): külön 'nem megállapítható' darab
       triage_json: JSON.stringify({ relevant: true, significance: "FIGYELENDO", significance_raw: "FONTOS", data_backed: false, reason: DOWNGRADE_REASON }) },
   ];
   const html = renderReport(baseRun(items));
-  // a legacy tétel NEM kap lehúzás-jelet (nem kerül a ↳-listába)
-  assert.doesNotMatch(html, /Régi triázsú FIGYELENDO hír<\/a>\s*<span class="empty">↳/, "a legacy tétel NEM lehúzás-sor");
-  // a valódi (raw-hordozó) lehúzás VISZONT a listában van
-  assert.match(html, /Kormányzati bejelentés a nyugdíjakról<\/a>\s*<span class="empty">↳/, "a raw-hordozó lehúzás a listában");
-  // a 'nem megállapítható' darabszám pontosan a legacy 1 tételt tartalmazza
-  assert.match(html, /további 1 FIGYELENDO tétel lehúzása nem megállapítható/i, "külön darabszám a legacy-re");
-  assert.match(html, /significance_raw/i, "a hiány oka nevesítve");
+  // A ↳-lehúzáslista és a 'nem megállapítható' darabszám a törölt szekcióhoz tartozott →
+  // a nézetből kikerült; mindkét tétel FIGYELENDO-ként így is megjelenik (nem esik ki).
+  assert.ok(!/kapu lehúzta/i.test(html), "nincs kapu-lehúzás szekció");
+  assert.ok(!/<span class="empty">↳/.test(html), "nincs ↳-lehúzásjel a nézetben");
+  assert.match(html, /Régi triázsú FIGYELENDO hír/, "a legacy tétel megjelenik");
+  assert.match(html, /Kormányzati bejelentés a nyugdíjakról/, "a raw-hordozó tétel megjelenik");
 });
