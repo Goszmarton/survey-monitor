@@ -98,7 +98,7 @@ test("(2) korábbi futás lehúzása: a significance_raw CSAK a triage_json-ben 
   const items = [{
     canonical_key: "nepszava:prior1", source_id: "nepszava", kind: "sajto",
     title: "Kormányzati bejelentés a nyugdíjakról", url: "https://nepszava.hu/prior1",
-    published_at: "2026-08-08T05:00:00.000Z", first_seen_at: "2026-08-08T06:00:00.000Z", freshness: "KORABBI",
+    published_at: "2026-08-08T05:00:00.000Z", first_seen_at: "2026-08-08T06:00:00.000Z", freshness: "UJ_24H",
     significance: "FIGYELENDO", relevant: 1,
     triage_json: JSON.stringify({ relevant: true, significance: "FIGYELENDO", significance_raw: "FONTOS", data_backed: false, reason: DOWNGRADE_REASON }),
   }];
@@ -112,12 +112,12 @@ test("(3) legacy (nincs significance_raw): külön 'nem megállapítható' darab
     // legacy FIGYELENDO: triage_json van, de significance_raw NINCS (2026-08-06 előtti triázs)
     { canonical_key: "telex:legacy1", source_id: "telex", kind: "sajto", title: "Régi triázsú FIGYELENDO hír",
       url: "https://telex.hu/legacy1", published_at: "2026-08-01T05:00:00.000Z", first_seen_at: "2026-08-01T06:00:00.000Z",
-      freshness: "KORABBI", significance: "FIGYELENDO", relevant: 1,
+      freshness: "UJ_24H", significance: "FIGYELENDO", relevant: 1,
       triage_json: JSON.stringify({ relevant: true, significance: "FIGYELENDO", reason: "háttérhír" }) },
     // valódi lehúzás (raw megvan) — hogy a két bucket szét legyen választva
     { canonical_key: "nepszava:prior1", source_id: "nepszava", kind: "sajto", title: "Kormányzati bejelentés a nyugdíjakról",
       url: "https://nepszava.hu/prior1", published_at: "2026-08-08T05:00:00.000Z", first_seen_at: "2026-08-08T06:00:00.000Z",
-      freshness: "KORABBI", significance: "FIGYELENDO", relevant: 1,
+      freshness: "UJ_24H", significance: "FIGYELENDO", relevant: 1,
       triage_json: JSON.stringify({ relevant: true, significance: "FIGYELENDO", significance_raw: "FONTOS", data_backed: false, reason: DOWNGRADE_REASON }) },
   ];
   const html = renderReport(baseRun(items));

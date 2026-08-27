@@ -124,7 +124,15 @@ export function recordSourceCheck(db, { runId, sourceId, status, detail, checked
 }
 
 export function getSourceChecks(db, runId) {
-  return db.prepare("SELECT * FROM source_checks WHERE run_id = ? ORDER BY source_id").all(runId);
+  // A run_id a DÁTUM, a source_checks append-only → egy aznapi újrafutás (kézi dispatch +
+  // ütemezett, vagy bukott+újra) forrásonként több sort ír. Forrásonként a LEGUTÓBBI beírást
+  // adjuk (MAX(rowid) = utolsó rögzítés) → „az adott nap állapota", nincs duplikált forrás-sor
+  // a jelentésben. (A korábbi append-sorok megmaradnak: audit-nyom, nincs adatvesztés.)
+  return db.prepare(
+    `SELECT * FROM source_checks
+       WHERE rowid IN (SELECT MAX(rowid) FROM source_checks WHERE run_id = ? GROUP BY source_id)
+       ORDER BY source_id`,
+  ).all(runId);
 }
 
 /**

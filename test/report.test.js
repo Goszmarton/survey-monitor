@@ -11,7 +11,7 @@ const RUN = {
   sourceNames: { ksh: "KSH", telex: "Telex", szabadeu: "Szabad Európa", eurostat: "Eurostat" },
   items: [
     { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "KSH közlés & <b>", url: "https://ksh.hu/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H" },
-    { canonical_key: "telex:1", source_id: "telex", kind: "sajto", title: "Telex cikk", url: "https://telex.hu/1", published_at: "2026-07-20T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "KIHAGYOTT_MOST" },
+    { canonical_key: "telex:1", source_id: "telex", kind: "sajto", title: "Telex cikk", url: "https://telex.hu/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H" },
   ],
   sourceChecks: [
     { source_id: "ksh", status: "OK_UJ", detail: "feed: 3 friss — 3 új a DB-be", checked_at: "2026-07-22T04:00:00.000Z" },
@@ -50,6 +50,7 @@ test("renderReport: az eltávolított nézet-szekciók nincsenek (kapu / napló 
   assert.ok(!/Kapu lehúzta/i.test(html), "nincs 'Kapu lehúzta' szekció");
   assert.ok(!html.includes("Ellenőrzési napló"), "nincs 'Ellenőrzési napló' cím");
   assert.ok(!html.includes("Még nem lefedett"), "nincs 'Még nem lefedett' szekció");
+  assert.ok(!html.includes("Mi változott az előző jelentéshez képest"), "nincs 'Mi változott' szekció");
   assert.match(html, /Forrás-ellenőrzés/, "a forrás-táblázat megmaradt (új cím alatt)");
 });
 
@@ -78,10 +79,18 @@ test("hivatalos és sajtó külön táblában", () => {
   assert.ok(hivIdx > 0 && sajtoIdx > 0);
 });
 
-test("frissességi címkék", () => {
-  const html = renderReport(RUN);
-  assert.match(html, /ÚJ/); // UJ_24H
-  assert.match(html, /korábban kihagyott/i); // KIHAGYOTT_MOST
+test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI kimarad", () => {
+  const run = {
+    ...RUN,
+    items: [
+      ...RUN.items, // ksh + telex mindkettő UJ_24H → a táblában
+      { canonical_key: "telex:old", source_id: "telex", kind: "sajto", title: "Korábbi sajtóhír (nem 24h)", url: "https://telex.hu/old", published_at: "2026-07-10T03:00:00.000Z", first_seen_at: "2026-07-11T04:00:00.000Z", freshness: "KORABBI", significance: "KIEMELT", relevant: 1 },
+    ],
+  };
+  const html = renderReport(run);
+  assert.match(html, /ÚJ/, "a UJ_24H frissesség-címke megjelenik");
+  assert.match(html, /Telex cikk/, "a 24h-s tétel a kapuzott táblában");
+  assert.ok(!html.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
 });
 
 test("ellenőrzési napló a source_checks-ből, státuszokkal", () => {
@@ -89,12 +98,6 @@ test("ellenőrzési napló a source_checks-ből, státuszokkal", () => {
   assert.match(html, /részleges/i);
   assert.match(html, /üres feed/);
   assert.match(html, /KSH/);
-});
-
-test("'mi változott': az új tételek száma", () => {
-  const html = renderReport(RUN);
-  assert.match(html, /2/);
-  assert.match(html, /változott/i);
 });
 
 test("forrásonkénti megjelenítési cap: max 25 sor/forrás + 'további' jelzés", () => {

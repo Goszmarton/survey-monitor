@@ -218,7 +218,6 @@ export function renderReport(run) {
   const checks = run.sourceChecks ?? [];
   // Story-dedup EGYSZER, run-szinten: minden szekció a reprezentánsokból válogat,
   // így a groupStories nem fut szekciónként újra, és a merges-napló egységes.
-  const visibleRaw = visibleItems(run);
   const { representatives: visible } = storyGroups(run);
 
   const hivatalos = visible.filter((i) => i.kind === "hivatalos_adat");
@@ -229,12 +228,11 @@ export function renderReport(run) {
   const kutatas = visible.filter((i) => i.kind === "kutatas");
   const latestKutatas = sortItems(kutatas)[0];
   const uj24 = visible.filter((i) => i.freshness === "UJ_24H");
-  // Új sztori: a csoport LEGKORÁBBI tagja most jelent meg (egyetlen tagját sem
-  // láttuk a mai futás előtt). A _groupFirstSeen a csoport-min; singletonnál a saját.
-  const newStories = visible.filter((i) => (i._groupFirstSeen ?? i.first_seen_at) === run.runStartedAt);
-  // Releváns új tétel (nyers, összevonás ELŐTT) — a mondat őszinteségéhez elkülönítve
-  // a countNewInRun-tól (ami a teljes DB-t számolja, a kód-DROP-olt churnnel együtt).
-  const newRelevant = visibleRaw.filter((i) => i.first_seen_at === run.runStartedAt).length;
+  // A kapuzott TÁBLÁK csak az elmúlt 24 óra (UJ_24H) tételeit sorolják — ez a szintézis
+  // halmaza (enrich.js relevantFresh) és az email digest-je is. A KORÁBBI tételeket a fejléc
+  // (latest*) és az email 🔴 KIEMELT-szekciója viszi tovább (a 14-napos ablak-feature).
+  const hivatalosFresh = hivatalos.filter((i) => i.freshness === "UJ_24H");
+  const sajtoFresh = sajto.filter((i) => i.freshness === "UJ_24H");
 
   // (A „🔻 Kapu lehúzta" szekció 2026-08-27-én kikerült a nézetből — nézet-tisztítás. A
   //  kapu-LOGIKA a triage-ben változatlanul fut, a lehúzott tétel FIGYELENDO-ként a
@@ -242,10 +240,6 @@ export function renderReport(run) {
   const naploRows = checks.length
     ? checks.map((c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`).join("\n")
     : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`;
-
-  const changeList = newStories.length
-    ? `<ul>${newStories.slice(0, 20).map((i) => `<li>${esc(sourceNames[i.source_id] ?? i.source_id)}: ${esc(i.title)}${pressUrlsHtml(i)}</li>`).join("")}</ul>`
-    : `<p class="empty">nincs új tétel az előző futás óta</p>`;
 
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
@@ -282,16 +276,8 @@ export function renderReport(run) {
 
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
-    ${table("📈 Hivatalos adatközlések", hivatalos, sourceNames)}
-    ${table("📰 Sajtószemle", sajto, sourceNames)}
-  </section>
-
-  <section id="valtozas">
-    <h2>Mi változott az előző jelentéshez képest?</h2>
-    <p>${newRelevant > 0 || newStories.length > 0
-      ? `${run.newCount != null ? `<strong>${run.newCount}</strong> új tétel begyűjtve, ebből ` : ""}<strong>${newRelevant}</strong> releváns${newStories.length ? `, <strong>${newStories.length}</strong> sztoriban` : ""} az előző futás óta.`
-      : "Nincs új tétel az előző futás óta."}</p>
-    ${changeList}
+    ${table("📈 Hivatalos adatközlések", hivatalosFresh, sourceNames)}
+    ${table("📰 Sajtószemle", sajtoFresh, sourceNames)}
   </section>
 
   <section id="forrasok">

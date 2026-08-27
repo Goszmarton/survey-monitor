@@ -57,6 +57,29 @@ test("source_checks: rögzítés és visszaolvasás futásonként", () => {
   } catch (e) { cleanup(); throw e; }
 });
 
+// A run_id a DÁTUM (nem attempt), a source_checks append-only → egy aznapi ÚJRAFUTÁS
+// (kézi dispatch + ütemezett, vagy bukott+újra) forrásonként TÖBB sort ír. A jelentés a
+// getSourceChecks-ből dolgozik → duplikált forrás-sorokat mutatna. A getSourceChecks-nek
+// forrásonként a LEGUTÓBBI (rowid-max) check-et kell adnia: „az adott nap állapota".
+test("source_checks: ugyanaznapi újrafutás NEM duplikál — forrásonként a legutóbbi állapot", () => {
+  const { db, cleanup } = tempDb();
+  try {
+    // 1. futás
+    recordSourceCheck(db, { runId: "2026-08-27", sourceId: "ksh", status: "OK_UJ", detail: "10 friss — 10 új", checkedAt: "2026-08-27T12:28:00Z" });
+    recordSourceCheck(db, { runId: "2026-08-27", sourceId: "telex", status: "OK_UJ", detail: "30 új", checkedAt: "2026-08-27T12:28:00Z" });
+    // 2. futás UGYANAZON A NAPON (ugyanaz a run_id) — más eredménnyel
+    recordSourceCheck(db, { runId: "2026-08-27", sourceId: "ksh", status: "OK_NINCS_UJ", detail: "10 friss — 0 új", checkedAt: "2026-08-27T16:33:00Z" });
+    recordSourceCheck(db, { runId: "2026-08-27", sourceId: "telex", status: "OK_UJ", detail: "12 új", checkedAt: "2026-08-27T16:33:00Z" });
+
+    const rows = getSourceChecks(db, "2026-08-27");
+    assert.equal(rows.length, 2, "forrásonként EGY sor (nem 4)");
+    assert.equal(rows.find((r) => r.source_id === "ksh").status, "OK_NINCS_UJ", "a ksh a 2. futás (legutóbbi) állapota");
+    assert.equal(rows.find((r) => r.source_id === "ksh").detail, "10 friss — 0 új");
+    assert.equal(rows.find((r) => r.source_id === "telex").detail, "12 új", "a telex is a legutóbbi");
+    cleanup();
+  } catch (e) { cleanup(); throw e; }
+});
+
 test("runs: startRun/finishRun és az előző futás kezdete (aktuális kizárva)", () => {
   const { db, cleanup } = tempDb();
   try {

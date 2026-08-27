@@ -61,19 +61,6 @@ test("report: triage_missing tétel PER-SOR megjelölve (nem csendes) (#2)", () 
   assert.ok(!/tétel ítélet nélkül maradt/.test(html), "az összegző napló-sor eltűnt (nézet-tisztítás)");
 });
 
-// --- "Mi változott": három populáció (begyűjtött / releváns / sztori) ---
-test("report: a változás-mondat elkülöníti a begyűjtött / releváns / sztori számot (#3)", () => {
-  const items = [
-    { canonical_key: "telex:u", source_id: "telex", kind: "sajto", title: "Lemondott a legfőbb ügyész", relevant: 1, significance: "KIEMELT", freshness: "UJ_24H", first_seen_at: NOW },
-    { canonical_key: "444:u", source_id: "444", kind: "sajto", title: "Lemondott a legfőbb ügyész", relevant: 1, significance: "FONTOS", freshness: "UJ_24H", first_seen_at: NOW },
-  ];
-  // 650 nyers begyűjtött (churnnel), 2 releváns új tétel, 1 sztori
-  const html = renderReport(makeRun(items, { newCount: 650, dedupCfg: cfg, institutes }));
-  assert.match(html, /650<\/strong> új tétel begyűjtve/);
-  assert.match(html, /2<\/strong> releváns/);
-  assert.match(html, /1<\/strong> sztoriban/);
-});
-
 // --- 3a undefined-safety: a RÉGI sorokban nincs significance_raw (csak mától kerül be).
 // Az olvasó/report oldal a kapuzott `significance` oszlopból dolgozik, a nyers kulcsot
 // SEHOL nem olvassa — egy significance_raw NÉLKÜLI tételen sem szabad eldőlnie. ---
