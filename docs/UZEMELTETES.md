@@ -18,7 +18,8 @@ végén visszacommitolja az állapotot (`state/monitor.db`) a `main`-re.
 |---|---|
 | Élő jelentés (mindig a legfrissebb) | `https://goszmarton.github.io/survey-monitor/` |
 | Aznapi archív | `https://goszmarton.github.io/survey-monitor/ÉÉÉÉ/HH/NN.html` |
-| Napi jelentés email | a `MAIL_TO` címzettekhez — **EGY levél** (2026-08-26-tól): 🔴 KIEMELT szekció felül, ha aznap volt KIEMELT, alatta a teljes digest |
+| **Független tükör (az email linkje ide mutat)** | `https://napihir.duckdns.org/` — külön Hetzner+Caddy szerver, a repo `archive/`-ját szolgálja ki (a github.io Pages párhuzamosan tovább fut). Részletek: memória `duckdns-mirror`. |
+| Napi jelentés email | a `MAIL_TO` címzettekhez — **EGY levél** (2026-08-26-tól): 🔴 KIEMELT szekció felül, ha aznap volt KIEMELT, alatta a teljes digest. A „Legfrissebb jelentés →" link 2026-08-27-től a **`napihir.duckdns.org`** tükörre mutat (nem a github.io-ra). |
 | Futási napló | GitHub → Actions → „monitor" workflow |
 | Állapot (DB) | `state/monitor.db` a repo `main` ágán (a futás commitolja) |
 
