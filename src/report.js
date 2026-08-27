@@ -50,22 +50,24 @@ const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "�
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
 
-// A publikált Pages-site GYÖKERE — a digest „Legfrissebb jelentés →" linkjének célja.
-// FORRÁS: `gh api repos/Goszmarton/survey-monitor/pages` → `html_url` (verifikált,
-// `cname:null` — nincs egyedi domain, a github.io séma érvényes). NEM lehet a
-// deploy-pages action `page_url` outputjából venni: a levél a `node src/run.js`
-// lépésben megy ki, a Pages-deploy KÉSŐBBI lépés (a page_url a render pillanatában
-// még nem létezik) — lásd .github/workflows/monitor.yml.
+// A napi jelentés email „Legfrissebb jelentés →" linkjének célja. 2026-08-27-től a
+// FÜGGETLEN tükörre mutat (napihir.duckdns.org), NEM a github.io Pages-re — hogy a publikus
+// link ne a személyes github.io-identitásra vigyen. A github.io Pages-deploy a workflow-ban
+// VÁLTOZATLANUL tovább fut; ez a konstans CSAK az email-linket állítja (a Pages-kiszolgálást
+// nem). A név történeti okból maradt PAGES_BASE. A levél a `node src/run.js` lépésben megy ki.
 //
-// MIÉRT A GYÖKÉR, NEM A NAPI ARCHÍV (empirikus, 2026-08-12 élő curl): a `deploy-pages`
-// NEM additív — a `dist/` minden futáskor TELJES site-ként publikálódik, és a run.js
-// csak {index.html, a MAI archív}-ot írja bele. Ezért a tegnapi `ÉÉÉÉ/HH/NN.html` archív
-// URL MÁSNAP 404 (igazolva: 08-11 archív 404 volt 08-12-n). A napra rögzített link tehát
-// másnaptól halott lenne → a link a mindig-élő gyökérre mutat (a mai jelentés, ill. később
-// a frissebb). Trailing perjel a bázison KELL.
-// KORLÁT (a komment a korlátot mondja, nem többet ígér az adatnál): ha egyedi domaint
-// (CNAME) kapcsolsz a Pages-hez, EZT KÉZZEL kell átírni — a github.io URL akkor elavul.
-export const PAGES_BASE = "https://goszmarton.github.io/survey-monitor/";
+// A tükör külön szerver (Hetzner + Caddy), ami a repo `archive/`-ját szolgálja ki (ld.
+// scripts/build-site.mjs + memória: duckdns-mirror). ŐSZINTÉN a korlátról: a tükör a SAJÁT
+// timeréről frissül (~30 perces esti sweep), a levél viszont a GH-futásban megy ki — így a
+// levél megérkezése UTÁN a tükör gyökere még ~30 percig a KORÁBBI napot mutathatja, míg a
+// következő sweep behúzza a friss commitot. A link SZÖVEGE ezért „Legfrissebb" (nem ígéri,
+// hogy pont EZT a jelentést nyitja).
+//
+// MIÉRT A GYÖKÉR, NEM A NAPI ARCHÍV: a „legfrissebb" szemantika a gyökér. (A github.io Pages
+// nem-additív volt → a dátumozott URL másnap 404; a TÜKRÖN a dátumozott URL-ek PERZISZTENSEK,
+// mert a buildDist a TELJES archívot kiteszi — de a link így is a mindig-friss gyökeret adja.)
+// Trailing perjel a bázison KELL. KORLÁT: ha a tükör domainje változik, EZT kézzel kell átírni.
+export const PAGES_BASE = "https://napihir.duckdns.org/";
 
 function fmtTime(iso) {
   if (!iso) return "publikációs idő nem elérhető";

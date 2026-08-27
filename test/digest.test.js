@@ -57,16 +57,17 @@ test("degradált mód: nincs triázs → a 24h tételek relevancia-szűrés nél
   assert.match(html, /Sporthír/); // degradáltban minden UJ_24H megjelenik
 });
 
-// A digest linkje a Pages-site GYÖKERÉRE mutat (mindig a legfrissebb jelentés).
-// Empíria (2026-08-12, élő curl): a deploy-pages NEM additív — a dist/ minden futáskor
-// TELJES site-ként publikálódik, csak {index.html, a mai archív}-val, ezért a tegnapi
-// ÉÉÉÉ/HH/NN.html archív MÁSNAP 404. Ezért mutat a link a gyökérre, nem a napi archívra.
-// A link SZÖVEGE ezért „Legfrissebb jelentés →" — nem ígéri, hogy pont EZT a jelentést nyitja.
+// A digest linkje 2026-08-27-től a FÜGGETLEN tükör (napihir.duckdns.org) GYÖKERÉRE mutat
+// (mindig a legfrissebb jelentés), NEM a github.io Pages-re — ld. report.js PAGES_BASE.
+// A GYÖKÉR a „Legfrissebb" szemantika: a tükrön a dátumozott archív-URL-ek perzisztensek
+// (nem 404-esek), de a link a mindig-friss gyökeret adja. A link SZÖVEGE „Legfrissebb
+// jelentés →" — nem ígéri, hogy pont EZT a jelentést nyitja (a tükör ~30 perces sweepje
+// miatt a levél megérkezése után rövid ideig a korábbi nap is látszhat a gyökéren).
 
 test("renderDigest: beállított pagesUrl → kattintható GYÖKÉR-link, a fallback eltűnik", () => {
   const withUrl = { ...RUN, pagesUrl: PAGES_BASE };
   const html = renderDigest(withUrl);
-  assert.match(html, /<a href="https:\/\/goszmarton\.github\.io\/survey-monitor\/">Legfrissebb jelentés →<\/a>/);
+  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/">Legfrissebb jelentés →<\/a>/);
   assert.ok(!html.includes("Teljes jelentés →")); // a régi, túlígérő szöveg NINCS
   assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
 });
@@ -74,7 +75,7 @@ test("renderDigest: beállított pagesUrl → kattintható GYÖKÉR-link, a fall
 test("renderDigest: a link a gyökérre mutat, NEM napi archívra (ÉÉÉÉ/HH/NN.html)", () => {
   const html = renderDigest({ ...RUN, pagesUrl: PAGES_BASE });
   // a href pontosan a gyökér
-  assert.match(html, /href="https:\/\/goszmarton\.github\.io\/survey-monitor\/"/);
+  assert.match(html, /href="https:\/\/napihir\.duckdns\.org\/"/);
   // sehol nincs ÉÉÉÉ/HH/NN.html napi archív-URL (az másnap 404 lenne)
   assert.ok(!/\/\d{4}\/\d{2}\/\d{2}\.html/.test(html), "nincs napi archív-URL a digestben");
 });
@@ -94,7 +95,7 @@ test("renderDigest guard: unset pagesUrl → fallback-szöveg, nem törik (a lev
 
 test("renderKiemelt: beállított pagesUrl → UGYANAZ a kattintható GYÖKÉR-link, a fallback eltűnik", () => {
   const html = renderKiemelt({ ...RUN, pagesUrl: PAGES_BASE });
-  assert.match(html, /<a href="https:\/\/goszmarton\.github\.io\/survey-monitor\/">Legfrissebb jelentés →<\/a>/);
+  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/">Legfrissebb jelentés →<\/a>/);
   assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
 });
 
@@ -153,6 +154,6 @@ test("combinedSubject: 🔴 előtag CSAK ha van KIEMELT szekció", () => {
 
 test("renderCombined: a Pages-link a helperből jön (gyökér, nem napi archív)", () => {
   const html = renderCombined({ ...RUN, pagesUrl: PAGES_BASE });
-  assert.match(html, /href="https:\/\/goszmarton\.github\.io\/survey-monitor\/"/);
+  assert.match(html, /href="https:\/\/napihir\.duckdns\.org\/"/);
   assert.ok(!/\/\d{4}\/\d{2}\/\d{2}\.html/.test(html), "nincs napi archív-URL");
 });
