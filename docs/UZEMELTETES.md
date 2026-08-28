@@ -333,7 +333,8 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    Description=Napi monitor trigger 16:30 (Europe/Budapest)
 
    [Timer]
-   OnCalendar=*-*-* 16:30:00
+   # Explicit TZ (systemd ≥240) → DST-biztos, a szerver rendszer-TZ-jétől FÜGGETLENÜL 16:30 helyi.
+   OnCalendar=*-*-* 16:30:00 Europe/Budapest
    Persistent=true
 
    [Install]
