@@ -323,8 +323,9 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    User=napi
    Environment=REPO_DIR=/home/napi/survey-monitor
    Environment=TOKEN_FILE=/home/napi/.config/survey-monitor-trigger/token
-   # a klón legyen friss, majd trigger:
-   ExecStart=/usr/bin/git -C /home/napi/survey-monitor pull --ff-only -q
+   # a klón legyen friss, majd trigger. A '-' prefix: a pull hibája NE blokkolja a triggert
+   # (a klón frissessége csak nice-to-have; a workflow úgyis a GitHub main-jéről fut).
+   ExecStart=-/usr/bin/git -C /home/napi/survey-monitor pull --ff-only -q
    ExecStart=/usr/bin/bash /home/napi/survey-monitor/scripts/gh-trigger.sh
    ```
    ```ini
