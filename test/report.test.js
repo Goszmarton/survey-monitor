@@ -72,11 +72,60 @@ test("tételek megjelennek, HTML-escape helyes", () => {
   assert.match(html, /Telex cikk/);
 });
 
-test("hivatalos és sajtó külön táblában", () => {
+test("kapuzott: két tábla — 📈 Kutatások és hivatalos adatok + 📰 Sajtószemle", () => {
   const html = renderReport(RUN);
-  const hivIdx = html.indexOf("Hivatalos");
-  const sajtoIdx = html.search(/Sajtó/i);
-  assert.ok(hivIdx > 0 && sajtoIdx > 0);
+  // csak a kapuzott (tablak) szekcióra szűkítünk — a fejléc is tartalmaz „KSH közlés"-t
+  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="forrasok"'));
+  const kutIdx = tablak.indexOf("📈 Kutatások és hivatalos adatok");
+  const sajtoIdx = tablak.indexOf("📰 Sajtószemle");
+  assert.ok(kutIdx >= 0 && sajtoIdx > kutIdx, "a két kapuzott tábla, a Kutatások előbb");
+  // KSH (hivatalos_adat) a Kutatások táblában, Telex (sajto) a Sajtószemlében
+  assert.ok(tablak.indexOf("KSH közlés") > kutIdx && tablak.indexOf("KSH közlés") < sajtoIdx, "hivatalos tétel a Kutatások táblában");
+  assert.ok(tablak.indexOf("Telex cikk") > sajtoIdx, "sajtó tétel a Sajtószemlében");
+});
+
+test("kapuzott: kutatás/nemzetközi friss tétel is a 'Kutatások és hivatalos adatok' táblában (nem esik ki némán)", () => {
+  // A korábbi bontás (hivatalos_adat + sajto) NÉMÁN eldobta a kutatas/nemzetkozi tételeket
+  // (CLAUDE.md 2). Az összevont Kutatások-tábla mindent felvesz, ami nem sajtó.
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, median: "Medián", pew: "Pew" },
+    items: [
+      { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Medián pártpreferencia-kutatás", url: "https://median.hu/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+      { canonical_key: "pew:1", source_id: "pew", kind: "nemzetkozi", title: "Pew globális felmérés", url: "https://pew.org/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FIGYELENDO" },
+    ],
+  };
+  const html = renderReport(run);
+  assert.match(html, /📈 Kutatások és hivatalos adatok/, "az összevont adatközlő-cím");
+  assert.match(html, /Medián pártpreferencia-kutatás/, "a kutatás-tétel megjelenik (nem esik ki)");
+  assert.match(html, /Pew globális felmérés/, "a nemzetközi tétel is megjelenik");
+});
+
+test("Forrás-ellenőrzés: két csoport (Kutatások és hivatalos adatok / Sajtószemle), jó csoportban, ABC sorrendben", () => {
+  const run = {
+    ...RUN,
+    items: [], // csak a forrás-szekció source-neveit vizsgáljuk (ne szennyezze a kapuzott tábla)
+    sourceNames: { ksh: "KSH", median: "Medián", telex: "Telex", "444": "444", hvg: "HVG" },
+    sourceKinds: { ksh: "hivatalos", median: "intezet", telex: "sajto", "444": "sajto", hvg: "sajto" },
+    sourceChecks: [
+      { source_id: "telex", status: "OK_UJ", detail: "feed: friss", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "ksh", status: "OK_NINCS_UJ", detail: "nincs új", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "hvg", status: "OK_UJ", detail: "feed: friss", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "median", status: "OK_NINCS_UJ", detail: "nincs új", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "444", status: "OK_UJ", detail: "feed: friss", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const forras = renderReport(run).slice(renderReport(run).indexOf("Forrás-ellenőrzés"));
+  const kutIdx = forras.indexOf("📈 Kutatások és hivatalos adatok");
+  const sajtoIdx = forras.indexOf("📰 Sajtószemle");
+  assert.ok(kutIdx > 0 && sajtoIdx > kutIdx, "két csoport-cím a forrás-szekcióban, Kutatások előbb");
+  // KSH és Medián (nem sajtó) a Kutatások csoportban (a sajtó-cím előtt)
+  assert.ok(forras.indexOf(">KSH<") > kutIdx && forras.indexOf(">KSH<") < sajtoIdx, "KSH a Kutatások csoportban");
+  assert.ok(forras.indexOf(">Medián<") > kutIdx && forras.indexOf(">Medián<") < sajtoIdx, "Medián (intézet) a Kutatások csoportban");
+  // sajtó források ABC: 444 < HVG < Telex, mind a sajtó-cím után
+  const s444 = forras.indexOf(">444<"), hvg = forras.indexOf(">HVG<"), telex = forras.indexOf(">Telex<");
+  assert.ok(s444 > sajtoIdx, "444 a Sajtószemle csoportban");
+  assert.ok(s444 < hvg && hvg < telex, "sajtó források ABC-ben (444 < HVG < Telex)");
 });
 
 test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI kimarad", () => {

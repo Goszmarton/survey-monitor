@@ -47,6 +47,16 @@ const SIGNIF = {
 
 const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "⚠️ részleges", SKIPPED_VALIDATION: "🚫 validáció elutasította", HIBA: "❌ hiba" };
 
+// Egységes taxonómia a honlapon és az emailben: minden NEM-sajtó tétel/forrás a „Kutatások és
+// hivatalos adatok" csoportba esik (hivatalos_adat + kutatas + nemzetkozi), a sajtó külön. Így a
+// kapuzott tétel-tábla és a Forrás-ellenőrzés UGYANAZT a két csoportot mutatja, és semmi nem esik
+// ki némán (CLAUDE.md 2 — a korábbi hivatalos_adat/sajto bontás a kutatas/nemzetkozi tételeket
+// eldobta). A tétel `kind`-je mindig jelen van; a forrás `kind`-jét a run.sourceKinds adja (annak
+// hiányában minden forrás a Kutatások csoportba kerül — biztonságos fallback régi run/teszt esetén).
+const KUTATAS_LABEL = "📈 Kutatások és hivatalos adatok";
+const SAJTO_LABEL = "📰 Sajtószemle";
+const isSajtoItem = (it) => it.kind === "sajto";
+
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
 
@@ -197,6 +207,8 @@ const STYLE = `
   header .meta{font:13px/1.5 ui-monospace,Consolas,monospace;color:var(--muted)}
   section{margin-top:34px}
   h2{font-size:1.05rem;border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 12px}
+  h3{font-size:.98rem;margin:18px 0 6px;color:var(--ink)}
+  h3 .count{color:var(--muted);font-weight:400}
   .headline{display:flex;gap:10px;align-items:baseline;font:15px/1.5 ui-monospace,Consolas,monospace;margin:6px 0}
   .headline .label{color:var(--muted)}
   .empty{color:var(--muted);font-style:italic}
@@ -221,7 +233,6 @@ export function renderReport(run) {
   const { representatives: visible } = storyGroups(run);
 
   const hivatalos = visible.filter((i) => i.kind === "hivatalos_adat");
-  const sajto = visible.filter((i) => i.kind === "sajto");
   const latestHivatalos = sortItems(hivatalos)[0];
   // UTOLSÓ ÚJ KUTATÁS a fejlécben — a legfrissebb kutatás-tétel (intézeti közlemény vagy a
   // sajtóból kutatásként azonosított), a LEGFRISSEBB HIVATALOS ADAT párja (kind==="kutatas").
@@ -231,15 +242,28 @@ export function renderReport(run) {
   // A kapuzott TÁBLÁK csak az elmúlt 24 óra (UJ_24H) tételeit sorolják — ez a szintézis
   // halmaza (enrich.js relevantFresh) és az email digest-je is. A KORÁBBI tételeket a fejléc
   // (latest*) és az email 🔴 KIEMELT-szekciója viszi tovább (a 14-napos ablak-feature).
-  const hivatalosFresh = hivatalos.filter((i) => i.freshness === "UJ_24H");
-  const sajtoFresh = sajto.filter((i) => i.freshness === "UJ_24H");
+  // Két csoport (KUTATAS_LABEL / SAJTO_LABEL): a Kutatások-tábla MINDEN nem-sajtó friss tételt
+  // felvesz (hivatalos_adat + kutatas + nemzetkozi) → nincs néma eltűnés (CLAUDE.md 2).
+  const kutatasFresh = uj24.filter((i) => !isSajtoItem(i));
+  const sajtoFresh = uj24.filter(isSajtoItem);
 
   // (A „🔻 Kapu lehúzta" szekció 2026-08-27-én kikerült a nézetből — nézet-tisztítás. A
   //  kapu-LOGIKA a triage-ben változatlanul fut, a lehúzott tétel FIGYELENDO-ként a
   //  Sajtószemlében jelenik meg. A DB-oldali audit-nyom megmarad; ld. triage_gate.test.js.)
-  const naploRows = checks.length
-    ? checks.map((c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`).join("\n")
-    : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`;
+  // Forrás-ellenőrzés két csoportra bontva (a kapuzott tétel-táblákkal AZONOS taxonómia):
+  // Kutatások és hivatalos adatok (nem-sajtó forrás) + Sajtószemle, mindkettőn belül ABC
+  // forrásnév szerint (hu locale). A forrás kind-je a run.sourceKinds-ból; hiányában minden
+  // forrás a Kutatások csoportba esik (fallback régi run/teszt esetén).
+  const sourceKinds = run.sourceKinds ?? {};
+  const checkRow = (c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`;
+  const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
+  const kutatasChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto").sort(byName);
+  const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
+  const checkTable = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
+    <table>
+      <tr><th>Forrás</th><th>Státusz</th><th>Részlet</th></tr>
+      ${list.length ? list.map(checkRow).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
+    </table>`;
 
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
@@ -276,16 +300,14 @@ export function renderReport(run) {
 
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
-    ${table("📈 Hivatalos adatközlések", hivatalosFresh, sourceNames)}
-    ${table("📰 Sajtószemle", sajtoFresh, sourceNames)}
+    ${table(KUTATAS_LABEL, kutatasFresh, sourceNames)}
+    ${table(SAJTO_LABEL, sajtoFresh, sourceNames)}
   </section>
 
   <section id="forrasok">
     <h2>Forrás-ellenőrzés</h2>
-    <table>
-      <tr><th>Forrás</th><th>Státusz</th><th>Részlet</th></tr>
-      ${naploRows}
-    </table>
+    ${checkTable(KUTATAS_LABEL, kutatasChecks)}
+    ${checkTable(SAJTO_LABEL, sajtoChecks)}
   </section>
 
   <footer>
@@ -305,6 +327,19 @@ function digestItemList(items, sourceNames) {
   return `<ul>${grouped.map((it) =>
     `<li>${sigLabel(it)} <strong>${srcLabel(it, sourceNames)}</strong>: ${titleLink(it)}${pressUrlsHtml(it)}</li>`,
   ).join("")}</ul>`;
+}
+
+// A kapuzott szekció KÖZÖS tartalma az emailben: két al-csoport (Kutatások és hivatalos adatok /
+// Sajtószemle), a honlappal AZONOS bontásban — a hivatalos/kutatás/nemzetközi tétel a Kutatások,
+// a sajtó a Sajtószemle listába. Mindkettő jelentőség szerint rendezve (digestItemList → sortItems).
+// EGY helyen, hogy a digest és a combined render-ág ne csússzon szét (CLAUDE.md 2).
+function digestKapuzott(fresh, sourceNames) {
+  const kutatas = fresh.filter((i) => !isSajtoItem(i));
+  const sajto = fresh.filter(isSajtoItem);
+  return `<h3>${KUTATAS_LABEL} <span class="count">(${kutatas.length})</span></h3>
+    ${digestItemList(kutatas, sourceNames)}
+    <h3>${SAJTO_LABEL} <span class="count">(${sajto.length})</span></h3>
+    ${digestItemList(sajto, sourceNames)}`;
 }
 
 // A friss (UJ_24H) reprezentánsok — a memoizált story-dedupból (egyszer collapse-olva).
@@ -342,7 +377,7 @@ export function renderDigest(run) {
   <header><h1>📊 Napi monitor — elmúlt 24 óra</h1>
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
-  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestItemList(fresh, sourceNames)}</section>
+  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
 `;
@@ -378,7 +413,7 @@ export function renderCombined(run) {
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
   ${kiemeltSection}
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
-  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestItemList(fresh, sourceNames)}</section>
+  <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
 `;

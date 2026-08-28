@@ -11,10 +11,10 @@ const RUN = {
   kiemeltCount: 1,
   triageDegraded: false,
   items: [
-    { canonical_key: "median:1", source_id: "median", title: "Pártpreferenciák — nagy fordulat", url: "https://median.hu/1", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
-    { canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
-    { canonical_key: "telex:9", source_id: "telex", title: "Sporthír", url: "https://telex.hu/9", freshness: "UJ_24H", relevant: 0, significance: null },
-    { canonical_key: "ksh:old", source_id: "ksh", title: "Régi adat", url: "https://ksh.hu/o", freshness: "KORABBI", relevant: 1, significance: "FONTOS" },
+    { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Pártpreferenciák — nagy fordulat", url: "https://median.hu/1", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+    { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    { canonical_key: "telex:9", source_id: "telex", kind: "sajto", title: "Sporthír", url: "https://telex.hu/9", freshness: "UJ_24H", relevant: 0, significance: null },
+    { canonical_key: "ksh:old", source_id: "ksh", kind: "hivatalos_adat", title: "Régi adat", url: "https://ksh.hu/o", freshness: "KORABBI", relevant: 1, significance: "FONTOS" },
   ],
 };
 
@@ -43,6 +43,26 @@ test("renderDigest: élesített szekció-címek (narratíva + kapuzott adatjelen
   assert.match(html, /📊 Adatjelentőség szerint, kapuzott/);
   assert.ok(!html.includes("Mi jelent meg az utolsó 24 órában?"), "régi szintézis-cím eltűnt");
   assert.ok(!html.includes("Friss tételek jelentőség szerint"), "régi táblák-cím eltűnt");
+});
+
+test("kapuzott (digest + combined): két al-csoport — Kutatások és hivatalos adatok / Sajtószemle", () => {
+  // A honlappal AZONOS bontás a levélben is: a hivatalos/kutatás/nemzetközi tételek a
+  // Kutatások csoportban, a sajtó a Sajtószemlében. Mindkét render-ágon (digest + combined).
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, telex: "Telex" },
+    items: [
+      { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+      { canonical_key: "telex:1", source_id: "telex", kind: "sajto", title: "Vezető sajtóhír", url: "https://telex.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+  };
+  for (const html of [renderDigest(run), renderCombined(run)]) {
+    const kutIdx = html.indexOf("📈 Kutatások és hivatalos adatok");
+    const sajtoIdx = html.indexOf("📰 Sajtószemle");
+    assert.ok(kutIdx > 0 && sajtoIdx > kutIdx, "két al-cím a kapuzottban, a Kutatások előbb");
+    assert.ok(html.indexOf("Havi infláció") > kutIdx && html.indexOf("Havi infláció") < sajtoIdx, "hivatalos tétel a Kutatások csoportban");
+    assert.ok(html.indexOf("Vezető sajtóhír") > sajtoIdx, "sajtó tétel a Sajtószemle csoportban");
+  }
 });
 
 test("renderKiemelt: csak a KIEMELT tételek", () => {

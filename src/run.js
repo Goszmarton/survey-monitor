@@ -85,6 +85,7 @@ async function main() {
     phase: "F2 — LLM-réteg",
     runStartedAt: now.iso,
     sourceNames: Object.fromEntries(sources.map((s) => [s.id, s.name])),
+    sourceKinds: Object.fromEntries(sources.map((s) => [s.id, s.kind])),
     items,
     sourceChecks: collected.sourceChecks,
     newCount: collected.newCount,
