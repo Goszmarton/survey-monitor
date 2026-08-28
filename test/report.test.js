@@ -142,6 +142,29 @@ test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI 
   assert.ok(!html.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
 });
 
+test("Kulcsszámok ma: szám/százalék-tartalmú címek verbatim, a szám nélküliek kimaradnak", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, hvg: "HVG", nepszava: "Népszava" },
+    items: [
+      { canonical_key: "ksh:w", source_id: "ksh", kind: "hivatalos_adat", title: "A bruttó átlagkereset 754 700 forint volt", url: "https://ksh.hu/w", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+      { canonical_key: "hvg:d", source_id: "hvg", kind: "sajto", title: "3,7-ről 7,5 százalékosra emeli az éves hiánycélt", url: "https://hvg.hu/d", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+      { canonical_key: "nepszava:x", source_id: "nepszava", kind: "sajto", title: "Kikerültek az egyetemi pótfelvételi ponthatárok", url: "https://nepszava.hu/x", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+  };
+  const html = renderReport(run);
+  const kulcs = html.slice(html.indexOf("📊 Kulcsszámok"), html.indexOf("📊 Adatjelentőség"));
+  assert.ok(kulcs.length > 0, "van Kulcsszámok szekció a kapuzott előtt");
+  assert.match(kulcs, /754 700 forint/, "a szám-tartalmú cím verbatim");
+  assert.match(kulcs, /7,5 százalék/, "a százalékos cím is");
+  assert.ok(!kulcs.includes("Kikerültek az egyetemi pótfelvételi"), "a szám nélküli cím NINCS a Kulcsszámokban");
+});
+
+test("Kulcsszámok ma: nincs szám-tartalmú tétel → nincs (üres) szekció", () => {
+  const html = renderReport(RUN); // RUN címei szám nélküliek
+  assert.ok(!html.includes("📊 Kulcsszámok"), "szám nélkül a szekció kimarad, nem üres dobozt renderel");
+});
+
 test("ellenőrzési napló a source_checks-ből, státuszokkal", () => {
   const html = renderReport(RUN);
   assert.match(html, /részleges/i);

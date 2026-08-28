@@ -65,6 +65,23 @@ test("kapuzott (digest + combined): két al-csoport — Kutatások és hivatalos
   }
 });
 
+test("Kulcsszámok ma (email): a szám-tartalmú friss címek verbatim, digest + combined", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, hvg: "HVG" },
+    items: [
+      { canonical_key: "ksh:w", source_id: "ksh", kind: "hivatalos_adat", title: "A bruttó átlagkereset 754 700 forint volt", url: "https://ksh.hu/w", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+      { canonical_key: "hvg:d", source_id: "hvg", kind: "sajto", title: "3,7-ről 7,5 százalékosra emeli az éves hiánycélt", url: "https://hvg.hu/d", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+    ],
+  };
+  for (const html of [renderDigest(run), renderCombined(run)]) {
+    assert.match(html, /📊 Kulcsszámok ma/, "van Kulcsszámok szekció az emailben");
+    const kulcs = html.slice(html.indexOf("📊 Kulcsszámok ma"), html.indexOf("📊 Adatjelentőség"));
+    assert.match(kulcs, /754 700 forint/, "verbatim szám-cím");
+    assert.match(kulcs, /7,5 százalék/, "verbatim százalék-cím");
+  }
+});
+
 test("renderKiemelt: csak a KIEMELT tételek", () => {
   const html = renderKiemelt(RUN);
   assert.match(html, /nagy fordulat/);

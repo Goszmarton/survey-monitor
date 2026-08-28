@@ -57,6 +57,14 @@ const KUTATAS_LABEL = "📈 Kutatások és hivatalos adatok";
 const SAJTO_LABEL = "📰 Sajtószemle";
 const isSajtoItem = (it) => it.kind === "sajto";
 
+// „📊 Kulcsszámok ma" — a szám/százalék-tartalmú címeket VERBATIM emeljük ki (garantáltan
+// valós: szó szerinti idézet a címből, nulla hallucináció). A rendszer csak a címeket tárolja,
+// de a magyar hír-címek szám-gazdagok. Precízió-fókusz: egységhez/százalékhoz/ezres-csoporthoz
+// kötött szám kell (a puszta évszám/„24 óra" kimarad). Ld. synthesis.js (a narratíva számai a
+// forrás ellen IGAZOLTAK) — a kettő együtt adja a „számokra támaszkodó, nem hallucináló" jelentést.
+const KEY_NUM = /\d+(?:[.,]\d+)?\s*(?:%|százalék)|\d[\d . ]*\s*(?:forint|\bFt\b|milliárd|millió|ezer|billió)|\d{1,3}(?:[  ]\d{3})+/i;
+const hasKeyNumber = (it) => KEY_NUM.test(it.title ?? "");
+
 const PER_SOURCE_CAP = 25;
 const TZ = "Europe/Budapest";
 
@@ -224,6 +232,18 @@ const STYLE = `
   footer{margin-top:48px;padding-top:12px;border-top:1px solid var(--line);font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--muted)}
   .phase{display:inline-block;background:var(--ink);color:var(--paper);font:12px/1 ui-monospace,Consolas,monospace;padding:4px 8px;border-radius:3px}`;
 
+// A „📊 Kulcsszámok ma" szekció HTML-je (vagy "" ha nincs szám-tartalmú tétel — üres dobozt nem
+// renderelünk). A friss (UJ_24H) tételek közül a szám/százalék-tartalmú címek, jelentőség szerint,
+// max 8, VERBATIM (a cím a szám kontextusával). A honlap és az email KÖZÖS helpere.
+function keyNumbersSection(freshItems, sourceNames) {
+  const nums = sortItems(freshItems.filter(hasKeyNumber)).slice(0, 8);
+  if (!nums.length) return "";
+  const list = `<ul>${nums.map((it) =>
+    `<li>${sigLabel(it)} <strong>${srcLabel(it, sourceNames)}</strong>: ${titleLink(it)}</li>`,
+  ).join("")}</ul>`;
+  return `<section id="kulcsszamok"><h2>📊 Kulcsszámok ma</h2>${list}</section>`;
+}
+
 // ---- Teljes Pages-jelentés ----
 export function renderReport(run) {
   const sourceNames = run.sourceNames ?? {};
@@ -297,6 +317,8 @@ export function renderReport(run) {
     <h2>📰 Napi narratíva (utolsó 24 óra)</h2>
     ${synth}${degradedNote}
   </section>
+
+  ${keyNumbersSection(uj24, sourceNames)}
 
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
@@ -377,6 +399,7 @@ export function renderDigest(run) {
   <header><h1>📊 Napi monitor — elmúlt 24 óra</h1>
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
+  ${keyNumbersSection(fresh, sourceNames)}
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
@@ -413,6 +436,7 @@ export function renderCombined(run) {
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
   ${kiemeltSection}
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
+  ${keyNumbersSection(fresh, sourceNames)}
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
