@@ -45,8 +45,22 @@ test("E2: regresszió — a többi B-kaszt/adapter nélküli forrás MARAD inakt
 
 test("E2: regresszió — a kaszt-A források kiválasztása változatlan (status-független ág)", () => {
   const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
-  // MEGSZUNT/HIBA_TARTOS A-források bekötve MARADNAK (nem status-szűrt az A-ág)
-  for (const id of ["telex", "median", "szabadeu", "21kutato", "pew"]) {
+  // HIBA_TARTOS (átmenetileg blokkolt, revisit≠never) A-források bekötve MARADNAK (nem status-szűrt)
+  for (const id of ["telex", "median", "21kutato", "pew"]) {
     assert.ok(activeIds.has(id), `${id} továbbra is aktív (A-kaszt feed/list_url, status-független)`);
   }
+});
+
+// 2026-08-28: a véglegesen megszűnt forrás (revisit:"never") KIKERÜL a gyűjtésből — a `never`
+// mező végre azt csinálja, amit a leírása ígér ("sose nézd újra"). A configban TOMBSTONE-ként
+// marad (status MEGSZUNT, revisit never — az audit/regiszter-megkülönböztetés megmarad), de a
+// fetcher nem kérdezi le, nincs napi RESZLEGES-zaj, és nem számít a forrásszámba. A 21kutato
+// (revisit:active, csak átmenetileg IP-blokkolt) NEM esik ki — a különbséget a revisit viszi.
+test("nyugdíjazás: a revisit:'never' forrás (szabadeu) NEM aktív, de a tombstone marad a configban", () => {
+  const activeIds = new Set(selectActiveSources(sources).map((s) => s.id));
+  assert.ok(!activeIds.has("szabadeu"), "szabadeu (revisit:never) kikerül a gyűjtésből");
+  assert.ok(activeIds.has("21kutato"), "21kutato (revisit:active) bekötve marad — csak átmenetileg blokkolt");
+  // a tombstone megmarad a regiszterben (nem töröltük az entry-t)
+  const se = sources.find((s) => s.id === "szabadeu");
+  assert.ok(se && se.status === "MEGSZUNT" && se.revisit === "never", "szabadeu tombstone érintetlen");
 });

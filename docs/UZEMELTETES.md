@@ -251,7 +251,10 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   elvek (CLAUDE.md 1–6) minden jövőbeli javító körre érvényesek maradnak.
 
 **Hol tart a rendszer (pillanatkép, 2026-08-26):**
-- **27 aktív forrás** (A-kaszt). **B2 (europeelects + eurobarometer) parkolva:** a kód kész
+- **26 aktív forrás** (A-kaszt; 2026-08-28: a végleg megszűnt **szabadeu nyugdíjazva** — a
+  `revisit:"never"` mostantól kizárja a gyűjtésből, config-tombstone marad, nincs napi RESZLEGES).
+  A 21kutato (revisit:"active", átmeneti IP-blokk) továbbra is bekötve. **B2 (europeelects +
+  eurobarometer) parkolva:** a kód kész
   és a csatorna Actions-ból bizonyítottan elérhető, de a futtatókörnyezet blokkolhat — mint a
   politico/21kutato (datacenter-ASN). Egyetlen `NEM_AKTIVALT→OK` státusz-váltás aktiválná,
   külön napon, a reaktiválási kapu 2. feltétele (volumeA.xlsx datacenter-IP-ről) után.

@@ -25,13 +25,20 @@ const WINDOW_DAYS = 14;
 // (2) dedikált adapterrel + status "OK" (E2: europeelects — kaszt B, de determinista gépi
 // csatornája van, a channelsOf az adapterre routol). A (2) status-guardja FAIL-CLOSED: az
 // adapter önmagában NEM aktivál, csak OK mellett — egy NEM_AKTIVALT/hibás adapter-forrás kimarad.
-// Az (1) ág SZÁNDÉKOSAN status-független: a MEGSZUNT/HIBA_TARTOS A-források bekötve maradnak,
-// számítanak a forrásszámba, a source_check naplózza a részlegességet (nem tűnhetnek el némán,
-// CLAUDE.md 2). A run.js loadSources ezt hívja; a collect() KIZÁRÓLAG az így kiválasztott
-// forrásokat kapja — ezért tesztelhető külön, hogy egy config-bejegyzés bekerül-e a gyűjtésbe.
+//
+// NYUGDÍJAZÁS (2026-08-28): a `revisit: "never"` (VÉGLEGESEN megszűnt szervezet) ELŐFELTÉTEL-szinten
+// kizár — a `never` mező végre azt teszi, amit a leírása ígér („sose nézd újra"). A forrás a
+// configban TOMBSTONE-ként marad (status/revisit a regiszterben, audit-nyom), de a fetcher nem
+// kérdezi le, nincs napi RESZLEGES-zaj, és nem számít a forrásszámba. Ez KÜLÖNBÖZIK a HIBA_TARTOS +
+// revisit:"active" esettől (pl. 21kutato: átmeneti IP-blokk, magától visszaállhat) — az bekötve
+// MARAD (status-független A-ág), mert NEM tűnhet el némán, amíg élhet (CLAUDE.md 2). A különbséget
+// a `revisit` viszi (never ≠ active), nem a status. A run.js loadSources ezt hívja; a collect()
+// KIZÁRÓLAG az így kiválasztott forrásokat kapja — így tesztelhető, hogy egy config-bejegyzés bekerül-e.
 export const isActiveSource = (s) =>
-  (s.kaszt === "A" && Boolean(s.feed || s.list_url)) ||
-  (Boolean(s.adapter) && s.status === "OK");
+  s.revisit !== "never" && (
+    (s.kaszt === "A" && Boolean(s.feed || s.list_url)) ||
+    (Boolean(s.adapter) && s.status === "OK")
+  );
 export const selectActiveSources = (sources) => sources.filter(isActiveSource);
 
 // Forrás-szintű cím/leírás-szűrő (opcionális `source.title_filter: string[]`). Ahol egy forrás

@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 const { sources } = JSON.parse(readFileSync(new URL("../config/sources.json", import.meta.url), "utf8"));
 const by = (id) => sources.find((s) => s.id === id);
 
-// A `revisit` REGISZTER-mező (a fetcher NEM olvassa) egy jövőbeli felülvizsgálati politikát kódol:
-// "never" = a FORRÁS megszűnt, sose nézd újra; "if-republishes" = a szervezet ÉL, de a csatorna
-// halott/nincs → érdemes időnként újranézni; "active"/elhagyva = bekötött. Létjogosultsága: a
+// A `revisit` mező egy felülvizsgálati politikát kódol. 2026-08-28-tól a fetcher a `"never"`-t
+// OLVASSA (isActiveSource kizárja) — a véglegesen megszűnt forrást nem kérdezi le, de a config-
+// tombstone marad. A többi érték továbbra is puszta regiszter-jelzés (a fetcher nem hat rájuk):
+// "never" = a FORRÁS megszűnt, sose nézd újra (→ kizárva a gyűjtésből); "if-republishes" = a
+// szervezet ÉL, de a csatorna halott/nincs → érdemes időnként újranézni; "active"/elhagyva =
+// bekötött. Létjogosultsága: a
 // MEGSZŰNT szabadeu (2025-11-20) és az ÉLŐ, halott-csatornás zavecz NEM ugyanaz az állapot — ezt
 // egy `status`-mező (mindkettő üres/stale-jellegű) nem különbözteti meg. Ezt EGY teszt mondja ki.
 test("revisit-séma: a megszűnt szabadeu (never) ≠ az élő-csatorna-halott zavecz (if-republishes)", () => {
@@ -30,10 +33,11 @@ test("revisit-séma: last_content a felmért forrásokon a mért dátum", () => 
 //   revisit = „visszajön-e valaha?" → never = végleg halott | active = él, várható visszatérés
 // A két eset (szabadeu végleg megszűnt / 21kutato átmenetileg IP-blokkolt) NEM ugyanaz az
 // állapot — a KÜLÖNBSÉGET a `revisit` viszi (never ≠ active), NEM a status. Egy mezőbe gyúrva
-// ugyanazt a hibát követnénk el, mint a revisit előtt. A `status`/`revisit` REGISZTER-mezők,
-// a fetcher NEM olvassa őket (a forrásszám marad 26); a futásidejű hiba a source_checks-ben
-// külön látszik. Létjogosultságát EGY teszt mondja ki. (A fetcher-nem-olvasás a revisit-teszttel
-// már fedve; a StaleSweep + a napi verifikációs ellenőrzőpont a docs-ban, BESZAMOLO §7.)
+// ugyanazt a hibát követnénk el, mint a revisit előtt. A `status`-t a fetcher NEM olvassa; a
+// `revisit`-ből a `"never"`-t IGEN (kizárja a véglegesen megszűntet → a szabadeu nyugdíjazva,
+// a forrásszám 26). A 21kutato (revisit:"active") bekötve marad, a futásidejű hibája a
+// source_checks-ben külön látszik. Létjogosultságát EGY teszt mondja ki (StaleSweep + napi
+// verifikációs ellenőrzőpont a docs-ban, BESZAMOLO §7.)
 test("egészség-jelölő: a MEGSZŰNT szabadeu és az ÁTMENETILEG-blokkolt 21kutato külön állapot", () => {
   // szabadeu: végleg halott (szervezet megszűnt 2025-11-20) — never marad, status MEGSZUNT
   assert.equal(by("szabadeu").status, "MEGSZUNT", "szabadeu = MEGSZUNT (a szervezet végleg megszűnt)");
