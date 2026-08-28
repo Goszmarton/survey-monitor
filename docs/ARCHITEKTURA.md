@@ -41,7 +41,10 @@ architektúra épül:
 
 ```mermaid
 flowchart TD
-    CRON["GitHub Actions cron\n33 14 * * * UTC"] --> RUN[run.js — napi futás]
+    SRV["Szerver-trigger (PRIMARY)\ncurl → workflow_dispatch\n16:30 Europe/Budapest"] --> RUN[run.js — napi futás]
+    CRON["GitHub cron (BACKUP)\n0 16 * * * UTC"] --> RUN
+    RUN --> GUARD{"őr: ma már\nlefutott? (hasCompletedRun)"}
+    GUARD -->|igen, force nélkül| SKIP["no-op (buildDist a Pages-hez)"]
 
     subgraph GYUJTES["1. Gyűjtőréteg"]
         A["A-kaszt: determinisztikus fetcherek\nRSS · KSH · Eurostat · MNB"]
@@ -81,20 +84,27 @@ flowchart TD
 
 **GitHub Actions, ütemezett workflow.** Nincs saját szerver.
 
-- **Cron:** `33 14 * * *` (UTC). Nyáron 16:33, télen 15:33 budapesti
-  indulás. A "ferde" perc szándékos: a kerek órák a legzsúfoltabbak az
-  Actions megosztott sorában. **Kézbesítési cél (2026-08-26 user-döntés):
-  DÉLUTÁNI/ESTI jelentés — a futás a helyi 16:30 UTÁN.** A korábbi 15:00-s
-  SLA elévült; az esti sáv a szándék. A késleltetés domináns tagja továbbra
-  is az Actions ütemezett sorállása (a futás maga ~2 perc); **az EHHEZ a
-  slothoz tartozó csúszást üzemeltetés közben mérjük** — a 08:43-ra MÉRT
-  **112–218 perc** (történeti adat, nem a korábbi 10–40-es becslés) nem
-  feltétlen ugyanez a 14:33-as slotra. 14:33 UTC + sorállás → jellemzően
-  kora este (Budapest). **DST:** egy fix UTC-cron nem tud egész évben 16:33
-  helyit — 14:33 UTC nyáron 16:33 (CEST), TÉLEN 15:33 (CET), tehát télen a
-  "16:30 után" invariáns egy cronnal nem tartható; ha a téli 16:30-utániság
-  kell, 15:33 UTC-re kell váltani. Történet: `43 0 * * *` (7:00-s SLA) →
-  `43 8 * * *` (15:00-s SLA, 2026-08-08) → `33 14 * * *` (esti, 2026-08-26).
+- **Indítás — SZERVER-trigger PRIMARY + GitHub-cron BACKUP (2026-08-28):** az
+  ELSŐDLEGES napi indító a **Hetzner-szerver** (a napihir-tükör hosztja): egy
+  systemd-timer **16:30 Europe/Budapest**-kor (DST-biztos helyi idő) `curl`-lel
+  `workflow_dispatch`-et küld a GitHub Actionsnek (`scripts/gh-trigger.sh`;
+  owner/repo a git remote-ból, PAT külön szerver-fájlból — repóba SOHA; HTTP 204 =
+  siker). MIÉRT: a `workflow_dispatch` pontos, nem függ a scheduled-cron
+  kiszámíthatatlan sorállásától (`+18…+78` perc, néha több). Üzemeltetés:
+  `docs/UZEMELTETES.md` §8.
+  - **Backup-cron:** `0 16 * * *` (UTC), a szerver-trigger MÖGÉ tolva — nyáron
+    18:00 CEST (~1,5h után), TÉLEN 17:00 CET (~0,5h után). Csak akkor számít, ha a
+    szerver-trigger nem lő (kiesés/hálózat/PAT). **DST:** egy fix UTC-cron nem tud
+    egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
+  - **Dupla-indítás dedup (az „őr"):** ha a szerver-trigger ÉS a backup is fut, a
+    `run.js` idempotencia-őre (`hasCompletedRun`) no-opolja a másodikat →
+    **pontosan egy levél**. Sorrend-független (a `concurrency` sorosít, az őr a
+    commitolt DB-ből dönt). Kézi „küldj most": `workflow_dispatch` `force=true` →
+    `FORCE_RUN=1` átlépi az őrt. Az őr no-opnál is `buildDist`-el (a Pages nem ürül ki).
+  - **Sorállás-történet (kontextus):** a 08:43-ra MÉRT **112–218 perc** miatt vált a
+    scheduled cron megbízhatatlanná — ez indokolja a szerver-triggert. Cron-történet:
+    `43 0 * * *` → `43 8 * * *` (15:00-s SLA, 2026-08-08) → `33 14 * * *` (esti,
+    2026-08-26) → `0 16 * * *` (backup, szerver-primary mögé, 2026-08-28).
   Mellékhatás: a jelentés az előző futás óta megjelent
   termést fedi. A "since last run" ablak a tényleges előző futás
   `started_at`-jához kötött (nem a cron-időhöz), ezért az átállás nem hagy

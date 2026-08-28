@@ -8,7 +8,7 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { renderReport, renderCombined, combinedSubject, storyGroups, PAGES_BASE } from "./report.js";
 import { buildDist } from "./dist.js";
 import { sendMail } from "./email.js";
-import { openDb, startRun, finishRun, getLastRunStartedAt } from "./state/db.js";
+import { openDb, startRun, finishRun, getLastRunStartedAt, hasCompletedRun } from "./state/db.js";
 import { collect, selectActiveSources } from "./collect.js";
 import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
@@ -48,6 +48,21 @@ async function main() {
   const runId = now.ymd;
 
   const db = openDb(DB_PATH);
+
+  // ---- Idempotencia-ŐR: napi dupla-trigger dedup (szerver-curl PRIMARY + GitHub-cron BACKUP) ----
+  // Ha ma MÁR lezárult egy sikeres futás, a második invokáció NEM dolgozik újra → nincs dupla
+  // levél (CLAUDE.md 2 — a csendes dupla a legdrágább). Sorrend-független: a `concurrency`
+  // sorosít, az őr a commitolt DB-ből dönt, így mindegy, a szerver-trigger vagy a backup fut-e
+  // előbb — pontosan az EGYIK dolgozik. Kivétel: FORCE_RUN=1 (kézi „küldj most" dispatch) átlépi.
+  // A dist/-et akkor is ÚJRAÉPÍTJÜK a git-trackelt archive/-ból, hogy a Pages-deploy NE ürüljön
+  // ki (a dist/ gitignore-olt → friss checkouton üres; enélkül a no-op kiüresítené a Pages-t).
+  if (process.env.FORCE_RUN !== "1" && hasCompletedRun(db, runId)) {
+    console.log(`Őr: a mai futás (${runId}) már sikeresen lezárult — kihagyás. (FORCE_RUN=1 az átlépéshez.)`);
+    await buildDist({ archiveDir: "archive", distDir: "dist" });
+    db.close();
+    return;
+  }
+
   const attemptId = startRun(db, { runId, startedAt: now.iso });
 
   const since = getLastRunStartedAt(db, { excludeRunId: runId }) ?? now.ms - FALLBACK_WINDOW_MS;

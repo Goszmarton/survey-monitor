@@ -2,22 +2,32 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// A daily cron 14:33 UTC-re került (2026-08-26 user-döntés: esti kézbesítés, a futás a
-// helyi 16:30 UTÁN). A korábbi 08:43 UTC / 15:00-s SLA elévült; a régi cron nem maradhat.
-test("workflow: a daily cron 14:33 UTC (33 14 * * *) — esti kézbesítés (2026-08-26)", () => {
+// 2026-08-28: a napi futás ELSŐDLEGES indítója a SZERVER (curl → workflow_dispatch, 16:30
+// Budapest, pontos — nem függ a scheduled-cron sorállásától). A GitHub scheduled cron BACKUP-ra
+// tolva a szerver-trigger MÖGÉ: 16:00 UTC (nyáron 18:00 CEST, télen 17:00 CET — év közben végig a
+// szerver-trigger után). A dupla indítást a run.js idempotencia-őre dedupolja (hasCompletedRun).
+test("workflow: a scheduled cron BACKUP-slotra tolva (16:00 UTC), a régi 14:33 nincs többé", () => {
   const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
-  assert.match(yml, /cron:\s*"33 14 \* \* \*"/, "a cron 14:33 UTC-re állítva (16:33 CEST)");
-  assert.ok(!/cron:\s*"43 8 \* \* \*"/.test(yml), "a régi 08:43 UTC nincs többé");
-  assert.ok(!/cron:\s*"43 0 \* \* \*"/.test(yml), "a legrégebbi 00:43 UTC sincs többé");
+  assert.match(yml, /cron:\s*"0 16 \* \* \*"/, "a backup cron 16:00 UTC-re állítva");
+  assert.ok(!/cron:\s*"33 14 \* \* \*"/.test(yml), "a régi 14:33 UTC cron nincs többé");
+  assert.ok(!/cron:\s*"43 8 \* \* \*"/.test(yml), "a régi 08:43 UTC sincs");
 });
 
-// A cron-indoklás továbbra is a MÉRT sorállás-adatra hivatkozik (112–218 perc — most
-// történeti kontextusként), és a DST-figyelmeztetést is rögzíti (egy fix UTC-cron nem
-// tud egész évben 16:33 helyit). A doksi az új cront írja.
-test("ARCHITEKTURA 3.: a cron-indoklás az új 14:33 cront + a mért sorállást + a DST-t rögzíti", () => {
+// A napi trigger dupla-indítás dedup: a workflow_dispatch kap egy `force` inputot (alapból false);
+// a kézi „küldj most" dispatch force=true-val átlépi az őrt. A Napi futás lépés a FORCE_RUN envet
+// az inputból tölti, hogy a run.js-őr (hasCompletedRun + FORCE_RUN) olvashassa.
+test("workflow: workflow_dispatch force input + FORCE_RUN env az inputból (őr-átlépés)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  assert.match(yml, /workflow_dispatch:/);
+  assert.match(yml, /force:/, "a workflow_dispatch-nak van force inputja");
+  assert.match(yml, /FORCE_RUN:\s*\$\{\{[^}]*inputs\.force/, "a FORCE_RUN env az inputs.force-ból töltődik");
+});
+
+// A cron-indoklás a szerver-trigger PRIMARY-t + a backup cront + a DST-eltolódást rögzíti.
+test("ARCHITEKTURA 3.: a szerver-trigger PRIMARY + a backup cron (16:00 UTC) + DST dokumentálva", () => {
   const md = readFileSync(new URL("../docs/ARCHITEKTURA.md", import.meta.url), "utf8");
-  assert.match(md, /112–218/, "a mért Actions-sorállás sávja szerepel (történeti kontextus)");
-  assert.match(md, /33 14 \* \* \*/, "a doksi az új 14:33 cront írja");
+  assert.match(md, /0 16 \* \* \*/, "a doksi az új backup cront (16:00 UTC) írja");
+  assert.match(md, /workflow_dispatch|curl|szerver-trigger/i, "a szerver-trigger primary dokumentálva");
   assert.match(md, /DST/, "a DST-eltolódás dokumentálva");
 });
 

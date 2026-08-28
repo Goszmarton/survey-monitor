@@ -178,6 +178,20 @@ export function finishRun(db, { runId, attemptId, finishedAt, providersUsed, rep
   }
 }
 
+/**
+ * Idempotencia-őr jele: LEZÁRULT-e MÁR a mai futás (finished_at kitöltve)?
+ * A napi trigger duplázódás ellen (szerver-curl PRIMARY + GitHub-cron BACKUP): ha ma már
+ * volt sikeres, lezárt futás, a második invokáció no-opol (nincs dupla levél — CLAUDE.md 2).
+ * FONTOS: a workflow a commit-lépésben CSAK sikeres run.js UTÁN commitolja a DB-t, így a
+ * commitolt DB-ben egy mai sor MINDIG lezárt (finished_at≠NULL); egy elhasalt primary nem
+ * commitol → nincs mai sor → a backup dolgozik. A finished_at-re (nem a puszta sor-létre)
+ * szűrünk, hogy egy startRun-olt-de-le-nem-zárt sor NE blokkolja a backupot.
+ */
+export function hasCompletedRun(db, runId) {
+  const row = db.prepare("SELECT 1 FROM runs WHERE run_id = ? AND finished_at IS NOT NULL").get(runId);
+  return row != null;
+}
+
 /** A legutóbbi futás kezdete ms-ben (az aktuálisat kizárva), vagy null. */
 export function getLastRunStartedAt(db, { excludeRunId } = {}) {
   const row = db

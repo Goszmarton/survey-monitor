@@ -13,6 +13,7 @@ import {
   getLastRunStartedAt,
   finalizeFreshness,
   countNewInRun,
+  hasCompletedRun,
 } from "../../src/state/db.js";
 
 function tempDb() {
@@ -89,6 +90,23 @@ test("runs: startRun/finishRun és az előző futás kezdete (aktuális kizárva
     startRun(db, { runId: "2026-07-22", startedAt: "2026-07-22T03:43:00Z" });
     const last = getLastRunStartedAt(db, { excludeRunId: "2026-07-22" });
     assert.equal(last, Date.parse("2026-07-20T03:43:00Z"));
+    cleanup();
+  } catch (e) { cleanup(); throw e; }
+});
+
+test("hasCompletedRun: az őr jele — csak LEZÁRT (finished_at) mai futásra igaz", () => {
+  const { db, cleanup } = tempDb();
+  try {
+    // nincs futás → false
+    assert.equal(hasCompletedRun(db, "2026-08-28"), false, "nincs futás → nem kész");
+    // elindított, de le NEM zárt (pl. elhasalt primary) → false, hogy a backup dolgozhasson
+    startRun(db, { runId: "2026-08-28", startedAt: "2026-08-28T14:30:00Z" });
+    assert.equal(hasCompletedRun(db, "2026-08-28"), false, "startRun után, finish előtt → még nem kész");
+    // lezárva → true → a második trigger (backup) no-opol
+    finishRun(db, { runId: "2026-08-28", finishedAt: "2026-08-28T14:33:00Z", emailStatus: "sent" });
+    assert.equal(hasCompletedRun(db, "2026-08-28"), true, "finishRun után → kész");
+    // más nap változatlanul false
+    assert.equal(hasCompletedRun(db, "2026-08-29"), false, "másik nap → nem kész");
     cleanup();
   } catch (e) { cleanup(); throw e; }
 });

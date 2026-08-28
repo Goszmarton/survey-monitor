@@ -2,22 +2,23 @@ name: daily-monitor
 
 on:
   schedule:
-    # 14:33 UTC = 16:33 nyáron (CEST) / 15:33 télen (CET), Europe/Budapest.
-    # A "ferde" perc (33) szándékos: a kerek órák zsúfoltak az Actions sorában.
+    # BACKUP-slot (2026-08-28). Az ELSŐDLEGES napi indító a SZERVER: curl → workflow_dispatch
+    # 16:30 Europe/Budapest-kor (systemd-timer, DST-biztos, pontos — nem függ a scheduled-cron
+    # sorállásától; ld. scripts/gh-trigger.sh + docs/UZEMELTETES.md). Ez a cron csak BACKUP arra
+    # az esetre, ha a szerver-trigger nem lő (kiesés/hálózat/PAT). A dupla indítást (ha mindkettő
+    # fut) a run.js idempotencia-őre dedupolja (hasCompletedRun) → pontosan egy levél megy ki.
     #
-    # KÉZBESÍTÉSI CÉL (2026-08-26 user-döntés): a jelentés DÉLUTÁN/ESTE érkezzen, ezért
-    # a futás a helyi 16:30 UTÁNRA került. A korábbi 15:00-s SLA (és a hozzá méretezett
-    # 08:43 UTC cron) ELÉVÜLT — az esti kézbesítés a szándék. A késleltetés domináns
-    # tagja továbbra is a GitHub Actions sorállása (a futás maga ~2 perc); az EHHEZ a
-    # slothoz tartozó sorállást üzemeltetés közben mérjük (a 08:43-ra mért 112–218 perc
-    # NEM feltétlen ugyanez). 14:33 UTC + sorállás → jellemzően kora este (Budapest).
-    #
-    # DST-figyelmeztetés: egy fix UTC-cron nem tud egész évben 16:33 helyit. 14:33 UTC
-    # nyáron 16:33 (CEST), TÉLEN 15:33 (CET) — télen a "16:30 után" invariáns egy cronnal
-    # nem tartható; ha a téli 16:30-utániság KELL, 15:33 UTC-re kell váltani. Korábban
-    # 08:43 UTC / 15:00-s SLA volt (ld. git-történet, ARCHITEKTURA.md 3).
-    - cron: "33 14 * * *"
-  workflow_dispatch: {}
+    # 16:00 UTC: a szerver-trigger MÖGÉ tolva, év közben végig utána — nyáron 18:00 CEST
+    # (~1,5h a szerver-trigger után), TÉLEN 17:00 CET (~0,5h után). DST-figyelmeztetés: egy fix
+    # UTC-cron nem tud egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
+    # A korábbi 14:33 UTC (esti, 2026-08-26) és a 08:43 UTC (15:00-s SLA) ELÉVÜLT — ld. git-történet.
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Őr átlépése (kézi 'küldj most' — akkor is fusson, ha ma már volt sikeres futás)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # állapot-DB visszacommit (F1-től)
@@ -57,6 +58,10 @@ jobs:
         # body-timeout már a http.js-ben ül; ez a step-timeout a második védővonal.
         timeout-minutes: 25
         env:
+          # FORCE_RUN=1 átlépi az idempotencia-őrt (run.js): kézi dispatch force=true esetén a
+          # futás akkor is lefut, ha ma már volt sikeres. Scheduled/backup futásnál az input
+          # nincs → üres → az őr él (dedup). A '' → nem "1", tehát az őr NEM lép át.
+          FORCE_RUN: ${{ github.event.inputs.force == 'true' && '1' || '' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

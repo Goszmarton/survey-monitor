@@ -259,5 +259,93 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   mind levél-semleges (csak a lábléc jelez).
 - **A gemini tartósan degradált, de a groq viszi** a triázst. A 08-26-i step-timeout-bukás
   gyök-oka (timeout nélküli LLM-adapterek) **javítva** (§6): per-hívás 30s bounded timeout.
-- **Ütemezés:** cron **14:33 UTC** (esti kézbesítés, 2026-08-26 óta); **egy** összevont
-  levél (KIEMELT-szekció + digest).
+- **Ütemezés (2026-08-28-tól):** az ELSŐDLEGES indító a **szerver-trigger** (`curl →
+  workflow_dispatch`, 16:30 Europe/Budapest, systemd-timer a Hetzner-en); a GitHub scheduled
+  cron **BACKUP** (`0 16 * * *` UTC), a szerver-trigger mögé tolva. A dupla-indítást a `run.js`
+  idempotencia-őre dedupolja → **egy** összevont levél. Runbook: **§8**.
+
+## 8. Szerver-trigger — napi pontos indítás (PRIMARY) + GitHub-cron (BACKUP)
+
+**Miért:** a GitHub scheduled cron sorállása kiszámíthatatlan (`+18…+78` perc, néha több). A
+pontos napi indításhoz a **Hetzner-szerver** (a `napihir`-tükör hosztja) `curl`-lel
+`workflow_dispatch`-et küld 16:30 Europe/Budapest-kor; a scheduled cron csak backup, ha a
+szerver nem lő.
+
+**Hogyan dedupál (az „őr"):** ha a szerver-trigger ÉS a backup-cron is elindít egy futást, a
+`run.js` az elején megnézi, lezárult-e ma már sikeres futás (`hasCompletedRun` → `runs.finished_at`).
+Ha igen, **no-opol** (se collect, se LLM, se levél — csak `buildDist`, hogy a Pages ne ürüljön
+ki), és kilép 0-val. Sorrend-független (a `concurrency: daily-monitor` sorosít). **Kézi „küldj
+most":** a GitHub UI-ban `Run workflow` → **force = true** (`FORCE_RUN=1` átlépi az őrt).
+
+**Repó-oldal (verziózott, titok nélkül):** `scripts/gh-trigger.sh` — az owner/repo-t a git
+remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204-et vár. Teszt:
+`test/gh_trigger.test.js` (DRY_RUN, curl nélkül).
+
+### Szerver-élesítés (a `napi` userrel, a Hetzner-en)
+
+> A PAT-ot és a titkokat **te** kezeled; a repóba SOHA nem kerülnek. Az útvonalak a `napi` user
+> meglévő sparse-klónjához igazodnak (`/home/napi/survey-monitor`).
+
+1. **Fine-grained PAT a GitHubon** (github.com → Settings → Developer settings → Fine-grained
+   tokens): **Resource owner** = Goszmarton, **Repository access** = *Only select repositories* →
+   **csak `survey-monitor`**, **Permissions** → *Actions*: **Read and write** (a
+   `workflow_dispatch`-hoz), *Contents*: **Read-only** (elég a remote-hoz). Lejárat: ízlés
+   szerint (naptárba a megújítás).
+
+2. **PAT-fájl a szerveren** (600, csak a `napi` user olvassa):
+   ```bash
+   mkdir -p ~/.config/survey-monitor-trigger
+   chmod 700 ~/.config/survey-monitor-trigger
+   # illeszd be a PAT-ot (a fájl repóba SOHA nem kerül):
+   install -m 600 /dev/stdin ~/.config/survey-monitor-trigger/token   # majd Ctrl-D
+   ```
+
+3. **Élő igazolás — DRY_RUN, majd éles egy próba** (a klón legyen friss: `git -C
+   ~/survey-monitor pull --ff-only`):
+   ```bash
+   REPO_DIR=~/survey-monitor DRY_RUN=1 bash ~/survey-monitor/scripts/gh-trigger.sh
+   # elvárt: slug=Goszmarton/survey-monitor url=.../monitor.yml/dispatches
+   REPO_DIR=~/survey-monitor TOKEN_FILE=~/.config/survey-monitor-trigger/token \
+     bash ~/survey-monitor/scripts/gh-trigger.sh
+   # elvárt: "OK (HTTP 204)" + az Actionsben megjelenik egy futás
+   ```
+
+4. **systemd service + timer** (`napi` userként; a szerver TZ-je adja a 16:30 helyit):
+   ```ini
+   # /etc/systemd/system/gh-trigger.service
+   [Unit]
+   Description=Napi monitor — GitHub Actions workflow_dispatch trigger
+   After=network-online.target
+   Wants=network-online.target
+
+   [Service]
+   Type=oneshot
+   User=napi
+   Environment=REPO_DIR=/home/napi/survey-monitor
+   Environment=TOKEN_FILE=/home/napi/.config/survey-monitor-trigger/token
+   # a klón legyen friss, majd trigger:
+   ExecStart=/usr/bin/git -C /home/napi/survey-monitor pull --ff-only -q
+   ExecStart=/usr/bin/bash /home/napi/survey-monitor/scripts/gh-trigger.sh
+   ```
+   ```ini
+   # /etc/systemd/system/gh-trigger.timer
+   [Unit]
+   Description=Napi monitor trigger 16:30 (Europe/Budapest)
+
+   [Timer]
+   OnCalendar=*-*-* 16:30:00
+   Persistent=true
+
+   [Install]
+   WantedBy=timers.target
+   ```
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now gh-trigger.timer
+   systemctl list-timers gh-trigger.timer      # a következő tüzelés 16:30 helyi
+   sudo systemctl start gh-trigger.service      # kézi próba → journalctl -u gh-trigger
+   ```
+
+**Ha a szerver-trigger bukik** (`systemctl --failed`, `journalctl -u gh-trigger`): nem vészes —
+a **backup-cron** (16:00 UTC) aznap elkapja. A tartós bukást a §1 pipahiánya (nem jött levél)
+jelzi. A PAT lejárta a leggyakoribb ok → a `journalctl` HTTP 401/403-at mutat.
