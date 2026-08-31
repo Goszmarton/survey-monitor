@@ -250,10 +250,31 @@ function extractNezopont(html, baseUrl) {
   return [...seen.values()];
 }
 
+// Political Capital: news-lista (nincs RSS). Tétel-szerkezet (2026-08-31 verifikált):
+//   <div class="pages"><div class="news_date">ÉÉÉÉ-HH-NN</div>
+//     <a href="hirek.php?...article_id=N"><H3>CÍM</H3><p class='news_box'>kategória</p></a></div>
+// A H3 a CÍM (a `news_box` kategória-címke NEM része — a generikus <a>-extractor „…Elemzés"-t
+// ragasztana a címhez). A news_date NAP-granularitású (dateOnly). Identitás=URL (article_id stabil).
+function extractPolCapital(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const re = /<div\b[^>]*class="news_date"[^>]*>\s*(\d{4})-(\d{2})-(\d{2})\s*<\/div>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<h3\b[^>]*>([\s\S]*?)<\/h3>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const [, y, mo, d, href] = m;
+    const title = m[5].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    const url = absolutize(href, baseUrl);
+    if (!url || title.length < MIN_TITLE_LEN || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ guid: url, title, url, publishedAt: `${y}-${mo}-${d}T00:00:00.000Z`, dateOnly: true, summary: null });
+  }
+  return out;
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus, nezopont: extractNezopont };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus, nezopont: extractNezopont, polcapital: extractPolCapital };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source
