@@ -271,10 +271,30 @@ function extractPolCapital(html, baseUrl) {
   return out;
 }
 
+// Policy Solutions: /elemzesek lista (nincs RSS). Tétel: <div class="elemzes"> <div class="cimkek">
+// (tag-linkek, KIHAGYVA) </div> <h3 class="cim">CÍM</h3> <p>összefoglaló</p> <a href="...pdf">letöltés</a>.
+// A cím a h3.cim; az URL a h3 UTÁNI első <a> (a PDF-letöltő) — a cimkek tag-linkjei a h3 ELŐTT
+// vannak, ezért kimaradnak. Nincs megbízható per-tétel dátum → publishedAt null (first_seen vezérli
+// a frissességet, mint az Eurostat-listánál); a DB canonical_key-dedup véd az ismételt beszúrástól.
+function extractPolicySolutions(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  const re = /<div\b[^>]*class="elemzes"[^>]*>[\s\S]*?<h3\b[^>]*class="cim"[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<a\b[^>]*href=["']([^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const title = m[1].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    const url = absolutize(m[2], baseUrl);
+    if (!url || title.length < MIN_TITLE_LEN || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ guid: url, title, url, publishedAt: null, summary: null });
+  }
+  return out;
+}
+
 // Per-source parserek: az intézeti listaoldalak eltérő markupja miatt (a generikus <a>-
 // extractor csak a szabványos headline-linkes oldalakra elég). Kulcs = source.id; ismeretlen
 // forrásnál a generikus extractLinks (visszafelé kompatibilis, pl. Eurostat euro-indicators).
-const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus, nezopont: extractNezopont, polcapital: extractPolCapital };
+const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, minerva: extractMinerva, opinio: extractOpinio, publicus: extractPublicus, nezopont: extractNezopont, polcapital: extractPolCapital, policysol: extractPolicySolutions };
 
 /**
  * @param {{id:string,name?:string,list_url:string}} source
