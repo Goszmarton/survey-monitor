@@ -301,14 +301,21 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
       (a.canonical_key ?? "").localeCompare(b.canonical_key ?? ""))[0];
     const others = members.filter((m) => m !== rep);
 
-    // A story jelentősége/frissessége a legerősebb tagé (bármely framing KIEMELT → a story KIEMELT);
+    // A story JELENTŐSÉGE a legerősebb tagé (bármely framing KIEMELT → a story KIEMELT);
     // ítélet nélküli csak akkor, ha MINDEN tag az.
     // SZÁNDÉKOS recall-fókusz ITT (szemben a tagság precízió-fókuszával): ha egy csoport
     // MÁR igazoltan egy sztori (guard+küszöbök átengedték), akkor a legerősebb jelentőség
     // felvétele a helyes — egy fontos sztorit elrejteni rosszabb, mint egyben mutatni. A
     // téves-KIEMELT kockázatot a triázs kétkapus kapuja (data_backed) külön levágja.
     const groupSig = best(members.map((m) => m.significance).filter((s) => s in SIGNIF_RANK), (s) => SIGNIF_RANK[s]) ?? rep.significance;
-    const groupFresh = best(members.map((m) => m.freshness).filter((f) => f in FRESH_RANK), (f) => FRESH_RANK[f]) ?? rep.freshness;
+    // A FRISSESSÉG viszont a REPREZENTÁNSÉ, NEM a legfrissebb tagé (2026-08-31 fix, user).
+    // A badge a MEGJELENÍTETT sorral (rep címe + rep dátuma) konzisztens legyen: korábban a
+    // groupFresh a legfrissebb tag UJ_24H-ját húzta rá egy RÉGI dátumú reprezentánsra →
+    // „08-25 + 🟢 ÚJ (24h)" (a badge hazudott a kor felől). A jelentőség-emeléssel ellentétben
+    // a kor OBJEKTÍV (a rep publikációs ideje) — nem „framing", amit egy tag felülírhat. Ha egy
+    // régi sztorinak van mai újraközlése, az külön (friss) tételként a rep saját friss dátumával
+    // jön (vagy ha a rep a régi, akkor a sztori a rep kora szerint KORABBI — becsületes).
+    const groupFresh = rep.freshness;
 
     // A csoport legkorábbi first_seen-je — az „új sztori" ebből dől el (nem a
     // reprezentánséból: a rep elsődlegesen kind szerint választódik, így egy MAI

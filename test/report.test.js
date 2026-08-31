@@ -137,9 +137,12 @@ test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI 
     ],
   };
   const html = renderReport(run);
+  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="forrasok"'));
   assert.match(html, /ÚJ/, "a UJ_24H frissesség-címke megjelenik");
-  assert.match(html, /Telex cikk/, "a 24h-s tétel a kapuzott táblában");
-  assert.ok(!html.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
+  assert.match(tablak, /Telex cikk/, "a 24h-s tétel a kapuzott táblában");
+  // A KORÁBBI KIEMELT a 14 napos KIEMELT szekcióban MEGJELENIK (az a szándék), de a KAPUZOTT
+  // TÁBLÁBA nem kerül be (az csak UJ_24H) — ezért a tablak-szekcióra szűkítünk.
+  assert.ok(!tablak.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
 });
 
 test("Kulcsszámok ma: szám/százalék-tartalmú címek verbatim, a szám nélküliek kimaradnak", () => {
@@ -167,9 +170,12 @@ test("Kulcsszámok ma: nincs szám-tartalmú tétel → nincs (üres) szekció",
 
 test("ellenőrzési napló a source_checks-ből, státuszokkal", () => {
   const html = renderReport(RUN);
-  assert.match(html, /részleges/i);
-  assert.match(html, /üres feed/);
-  assert.match(html, /KSH/);
+  const forras = html.slice(html.indexOf("Forrás-ellenőrzés"));
+  assert.match(forras, /részleges/i, "a RESZLEGES státusz olvasható címkével");
+  assert.match(forras, /KSH/, "a forrás neve a táblában");
+  // 2026-08-31: a nyers RÉSZLET-szöveg SZÁNDÉKOSAN kikerült (a Kutatások táblán link váltja,
+  // a Sajtószemlén nincs oszlop) — a status-címke marad, a detail nem.
+  assert.ok(!forras.includes("üres feed"), "a nyers detail-szöveg már nem jelenik meg (link/üres váltotta)");
 });
 
 test("forrásonkénti megjelenítési cap: max 25 sor/forrás + 'további' jelzés", () => {
@@ -179,8 +185,10 @@ test("forrásonkénti megjelenítési cap: max 25 sor/forrás + 'további' jelz�
     published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H",
   }));
   const html = renderReport({ ...RUN, items: many, newCount: 30 });
-  // csak a táblázatsorok adnak <a href="https://ec.europa.eu/...">; a változáslista/fejléc sima szöveg
-  const tableLinks = (html.match(/href="https:\/\/ec\.europa\.eu\//g) || []).length;
+  // A kapuzott tábla-szekcióra szűkítünk: a fejléc (LEGFRISSEBB HIVATALOS ADAT) 2026-08-31-től
+  // szintén linkel egy eurostat-tételt, az nem a per-forrás cap része.
+  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="forrasok"'));
+  const tableLinks = (tablak.match(/href="https:\/\/ec\.europa\.eu\//g) || []).length;
   assert.equal(tableLinks, 25, "csak 25 táblázatsor forrásonként");
   assert.match(html, /\+\s*5 további/); // 30 - 25
   assert.match(html, /DB-ben/); // a többi a DB-ben marad (F2)
@@ -222,4 +230,89 @@ test("lábléc: a WARN-bejegyzések a részletükkel, láthatóan jelennek meg",
   assert.match(html, /groq 13× HTTP_404/, "a triázs-degradáció részlete megjelenik a láblécben");
   assert.match(html, /MAIL_TO pontosvesszőt tartalmaz/, "a MAIL_TO-guard warning megjelenik");
   assert.match(html, /⚠️/, "WARN-jelzés a láblécben");
+});
+
+// ================= 2026-08-31 honlap-kör (user) =================
+
+test("fejléc: UTOLSÓ ÚJ KUTATÁS + LEGFRISSEBB HIVATALOS ADAT kattintható linkek", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, median: "Medián" },
+    items: [
+      { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Medián kutatás", url: "https://median.hu/x", published_at: "2026-07-22T02:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H" },
+      { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "KSH adat", url: "https://ksh.hu/x", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H" },
+    ],
+  };
+  const fejlec = renderReport(run);
+  const slice = fejlec.slice(fejlec.indexOf('id="fejlec"'), fejlec.indexOf('id="24h"'));
+  assert.match(slice, /UTOLSÓ ÚJ KUTATÁS[\s\S]*<a href="https:\/\/median\.hu\/x">Medián kutatás<\/a>/, "a kutatás-tétel linkelve");
+  assert.match(slice, /LEGFRISSEBB HIVATALOS ADAT[\s\S]*<a href="https:\/\/ksh\.hu\/x">KSH adat<\/a>/, "a hivatalos tétel linkelve");
+});
+
+test("kapuzott tábla: a publikálva/frissesség cella egy sorban (nowrap)", () => {
+  const html = renderReport(RUN);
+  assert.match(html, /\.nowrap\{[^}]*white-space:\s*nowrap/i, "van .nowrap stílus");
+  // a kapuzott sorok dátum-cellája nowrap
+  assert.match(html, /<td class="nowrap">[^<]*\d{4}\. \d{2}\. \d{2}\./, "a publikálva-cella nowrap");
+});
+
+test("honlap KIEMELT szekció: a 14 napos ablak KIEMELT-jei (friss + korábbi), '14 nap' jelöléssel", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { ...RUN.sourceNames, hvg: "HVG" },
+    items: [
+      { canonical_key: "hvg:k", source_id: "hvg", kind: "sajto", title: "Friss kiemelt hír", url: "https://hvg.hu/k", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+      { canonical_key: "telex:o", source_id: "telex", kind: "sajto", title: "Régi kiemelt hír", url: "https://telex.hu/o", published_at: "2026-07-10T03:00:00.000Z", first_seen_at: "2026-07-11T04:00:00.000Z", freshness: "KORABBI", relevant: 1, significance: "KIEMELT" },
+    ],
+  };
+  const html = renderReport(run);
+  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
+  assert.ok(kiemeltIdx > 0, "van 🔴 KIEMELT szekció a honlapon");
+  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 90), /utóbbi 14 nap/, "a 14 napos jelölés a címben");
+  const sec = html.slice(kiemeltIdx, html.indexOf('id="tablak"'));
+  assert.match(sec, /Friss kiemelt hír/, "a friss KIEMELT a szekcióban");
+  assert.match(sec, /Régi kiemelt hír/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
+});
+
+test("Forrás-ellenőrzés: a Kutatások tábla 2 altáblára bomlik — Hazai / Nemzetközi", () => {
+  const run = {
+    ...RUN, items: [],
+    sourceNames: { ksh: "KSH", pew: "Pew", median: "Medián", telex: "Telex" },
+    sourceKinds: { ksh: "hivatalos", pew: "nemzetkozi", median: "intezet", telex: "sajto" },
+    sourceChecks: [
+      { source_id: "ksh", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "pew", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "median", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "telex", status: "OK_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const full = renderReport(run);
+  const forras = full.slice(full.indexOf("Forrás-ellenőrzés")); // a kapuzott tábla ez ELŐTT van
+  const hazaiIdx = forras.indexOf("Hazai");
+  const nemzIdx = forras.indexOf("Nemzetközi");
+  const sajtoIdx = forras.indexOf("📰 Sajtószemle");
+  assert.ok(hazaiIdx > 0 && nemzIdx > hazaiIdx, "Hazai és Nemzetközi alcím, Hazai előbb");
+  assert.ok(forras.indexOf(">KSH<") > hazaiIdx && forras.indexOf(">KSH<") < nemzIdx, "KSH a Hazai altáblában");
+  assert.ok(forras.indexOf(">Medián<") > hazaiIdx && forras.indexOf(">Medián<") < nemzIdx, "Medián a Hazai altáblában");
+  assert.ok(forras.indexOf(">Pew<") > nemzIdx && forras.indexOf(">Pew<") < sajtoIdx, "Pew a Nemzetközi altáblában");
+});
+
+test("Forrás-ellenőrzés: Kutatások 'Új tétel' link ha OK_UJ; Sajtószemle NINCS részlet-oszlop", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { median: "Medián", telex: "Telex" },
+    sourceKinds: { median: "intezet", telex: "sajto" },
+    items: [
+      { canonical_key: "median:new", source_id: "median", kind: "kutatas", title: "Medián friss kutatás", url: "https://median.hu/new", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+    sourceChecks: [
+      { source_id: "median", status: "OK_UJ", detail: "feed: 1 friss - 1 uj a DB-be", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "telex", status: "OK_UJ", detail: "feed: 30 friss - 30 uj a DB-be", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const html = renderReport(run);
+  const forras = html.slice(html.indexOf("Forrás-ellenőrzés")); // a kapuzott tábla ez ELŐTT van
+  assert.match(forras, /<a href="https:\/\/median\.hu\/new">Medián friss kutatás<\/a>/, "az új tétel linkje a Kutatások táblában");
+  assert.ok(!forras.includes("feed: 1 friss"), "a nyers Kutatások-detail eltűnt (link váltotta)");
+  assert.ok(!forras.includes("feed: 30 friss"), "a Sajtószemle részlet-oszlop törölve");
 });

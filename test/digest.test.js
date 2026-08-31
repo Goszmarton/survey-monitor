@@ -18,10 +18,19 @@ const RUN = {
   ],
 };
 
-test("digestSubject: 24 órás kép a tárgyban (rövid gondolatjellel)", () => {
-  // UJ_24H + releváns tételek: median:1, ksh:1 → 2 új; ebből 1 KIEMELT.
+test("digestSubject: 24 órás kép a tárgyban (rövid gondolatjel + 14 napos KIEMELT-szám)", () => {
+  // UJ_24H + releváns: median:1, ksh:1 → 2 új (24h); a KIEMELT-szám a 14 napos ablaké (median:1).
   // Rövid gondolatjel (–, U+2013), NEM hosszú (—): magyar tipográfia + user-kérés 2026-08-31.
-  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h), ebből 1 kiemelt");
+  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h) · 1 kiemelt (14 nap)");
+});
+
+test("digestSubject: 14 napos KIEMELT is beleszámít, nem csak a friss (0 friss KIEMELT esetén is)", () => {
+  const run = { ...RUN, items: [
+    { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "Friss adat", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    { canonical_key: "telex:k", source_id: "telex", kind: "sajto", title: "Régi kiemelt sztori", url: "https://telex.hu/k", freshness: "KORABBI", relevant: 1, significance: "KIEMELT" },
+  ] };
+  // 1 friss (24h), 0 friss KIEMELT, de 1 KIEMELT a 14 napos ablakban → a tárgy jelzi
+  assert.equal(digestSubject(run), "Survey Monitor – 1 új (24h) · 1 kiemelt (14 nap)");
 });
 
 test("renderDigest: szintézis felül, majd UJ_24H tételek jelentőség szerint", () => {
@@ -217,6 +226,27 @@ test("combinedSubject: 🔴 előtag CSAK ha van KIEMELT szekció", () => {
   const noKiemelt = { ...RUN, items: [{ canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" }] };
   assert.ok(!combinedSubject(noKiemelt).startsWith("🔴"), "kiemelt nélkül nincs előtag");
   assert.match(combinedSubject(noKiemelt), /^Survey Monitor – /);
+});
+
+// 2026-08-31 (user): a KIEMELT szekció (email ÉS honlap) a 14 napos ablak kiemeltjeit mutatja —
+// a friss 24h ritkán kap KIEMELT-et, ezért a 24h-szűkítés szinte mindig üres szekciót adna. A
+// két felület SZINKRONBAN van, és a cím JELZI, hogy ez a 14 napra vonatkozik.
+test("renderCombined: a KIEMELT szekció a 14 napos ablakot mutatja (friss + korábbi), '14 nap' jelöléssel", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { hvg: "HVG", telex: "Telex" },
+    items: [
+      { canonical_key: "hvg:fk", source_id: "hvg", kind: "sajto", title: "Friss kiemelt", url: "https://hvg.hu/fk", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+      { canonical_key: "telex:rk", source_id: "telex", kind: "sajto", title: "Régi kiemelt", url: "https://telex.hu/rk", freshness: "KORABBI", relevant: 1, significance: "KIEMELT" },
+    ],
+  };
+  const html = renderCombined(run);
+  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
+  assert.ok(kiemeltIdx > 0, "van KIEMELT szekció");
+  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 90), /utóbbi 14 nap/, "a 14 napos jelölés a címben");
+  const sec = html.slice(kiemeltIdx, html.indexOf("📊 Adatjelentőség"));
+  assert.match(sec, /Friss kiemelt/, "a friss KIEMELT a szekcióban");
+  assert.match(sec, /Régi kiemelt/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
 });
 
 test("renderCombined: a Pages-link a helperből jön (gyökér, nem napi archív)", () => {

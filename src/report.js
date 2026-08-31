@@ -63,6 +63,10 @@ const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "�
 // hiányában minden forrás a Kutatások csoportba kerül — biztonságos fallback régi run/teszt esetén).
 const KUTATAS_LABEL = "📈 Kutatások és hivatalos adatok";
 const SAJTO_LABEL = "📰 Sajtószemle";
+// A Forrás-ellenőrzésben (nem a kapuzott tétel-táblában) a Kutatások/hivatalos csoport két
+// altáblára bomlik: Hazai (hivatalos + intézet) vs Nemzetközi (kind=nemzetkozi) — user 2026-08-31.
+const HAZAI_LABEL = "📈 Kutatások és hivatalos adatok – Hazai";
+const NEMZ_LABEL = "🌍 Kutatások és hivatalos adatok – Nemzetközi";
 const isSajtoItem = (it) => it.kind === "sajto";
 
 // „📊 Kulcsszámok ma" — a szám/százalék-tartalmú címeket VERBATIM emeljük ki (garantáltan
@@ -137,6 +141,12 @@ const sortItems = (items) =>
 
 const titleLink = (it) => (it.url ? `<a href="${esc(it.url)}">${esc(it.title)}</a>` : esc(it.title));
 
+// Fejléc-tétel (UTOLSÓ ÚJ KUTATÁS / LEGFRISSEBB HIVATALOS ADAT): kattintható cím + publikálás
+// ideje (user-kérés 2026-08-31). URL híján sima szöveg (titleLink), így sose bukik hiányzó linken.
+const headlineHtml = (it, emptyMsg) => (it
+  ? `${titleLink(it)} — ${esc(fmtTime(it.published_at))}`
+  : `<span class="empty">${emptyMsg}</span>`);
+
 // A kapu-lehúzás auditálhatóságához a kapu ELŐTTI jelentőség és az indoklás kell. Friss
 // tételen az enrich felszínre hozta (significance_raw / triage_reason); korábbi futás
 // tételén CSAK a triage_json-ben van (az in-memory tétel oszlopai közt nincs). Ezért mindkét
@@ -170,7 +180,10 @@ function renderRow(it, sourceNames) {
   const src = srcLabel(it, sourceNames);
   const sig = sigLabel(it);
   const fresh = FRESHNESS[it.freshness]?.label ?? esc(it.freshness ?? "—");
-  return `<tr><td>${src}</td><td>${titleLink(it)}${pressUrlsHtml(it)}</td><td>${sig}</td><td>${esc(fmtTime(it.published_at))}</td><td>${fresh}</td></tr>`;
+  // A jelentőség (pötty+felirat), a publikálva (dátum+óra) és a frissesség cella egy sorban
+  // marad (nowrap) — user-kérés 2026-08-31: ne törjön a „🟡 FIGYELENDO" / „2026. 08. 30. 16:12"
+  // két sorba.
+  return `<tr><td>${src}</td><td>${titleLink(it)}${pressUrlsHtml(it)}</td><td class="nowrap">${sig}</td><td class="nowrap">${esc(fmtTime(it.published_at))}</td><td class="nowrap">${fresh}</td></tr>`;
 }
 
 function itemRows(items, sourceNames) {
@@ -223,6 +236,7 @@ const STYLE = `
   header .meta{font:13px/1.5 ui-monospace,Consolas,monospace;color:var(--muted)}
   section{margin-top:34px}
   h2{font-size:1.05rem;border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 12px}
+  h2 .count{color:var(--muted);font-weight:400;font-size:.8em}
   h3{font-size:.98rem;margin:18px 0 6px;color:var(--ink)}
   h3 .count{color:var(--muted);font-weight:400}
   .headline{display:flex;gap:10px;align-items:baseline;font:15px/1.5 ui-monospace,Consolas,monospace;margin:6px 0}
@@ -233,6 +247,7 @@ const STYLE = `
   caption{text-align:left;font-weight:600;padding:6px 0;font-size:.95rem}
   caption .count{color:var(--muted);font-weight:400}
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  td.nowrap{white-space:nowrap}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
   .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
@@ -285,15 +300,49 @@ export function renderReport(run) {
   // forrásnév szerint (hu locale). A forrás kind-je a run.sourceKinds-ból; hiányában minden
   // forrás a Kutatások csoportba esik (fallback régi run/teszt esetén).
   const sourceKinds = run.sourceKinds ?? {};
-  const checkRow = (c) => `<tr><td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td><td>${esc(CHECK[c.status] ?? c.status)}</td><td>${esc(c.detail ?? "")}</td></tr>`;
   const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
-  const kutatasChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto").sort(byName);
-  const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
-  const checkTable = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
+  // Forrás → a legfrissebb LÁTHATÓ tételének (rep) linkje = „az új, amiből dolgozott". A
+  // Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg, ha a forrás MA
+  // hozott új tételt (OK_UJ) — user 2026-08-31. Ha nincs OK_UJ vagy nincs link → üres cella.
+  const newestBySource = {};
+  for (const it of visible) {
+    if (!it.url) continue;
+    const cur = newestBySource[it.source_id];
+    if (!cur || (Date.parse(it.published_at) || 0) > (Date.parse(cur.published_at) || 0)) newestBySource[it.source_id] = it;
+  }
+  const newItemCell = (c) => {
+    const it = c.status === "OK_UJ" ? newestBySource[c.source_id] : null;
+    return it ? titleLink(it) : "";
+  };
+  const nameCell = (c) => `<td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td>`;
+  const statusCell = (c) => `<td class="nowrap">${esc(CHECK[c.status] ?? c.status)}</td>`; // „nincs új" egy sorban
+  // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre a nyers detail helyett).
+  const checkTableKut = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
     <table>
-      <tr><th>Forrás</th><th>Státusz</th><th>Részlet</th></tr>
-      ${list.length ? list.map(checkRow).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
+      <tr><th>Forrás</th><th>Státusz</th><th>Új tétel</th></tr>
+      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}<td>${newItemCell(c)}</td></tr>`).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
     </table>`;
+  // Sajtószemle altábla: Forrás | Státusz — a RÉSZLET-oszlop TÖRÖLVE (user: „itt a részlet oszlop nem kell").
+  const checkTableSajto = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
+    <table>
+      <tr><th>Forrás</th><th>Státusz</th></tr>
+      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}</tr>`).join("\n") : `<tr><td colspan="2" class="empty">nincs ellenőrzött forrás</td></tr>`}
+    </table>`;
+  // A Kutatások/hivatalos forrás-ellenőrzés két altáblára: Hazai (hivatalos + intézet) vs
+  // Nemzetközi (kind=nemzetkozi); a sajtó külön (detail nélkül). Fallback (nincs sourceKinds):
+  // minden nem-sajtó a Hazai-ba esik (a nemzetkozi-szűrő üres). Mindegyik ABC forrásnév szerint.
+  const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && sourceKinds[c.source_id] !== "nemzetkozi").sort(byName);
+  const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] === "nemzetkozi").sort(byName);
+  const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
+
+  // Honlap 🔴 KIEMELT szekció: a 14 napos ablak KIEMELT sztorijai (NEM csak a mai 24h) — így a
+  // honlap ugyanazt mutatja, mint az email (user 2026-08-31: email↔honlap szinkron), és a friss
+  // hír ritkán kap KIEMELT-et → a napi 24h szinte mindig üres lenne. A címke JELZI a 14 napot.
+  // Üres → a szekció kimarad (nem üres doboz).
+  const kiemeltWindow = visible.filter((i) => i.significance === "KIEMELT");
+  const kiemeltSection = kiemeltWindow.length
+    ? `<section id="kiemelt"><h2>🔴 KIEMELT tételek <span class="count">(utóbbi 14 nap)</span></h2>${digestItemList(kiemeltWindow, sourceNames)}</section>`
+    : "";
 
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
@@ -318,9 +367,9 @@ export function renderReport(run) {
 
   <section id="fejlec">
     <div class="headline"><span>🕒</span><span class="label">UTOLSÓ ÚJ KUTATÁS:</span>
-      <span>${latestKutatas ? esc(latestKutatas.title) + " — " + esc(fmtTime(latestKutatas.published_at)) : '<span class="empty">nincs friss kutatás</span>'}</span></div>
+      <span>${headlineHtml(latestKutatas, "nincs friss kutatás")}</span></div>
     <div class="headline"><span>📈</span><span class="label">LEGFRISSEBB HIVATALOS ADAT:</span>
-      <span>${latestHivatalos ? esc(latestHivatalos.title) + " — " + esc(fmtTime(latestHivatalos.published_at)) : '<span class="empty">nincs friss hivatalos adat</span>'}</span></div>
+      <span>${headlineHtml(latestHivatalos, "nincs friss hivatalos adat")}</span></div>
   </section>
 
   <section id="24h">
@@ -330,6 +379,8 @@ export function renderReport(run) {
 
   ${keyNumbersSection(uj24, sourceNames)}
 
+  ${kiemeltSection}
+
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
     ${table(KUTATAS_LABEL, kutatasFresh, sourceNames)}
@@ -338,8 +389,9 @@ export function renderReport(run) {
 
   <section id="forrasok">
     <h2>Forrás-ellenőrzés</h2>
-    ${checkTable(KUTATAS_LABEL, kutatasChecks)}
-    ${checkTable(SAJTO_LABEL, sajtoChecks)}
+    ${hazaiChecks.length ? checkTableKut(HAZAI_LABEL, hazaiChecks) : ""}
+    ${nemzChecks.length ? checkTableKut(NEMZ_LABEL, nemzChecks) : ""}
+    ${sajtoChecks.length ? checkTableSajto(SAJTO_LABEL, sajtoChecks) : ""}
   </section>
 
   <footer>
@@ -397,11 +449,14 @@ const pagesLinkTop = (run) => run.pagesUrl
   : `<p class="empty">A teljes jelentés a honlap-archívumban.</p>`;
 
 export function digestSubject(run) {
-  // Mindkét szám a story-dedup UTÁNi halmazból — konzisztens a levél törzsével
-  // (a nyers kiemeltCount-ot NEM keverjük ide, az a küldés-döntéshez van).
+  // Az „N új (24h)" a friss (UJ_24H) reprezentánsok száma; a KIEMELT-szám viszont a 14 napos
+  // ablaké (a KIEMELT szekcióval és a 🔴 előtaggal KONZISZTENS) — user 2026-08-31. A friss 24h
+  // ritkán kap KIEMELT-et, ezért a régi „ebből N kiemelt" (24h-alapú) a 🔴 előtag mellett
+  // „ebből 0 kiemelt"-et adott → félrevezető. A „(14 nap)" jelzi, hogy ez az ablakra vonatkozik;
+  // 0 KIEMELT esetén a rész kimarad (nincs „0 kiemelt" zaj, és 🔴 előtag sincs).
   const fresh = freshRepresentatives(run);
-  const kiemelt = fresh.filter((i) => i.significance === "KIEMELT").length;
-  return endash(`Survey Monitor — ${fresh.length} új (24h), ebből ${kiemelt} kiemelt`);
+  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT").length;
+  return endash(`Survey Monitor — ${fresh.length} új (24h)${kiemelt ? ` · ${kiemelt} kiemelt (14 nap)` : ""}`);
 }
 
 export function renderDigest(run) {
@@ -432,19 +487,23 @@ export function renderDigest(run) {
 // exportok megmaradnak (teszteltek), csak a küldés-ág nem használja őket külön.
 export function combinedSubject(run) {
   // 🔴 előtag CSAK ha van KIEMELT szekció (= a levélben ténylegesen megjelenő KIEMELT-reprezentáns).
+  // 🔴 előtag ha van KIEMELT a 14 napos ablakban (a KIEMELT szekció is ezt mutatja).
   const hasKiemelt = storyGroups(run).representatives.some((i) => i.significance === "KIEMELT");
   return hasKiemelt ? `🔴 ${digestSubject(run)}` : digestSubject(run);
 }
 
 export function renderCombined(run) {
   const sourceNames = run.sourceNames ?? {};
-  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
   const fresh = freshRepresentatives(run);
+  // A KIEMELT szekció a 14 napos ablak KIEMELT sztorijait mutatja (a honlap is ugyanezt — user
+  // 2026-08-31: email↔honlap szinkron). A friss 24h ritkán kap KIEMELT-et, ezért nem szűkítjük
+  // 24h-ra (különben szinte mindig üres lenne); a címke JELZI, hogy ez a 14 napra vonatkozik.
+  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
   const kiemeltSection = kiemelt.length
-    ? `<section><h2>🔴 KIEMELT tételek</h2>${digestItemList(kiemelt, sourceNames)}</section>`
+    ? `<section><h2>🔴 KIEMELT tételek <span class="count">(utóbbi 14 nap)</span></h2>${digestItemList(kiemelt, sourceNames)}</section>`
     : "";
   // Szekció-sorrend (user-kérés 2026-08-31): FELÜL a kiemelt „teljes jelentés a honlapon" link
   // (nagyobb betű), majd narratíva → 📊 Kulcsszámok → 🔴 KIEMELT (a Kulcsszámok ALÁ került) →

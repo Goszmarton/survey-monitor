@@ -47,6 +47,22 @@ test("report: azonos KIEMELT-sztori 3 forrásból → 1 sor +2 és press_urls a 
   assert.match(html, /forrás:/);
 });
 
+// --- Freshness-badge az összevont soron: a REPREZENTÁNSÉ, nem a legfrissebb tagé ---
+// BUG (2026-08-31, user): egy összevont sztori a legfrissebb tag freshness-ét (groupFresh)
+// kapta, DE a megjelenített dátum a reprezentánsé → „08-25 (régi dátum) + 🟢 ÚJ (24h)". A badge
+// hazudott a kor felől. Fix: a megjelenített freshness a reprezentáns SAJÁT dátumához igazodik.
+test("storyGroups: az összevont sztori freshness-e a REPREZENTÁNSÉ (nem a legfrissebb tagé)", () => {
+  const items = [
+    { canonical_key: "hvg:old", source_id: "hvg", kind: "sajto", title: "Vita robbant ki a költségvetési hiánycélról", url: "o", relevant: 1, significance: "FONTOS", freshness: "KORABBI", first_seen_at: "2026-07-25T04:00:00Z", published_at: "2026-07-25T04:00:00Z" },
+    { canonical_key: "hvg:new", source_id: "hvg", kind: "sajto", title: "Vita robbant ki a költségvetési hiánycélról", url: "n", relevant: 1, significance: "FONTOS", freshness: "UJ_24H", first_seen_at: "2026-07-30T04:00:00Z", published_at: "2026-07-30T04:00:00Z" },
+  ];
+  const { representatives } = storyGroups(makeRun(items, { dedupCfg: cfg, institutes }));
+  assert.equal(representatives.length, 1, "a két azonos cím egy sztori");
+  const rep = representatives[0];
+  assert.equal(rep.canonical_key, "hvg:old", "a rep a korábbi first_seen-ű (döntetlen-feloldás)");
+  assert.equal(rep.freshness, "KORABBI", "a badge a rep SAJÁT frissessége — NEM emelt UJ_24H");
+});
+
 // --- Ítélet nélküli tétel: PER-SOR megjelölve, nem csendes ---
 // A „Ellenőrzési napló" összegző sora (⏳ N tétel ítélet nélkül maradt) 2026-08-27-én
 // KIKERÜLT a nézetből; a per-tétel jel (sigLabel „⏳ ítélet nélkül") a táblázat SORÁBAN
