@@ -383,7 +383,12 @@ test("Forrás-ellenőrzés: OK_UJ + triázs-szűrt friss tétel → 'Új tétel'
   };
   const html = renderReport(run);
   const forras = html.slice(html.indexOf("Forrás-ellenőrzés"));
+  // KSH: van megjeleníthető releváns friss tétel → státusz „új – releváns" + link
   assert.match(forras, /<a href="https:\/\/ksh\.hu\/1"[^>]*>KSH adat<\/a>/, "KSH releváns friss tétele linkelve");
-  assert.ok(!forras.includes("https://xxi.hu/1"), "a triázs-szűrt tétel NEM linkelt");
-  assert.match(forras, /triázs/i, "jelzés a triázs-szűrésről (nem néma üres cella az 'új' mellett)");
+  assert.match(forras, /új – releváns/, "a releváns új tétel státusza jelöli a relevanciát");
+  // XXI. Század: OK_UJ, de a friss tétel nem-releváns → a STÁTUSZ jelzi (közérthetően, NEM 'triázs'),
+  // nincs link, és nincs a néma üres cella az 'új' mellett
+  assert.ok(!forras.includes("https://xxi.hu/1"), "a nem-releváns friss tétel NEM linkelt");
+  assert.match(forras, /új – nem releváns/, "a nem-releváns új tétel státusza közérthetően jelöli");
+  assert.ok(!forras.includes("triázs"), "közérthető szó, NEM a belső 'triázs' szakkifejezés");
 });

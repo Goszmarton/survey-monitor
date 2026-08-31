@@ -313,12 +313,8 @@ export function renderReport(run) {
   // forrás a Kutatások csoportba esik (fallback régi run/teszt esetén).
   const sourceKinds = run.sourceKinds ?? {};
   const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
-  // Forrás → a MAI (UJ_24H) LÁTHATÓ (triázs-releváns) tételének linkje = „az új, amiből dolgozott".
+  // Forrás → a MAI (UJ_24H) LÁTHATÓ (releváns) tételének linkje = „az új, amiből dolgozott".
   // A Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg (user 2026-08-31).
-  // FONTOS (CLAUDE.md 2 — nincs néma eltűnés): ha a forrás OK_UJ (hozott új tételt), DE a mai
-  // tételét a TRIÁZS nem-relevánsnak ítélte (nincs megjeleníthető friss tétel), a cella JELZI ezt
-  // — különben a „✅ új" státusz mellett üres cella zavaró (a user 2026-08-31 jelezte: XXI. Század
-  // „új", de üres, mert a friss tétele triázs-szűrt volt).
   const freshVisibleBySource = {};
   for (const it of uj24) {
     if (!it.url) continue;
@@ -326,12 +322,22 @@ export function renderReport(run) {
     if (!cur || (Date.parse(it.published_at) || 0) > (Date.parse(cur.published_at) || 0)) freshVisibleBySource[it.source_id] = it;
   }
   const newItemCell = (c) => {
-    if (c.status !== "OK_UJ") return "";
-    const it = freshVisibleBySource[c.source_id];
-    return it ? titleLink(it) : `<span class="empty">új tétel — a triázs nem ítélte relevánsnak</span>`;
+    const it = c.status === "OK_UJ" ? freshVisibleBySource[c.source_id] : null;
+    return it ? titleLink(it) : "";
   };
   const nameCell = (c) => `<td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td>`;
-  const statusCell = (c) => `<td class="nowrap">${esc(CHECK[c.status] ?? c.status)}</td>`; // „nincs új" egy sorban
+  // Státusz-cella RELEVANCIA-TUDATOS (user 2026-08-31): egy forrás lehet OK_UJ (hozott új tételt),
+  // de az új tételét a relevancia-szűrő KÖZÉLETI szempontból nem tartotta fontosnak → nem jelenik
+  // meg a jelentésben. A „✅ új" melletti üres „Új tétel" cella emiatt zavaró volt (néma hiány,
+  // CLAUDE.md 2). Ezért a STÁTUSZ maga különbözteti: „új – releváns" (van megjeleníthető friss
+  // tétel) vs „új – nem releváns" (hozott újat, de közéleti szempontból nem releváns). KÖZÉRTHETŐ
+  // szó — NEM a belső „triázs" szakkifejezés (user kérés). A többi státusz a CHECK-térképből.
+  const statusCell = (c) => {
+    const label = c.status === "OK_UJ"
+      ? (freshVisibleBySource[c.source_id] ? "✅ új – releváns" : "⚪ új – nem releváns")
+      : (CHECK[c.status] ?? c.status);
+    return `<td class="nowrap">${esc(label)}</td>`;
+  };
   // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre a nyers detail helyett).
   const checkTableKut = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
     <table class="checks">
