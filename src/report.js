@@ -313,18 +313,22 @@ export function renderReport(run) {
   // forrás a Kutatások csoportba esik (fallback régi run/teszt esetén).
   const sourceKinds = run.sourceKinds ?? {};
   const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
-  // Forrás → a legfrissebb LÁTHATÓ tételének (rep) linkje = „az új, amiből dolgozott". A
-  // Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg, ha a forrás MA
-  // hozott új tételt (OK_UJ) — user 2026-08-31. Ha nincs OK_UJ vagy nincs link → üres cella.
-  const newestBySource = {};
-  for (const it of visible) {
+  // Forrás → a MAI (UJ_24H) LÁTHATÓ (triázs-releváns) tételének linkje = „az új, amiből dolgozott".
+  // A Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg (user 2026-08-31).
+  // FONTOS (CLAUDE.md 2 — nincs néma eltűnés): ha a forrás OK_UJ (hozott új tételt), DE a mai
+  // tételét a TRIÁZS nem-relevánsnak ítélte (nincs megjeleníthető friss tétel), a cella JELZI ezt
+  // — különben a „✅ új" státusz mellett üres cella zavaró (a user 2026-08-31 jelezte: XXI. Század
+  // „új", de üres, mert a friss tétele triázs-szűrt volt).
+  const freshVisibleBySource = {};
+  for (const it of uj24) {
     if (!it.url) continue;
-    const cur = newestBySource[it.source_id];
-    if (!cur || (Date.parse(it.published_at) || 0) > (Date.parse(cur.published_at) || 0)) newestBySource[it.source_id] = it;
+    const cur = freshVisibleBySource[it.source_id];
+    if (!cur || (Date.parse(it.published_at) || 0) > (Date.parse(cur.published_at) || 0)) freshVisibleBySource[it.source_id] = it;
   }
   const newItemCell = (c) => {
-    const it = c.status === "OK_UJ" ? newestBySource[c.source_id] : null;
-    return it ? titleLink(it) : "";
+    if (c.status !== "OK_UJ") return "";
+    const it = freshVisibleBySource[c.source_id];
+    return it ? titleLink(it) : `<span class="empty">új tétel — a triázs nem ítélte relevánsnak</span>`;
   };
   const nameCell = (c) => `<td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td>`;
   const statusCell = (c) => `<td class="nowrap">${esc(CHECK[c.status] ?? c.status)}</td>`; // „nincs új" egy sorban

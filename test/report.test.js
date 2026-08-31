@@ -366,3 +366,24 @@ test("Forrás-ellenőrzés: fix oszlop-szélesség (a STÁTUSZ nem tolódik el a
   assert.match(html, /table\.checks\{[^}]*table-layout:\s*fixed/i, "fix table-layout a check-táblákon");
   assert.match(html, /<table class="checks"/, "a check-táblák 'checks' osztályt kapnak");
 });
+
+test("Forrás-ellenőrzés: OK_UJ + triázs-szűrt friss tétel → 'Új tétel' cellában JELZÉS (nem néma üres)", () => {
+  const run = {
+    ...RUN,
+    sourceNames: { xxiszazad: "XXI. Század Intézet", ksh: "KSH" },
+    sourceKinds: { xxiszazad: "intezet", ksh: "hivatalos" },
+    items: [
+      { canonical_key: "xxi:1", source_id: "xxiszazad", kind: "kutatas", title: "Múzeumi kiállítás", url: "https://xxi.hu/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 0, significance: null },
+      { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "KSH adat", url: "https://ksh.hu/1", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+    sourceChecks: [
+      { source_id: "xxiszazad", status: "OK_UJ", detail: "feed: 1 friss", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "ksh", status: "OK_UJ", detail: "feed: 1 friss", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const html = renderReport(run);
+  const forras = html.slice(html.indexOf("Forrás-ellenőrzés"));
+  assert.match(forras, /<a href="https:\/\/ksh\.hu\/1"[^>]*>KSH adat<\/a>/, "KSH releváns friss tétele linkelve");
+  assert.ok(!forras.includes("https://xxi.hu/1"), "a triázs-szűrt tétel NEM linkelt");
+  assert.match(forras, /triázs/i, "jelzés a triázs-szűrésről (nem néma üres cella az 'új' mellett)");
+});
