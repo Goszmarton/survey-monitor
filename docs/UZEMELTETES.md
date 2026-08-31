@@ -251,12 +251,13 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   elvek (CLAUDE.md 1–6) minden jövőbeli javító körre érvényesek maradnak.
 
 **Hol tart a rendszer (pillanatkép, 2026-08-26):**
-- **41 aktív forrás** (A-kaszt; 2026-08-28: a végleg megszűnt **szabadeu nyugdíjazva** — a
+- **53 aktív forrás** (A-kaszt; 2026-08-28: a végleg megszűnt **szabadeu nyugdíjazva** — a
   `revisit:"never"` mostantól kizárja a gyűjtésből, config-tombstone marad, nincs napi RESZLEGES.
   2026-08-31: **forrás-bővítés — 1. csomag +3** (`tarki`, `tk_szoc`, `tk_pol`) **+ 2. csomag +5**
   (`egyensuly`, `xxiszazad`, `mertek`, `krtkvgi`, `habitat`, kind=intezet) **+ 3. csomag +3 üzleti sajtó**
   (`forbes`, `penzcentrum`, `bankmonitor`, kind=sajto) **+ 4. csomag +4 nemzetközi**
-  (`ecfr`, `eige`, `who`, `ingthink`, kind=nemzetkozi; a nagyvolumenűek HU title_filter-rel), mind A-kaszt feed.
+  (`ecfr`, `eige`, `who`, `ingthink`, kind=nemzetkozi; a nagyvolumenűek HU title_filter-rel) **+ 5. csomag +12**
+  (`maghang` sajto + a TK ELTE 11 akadémiai alfeed, kind=intezet), mind A-kaszt feed.
   További csomagok sorban jönnek; a beköthető jelöltek felmérve — ld. forrás-bővítés memória).
   A 21kutato (revisit:"active", átmeneti IP-blokk) továbbra is bekötve. **B2 (europeelects +
   eurobarometer) parkolva:** a kód kész
