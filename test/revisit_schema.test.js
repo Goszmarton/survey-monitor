@@ -13,10 +13,15 @@ const by = (id) => sources.find((s) => s.id === id);
 // bekötött. Létjogosultsága: a
 // MEGSZŰNT szabadeu (2025-11-20) és az ÉLŐ, halott-csatornás zavecz NEM ugyanaz az állapot — ezt
 // egy `status`-mező (mindkettő üres/stale-jellegű) nem különbözteti meg. Ezt EGY teszt mondja ki.
-test("revisit-séma: a megszűnt szabadeu (never) ≠ az élő-csatorna-halott zavecz (if-republishes)", () => {
+test("revisit-séma: a nyugdíjazott (never) ≠ az alkalmanként újranézendő (if-republishes) forrás", () => {
+  // never = KIZÁRVA a gyűjtésből (véglegesen megszűnt VAGY tartósan dormant, user-döntés);
+  // if-republishes = bekötve MARAD az újranézési szándék jelzésével (a csatorna halott/stale, de
+  // a szervezet él, érdemes időnként visszanézni). 2026-08-31: a zavecz is `never` lett — a
+  // Závecz ~2 éve nem publikál (feed ÉS a kutatasi-eredmenyeink lista is 2023-09-27), a user kizárta.
   assert.equal(by("szabadeu").revisit, "never", "szabadeu = never (a szervezet megszűnt 2025-11-20)");
-  assert.equal(by("zavecz").revisit, "if-republishes", "zavecz = if-republishes (intézet él, csatorna halott)");
-  assert.notEqual(by("szabadeu").revisit, by("zavecz").revisit, "a két állapot a regiszterben elkülönül");
+  assert.equal(by("zavecz").revisit, "never", "zavecz = never (2 éve dormant, user 2026-08-31 kizárta)");
+  assert.equal(by("realpr93").revisit, "if-republishes", "realpr93 = if-republishes (intézet él, alkalmi újranézés)");
+  assert.notEqual(by("szabadeu").revisit, by("realpr93").revisit, "a két állapot a regiszterben elkülönül");
 });
 
 // last_content: a legutóbbi VALÓS tétel ISO-dátuma (ahol mértük) — egy mechanikus STALE-sweep
