@@ -137,11 +137,11 @@ test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI 
     ],
   };
   const html = renderReport(run);
-  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="forrasok"'));
+  // A kapuzott tábla a tablak-szekció; a KIEMELT (14 napos) szekció UTÁNA jön (id="kiemelt"),
+  // ezért a kapuzott tartalmat oda-ig szűkítjük (a KORÁBBI KIEMELT a KIEMELT szekcióban van, nem itt).
+  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="kiemelt"'));
   assert.match(html, /ÚJ/, "a UJ_24H frissesség-címke megjelenik");
   assert.match(tablak, /Telex cikk/, "a 24h-s tétel a kapuzott táblában");
-  // A KORÁBBI KIEMELT a 14 napos KIEMELT szekcióban MEGJELENIK (az a szándék), de a KAPUZOTT
-  // TÁBLÁBA nem kerül be (az csak UJ_24H) — ezért a tablak-szekcióra szűkítünk.
   assert.ok(!tablak.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
 });
 
@@ -245,8 +245,8 @@ test("fejléc: UTOLSÓ ÚJ KUTATÁS + LEGFRISSEBB HIVATALOS ADAT kattintható li
   };
   const fejlec = renderReport(run);
   const slice = fejlec.slice(fejlec.indexOf('id="fejlec"'), fejlec.indexOf('id="24h"'));
-  assert.match(slice, /UTOLSÓ ÚJ KUTATÁS[\s\S]*<a href="https:\/\/median\.hu\/x">Medián kutatás<\/a>/, "a kutatás-tétel linkelve");
-  assert.match(slice, /LEGFRISSEBB HIVATALOS ADAT[\s\S]*<a href="https:\/\/ksh\.hu\/x">KSH adat<\/a>/, "a hivatalos tétel linkelve");
+  assert.match(slice, /UTOLSÓ ÚJ KUTATÁS[\s\S]*<a href="https:\/\/median\.hu\/x"[^>]*>Medián kutatás<\/a>/, "a kutatás-tétel linkelve");
+  assert.match(slice, /LEGFRISSEBB HIVATALOS ADAT[\s\S]*<a href="https:\/\/ksh\.hu\/x"[^>]*>KSH adat<\/a>/, "a hivatalos tétel linkelve");
 });
 
 test("kapuzott tábla: a publikálva/frissesség cella egy sorban (nowrap)", () => {
@@ -268,8 +268,9 @@ test("honlap KIEMELT szekció: a 14 napos ablak KIEMELT-jei (friss + korábbi), 
   const html = renderReport(run);
   const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
   assert.ok(kiemeltIdx > 0, "van 🔴 KIEMELT szekció a honlapon");
-  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 90), /utóbbi 14 nap/, "a 14 napos jelölés a címben");
-  const sec = html.slice(kiemeltIdx, html.indexOf('id="tablak"'));
+  assert.ok(kiemeltIdx > html.indexOf('id="tablak"'), "a KIEMELT a kapuzott (tablak) UTÁN");
+  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 120), /elmúlt 14 nap/, "a 14 napos visszatekintés-jelölés a címben");
+  const sec = html.slice(kiemeltIdx, html.indexOf('id="forrasok"')); // KIEMELT a kapuzott és a forrás-szekció közt
   assert.match(sec, /Friss kiemelt hír/, "a friss KIEMELT a szekcióban");
   assert.match(sec, /Régi kiemelt hír/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
 });
@@ -312,7 +313,56 @@ test("Forrás-ellenőrzés: Kutatások 'Új tétel' link ha OK_UJ; Sajtószemle 
   };
   const html = renderReport(run);
   const forras = html.slice(html.indexOf("Forrás-ellenőrzés")); // a kapuzott tábla ez ELŐTT van
-  assert.match(forras, /<a href="https:\/\/median\.hu\/new">Medián friss kutatás<\/a>/, "az új tétel linkje a Kutatások táblában");
+  assert.match(forras, /<a href="https:\/\/median\.hu\/new"[^>]*>Medián friss kutatás<\/a>/, "az új tétel linkje a Kutatások táblában");
   assert.ok(!forras.includes("feed: 1 friss"), "a nyers Kutatások-detail eltűnt (link váltotta)");
   assert.ok(!forras.includes("feed: 30 friss"), "a Sajtószemle részlet-oszlop törölve");
+});
+
+// ================= 2026-08-31 honlap-kör #2 (user) =================
+
+test("minden link új tabban nyílik (target=_blank rel=noopener)", () => {
+  const run = { ...RUN, sourceNames: { ...RUN.sourceNames, median: "Medián" }, items: [
+    { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Medián kutatás", url: "https://median.hu/x", published_at: "2026-07-22T02:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+  ] };
+  const html = renderReport(run);
+  const links = [...html.matchAll(/<a href="[^"]*"([^>]*)>/g)];
+  assert.ok(links.length > 0, "van link a jelentésben");
+  for (const m of links) assert.match(m[1], /target="_blank"/, "minden <a> target=_blank-kel nyílik");
+});
+
+test("honlap: a KIEMELT szekció a kapuzott (Sajtószemle) UTÁN van, 14 napos visszatekintés-jelöléssel", () => {
+  const run = { ...RUN, sourceNames: { ...RUN.sourceNames, hvg: "HVG" }, items: [
+    { canonical_key: "hvg:k", source_id: "hvg", kind: "sajto", title: "Kiemelt sztori X", url: "https://hvg.hu/k", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
+  ] };
+  const html = renderReport(run);
+  const tablakIdx = html.indexOf('id="tablak"');
+  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
+  assert.ok(kiemeltIdx > tablakIdx, "a KIEMELT szekció a kapuzott tábla UTÁN van");
+  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 140), /elmúlt 14 nap/, "egyértelmű 14 napos visszatekintés a címben");
+});
+
+test("Forrás-ellenőrzés: Eurostat és Europion/Opinio a Nemzetközi altáblában (nem Hazai)", () => {
+  const run = { ...RUN, items: [],
+    sourceNames: { eurostat: "Eurostat", opinio: "Europion / Opinio", ksh: "KSH", pew: "Pew" },
+    sourceKinds: { eurostat: "hivatalos", opinio: "intezet", ksh: "hivatalos", pew: "nemzetkozi" },
+    sourceChecks: [
+      { source_id: "eurostat", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "opinio", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "ksh", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "pew", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const full = renderReport(run);
+  const forras = full.slice(full.indexOf("Forrás-ellenőrzés"));
+  const hazaiIdx = forras.indexOf("Hazai");
+  const nemzIdx = forras.indexOf("Nemzetközi");
+  assert.ok(forras.indexOf(">Eurostat<") > nemzIdx, "Eurostat a Nemzetközi altáblában");
+  assert.ok(forras.indexOf(">Europion / Opinio<") > nemzIdx, "Europion/Opinio a Nemzetközi altáblában");
+  assert.ok(forras.indexOf(">KSH<") > hazaiIdx && forras.indexOf(">KSH<") < nemzIdx, "KSH a Hazai-ban marad");
+});
+
+test("Forrás-ellenőrzés: fix oszlop-szélesség (a STÁTUSZ nem tolódik el a táblák közt)", () => {
+  const html = renderReport(RUN);
+  assert.match(html, /table\.checks\{[^}]*table-layout:\s*fixed/i, "fix table-layout a check-táblákon");
+  assert.match(html, /<table class="checks"/, "a check-táblák 'checks' osztályt kapnak");
 });

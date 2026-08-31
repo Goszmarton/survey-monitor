@@ -114,7 +114,7 @@ test("degradált mód: nincs triázs → a 24h tételek relevancia-szűrés nél
 test("renderDigest: beállított pagesUrl → kattintható GYÖKÉR-link, a fallback eltűnik", () => {
   const withUrl = { ...RUN, pagesUrl: PAGES_BASE };
   const html = renderDigest(withUrl);
-  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/">Legfrissebb jelentés →<\/a>/);
+  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/"[^>]*>Legfrissebb jelentés →<\/a>/);
   assert.ok(!html.includes("Teljes jelentés →")); // a régi, túlígérő szöveg NINCS
   assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
 });
@@ -142,7 +142,7 @@ test("renderDigest guard: unset pagesUrl → fallback-szöveg, nem törik (a lev
 
 test("renderKiemelt: beállított pagesUrl → UGYANAZ a kattintható GYÖKÉR-link, a fallback eltűnik", () => {
   const html = renderKiemelt({ ...RUN, pagesUrl: PAGES_BASE });
-  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/">Legfrissebb jelentés →<\/a>/);
+  assert.match(html, /<a href="https:\/\/napihir\.duckdns\.org\/"[^>]*>Legfrissebb jelentés →<\/a>/);
   assert.ok(!html.includes("A teljes jelentés a GitHub Pages-archívumban."));
 });
 
@@ -169,9 +169,9 @@ test("renderCombined: EGY HTML-dokumentum (nem két <!doctype> egymás után)", 
 });
 
 // 2026-08-31 (user): a levél tetejére kerül a NAGYOBB, egyértelmű „teljes jelentés a honlapon"
-// link; a 🔴 KIEMELT tételek szekció a 📊 Kulcsszámok ALÁ kerül. Új sorrend:
-//   felső link → narratíva → Kulcsszámok → KIEMELT → kapuzott.
-test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok → KIEMELT → kapuzott", () => {
+// link; a 🔴 KIEMELT tételek szekció a levél VÉGÉRE, a kapuzott (Sajtószemle) UTÁN kerül
+// (visszatekintés az elmúlt 14 napra). Sorrend: felső link → narratíva → Kulcsszámok → kapuzott → KIEMELT.
+test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok → kapuzott → KIEMELT (a végén)", () => {
   const run = {
     ...RUN,
     pagesUrl: PAGES_BASE,
@@ -185,13 +185,13 @@ test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok 
   const topLinkIdx = html.indexOf("Teljes napi jelentés a honlapon →");
   const narrativaIdx = html.indexOf("📰 Napi narratíva (utolsó 24 óra)");
   const kulcsIdx = html.indexOf("📊 Kulcsszámok ma");
-  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
   const kapuzottIdx = html.indexOf("📊 Adatjelentőség szerint, kapuzott");
+  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
   assert.ok(topLinkIdx > 0, "van felső jelentés-link");
   assert.ok(topLinkIdx < narrativaIdx, "a jelentés-link a narratíva ELŐTT (email tetején)");
   assert.ok(narrativaIdx < kulcsIdx, "narratíva a Kulcsszámok előtt");
-  assert.ok(kulcsIdx > 0 && kulcsIdx < kiemeltSectionIdx, "a 🔴 KIEMELT szekció a 📊 Kulcsszámok ALATT");
-  assert.ok(kiemeltSectionIdx < kapuzottIdx, "a kapuzott a KIEMELT után");
+  assert.ok(kulcsIdx > 0 && kulcsIdx < kapuzottIdx, "a Kulcsszámok a kapuzott előtt");
+  assert.ok(kiemeltSectionIdx > kapuzottIdx, "a 🔴 KIEMELT szekció a kapuzott UTÁN (a levél végén)");
   // a KIEMELT tétel a szekcióban; a nem-KIEMELT (Havi infláció) a digest-listában
   assert.match(html, /nagy fordulat/);
   assert.match(html, /Havi infláció/);
@@ -243,8 +243,8 @@ test("renderCombined: a KIEMELT szekció a 14 napos ablakot mutatja (friss + kor
   const html = renderCombined(run);
   const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
   assert.ok(kiemeltIdx > 0, "van KIEMELT szekció");
-  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 90), /utóbbi 14 nap/, "a 14 napos jelölés a címben");
-  const sec = html.slice(kiemeltIdx, html.indexOf("📊 Adatjelentőség"));
+  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 120), /elmúlt 14 nap/, "a 14 napos visszatekintés-jelölés a címben");
+  const sec = html.slice(kiemeltIdx); // a KIEMELT a levél VÉGÉN van
   assert.match(sec, /Friss kiemelt/, "a friss KIEMELT a szekcióban");
   assert.match(sec, /Régi kiemelt/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
 });

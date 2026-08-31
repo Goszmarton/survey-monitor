@@ -36,7 +36,7 @@ export function storyGroups(run) {
 function pressUrlsHtml(it) {
   const p = it._pressUrls ?? [];
   if (!p.length) return "";
-  const links = p.map((u) => (u.url ? `<a href="${esc(u.url)}">${esc(u.source_id)}</a>` : esc(u.source_id))).join(", ");
+  const links = p.map((u) => (u.url ? `<a href="${esc(u.url)}"${LINK_ATTR}>${esc(u.source_id)}</a>` : esc(u.source_id))).join(", ");
   return ` <span class="empty">+${p.length} forrás: ${links}</span>`;
 }
 
@@ -67,6 +67,11 @@ const SAJTO_LABEL = "📰 Sajtószemle";
 // altáblára bomlik: Hazai (hivatalos + intézet) vs Nemzetközi (kind=nemzetkozi) — user 2026-08-31.
 const HAZAI_LABEL = "📈 Kutatások és hivatalos adatok – Hazai";
 const NEMZ_LABEL = "🌍 Kutatások és hivatalos adatok – Nemzetközi";
+// A Nemzetközi altáblába a `kind==="nemzetkozi"` forrásokon FELÜL explicit ide sorolt források is
+// bekerülnek (user 2026-08-31): az Eurostat (EU-s hivatalos adat, kind=hivatalos) és az
+// Europion/Opinio (európai poll-aggregátor, kind=intezet) — ezek nemzetköziek, csak a kind-jük más.
+const NEMZ_EXTRA_IDS = new Set(["eurostat", "opinio"]);
+const isNemzetkoziSource = (id, sourceKinds) => sourceKinds[id] === "nemzetkozi" || NEMZ_EXTRA_IDS.has(id);
 const isSajtoItem = (it) => it.kind === "sajto";
 
 // „📊 Kulcsszámok ma" — a szám/százalék-tartalmú címeket VERBATIM emeljük ki (garantáltan
@@ -139,7 +144,11 @@ const sortItems = (items) =>
     return (Date.parse(b.published_at) || 0) - (Date.parse(a.published_at) || 0);
   });
 
-const titleLink = (it) => (it.url ? `<a href="${esc(it.url)}">${esc(it.title)}</a>` : esc(it.title));
+// Minden link ÚJ TABBAN nyílik (user-kérés 2026-08-31): target=_blank + rel=noopener (biztonság).
+// EGY helyen a link-attribútum, hogy a helper-alapú linkek (titleLink/pressUrls/pagesLink) mind
+// egységesen új tabosak legyenek — a honlapon és az emailben is (utóbbin ártalmatlan).
+const LINK_ATTR = ' target="_blank" rel="noopener"';
+const titleLink = (it) => (it.url ? `<a href="${esc(it.url)}"${LINK_ATTR}>${esc(it.title)}</a>` : esc(it.title));
 
 // Fejléc-tétel (UTOLSÓ ÚJ KUTATÁS / LEGFRISSEBB HIVATALOS ADAT): kattintható cím + publikálás
 // ideje (user-kérés 2026-08-31). URL híján sima szöveg (titleLink), így sose bukik hiányzó linken.
@@ -248,6 +257,9 @@ const STYLE = `
   caption .count{color:var(--muted);font-weight:400}
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   td.nowrap{white-space:nowrap}
+  table.checks{table-layout:fixed}
+  table.checks th:nth-child(1),table.checks td:nth-child(1){width:26%}
+  table.checks th:nth-child(2),table.checks td:nth-child(2){width:15%}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
   .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
@@ -318,31 +330,29 @@ export function renderReport(run) {
   const statusCell = (c) => `<td class="nowrap">${esc(CHECK[c.status] ?? c.status)}</td>`; // „nincs új" egy sorban
   // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre a nyers detail helyett).
   const checkTableKut = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
-    <table>
+    <table class="checks">
       <tr><th>Forrás</th><th>Státusz</th><th>Új tétel</th></tr>
       ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}<td>${newItemCell(c)}</td></tr>`).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
     </table>`;
   // Sajtószemle altábla: Forrás | Státusz — a RÉSZLET-oszlop TÖRÖLVE (user: „itt a részlet oszlop nem kell").
+  // Ugyanaz a `checks` fix elrendezés (26%/15% az első két oszlopon) → a STÁTUSZ minden altáblában
+  // UGYANOTT kezdődik/végződik, nem tolódik el a tartalom szerint (user 2026-08-31).
   const checkTableSajto = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
-    <table>
+    <table class="checks">
       <tr><th>Forrás</th><th>Státusz</th></tr>
       ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}</tr>`).join("\n") : `<tr><td colspan="2" class="empty">nincs ellenőrzött forrás</td></tr>`}
     </table>`;
   // A Kutatások/hivatalos forrás-ellenőrzés két altáblára: Hazai (hivatalos + intézet) vs
   // Nemzetközi (kind=nemzetkozi); a sajtó külön (detail nélkül). Fallback (nincs sourceKinds):
   // minden nem-sajtó a Hazai-ba esik (a nemzetkozi-szűrő üres). Mindegyik ABC forrásnév szerint.
-  const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && sourceKinds[c.source_id] !== "nemzetkozi").sort(byName);
-  const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] === "nemzetkozi").sort(byName);
+  const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && !isNemzetkoziSource(c.source_id, sourceKinds)).sort(byName);
+  const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && isNemzetkoziSource(c.source_id, sourceKinds)).sort(byName);
   const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
 
   // Honlap 🔴 KIEMELT szekció: a 14 napos ablak KIEMELT sztorijai (NEM csak a mai 24h) — így a
-  // honlap ugyanazt mutatja, mint az email (user 2026-08-31: email↔honlap szinkron), és a friss
-  // hír ritkán kap KIEMELT-et → a napi 24h szinte mindig üres lenne. A címke JELZI a 14 napot.
-  // Üres → a szekció kimarad (nem üres doboz).
-  const kiemeltWindow = visible.filter((i) => i.significance === "KIEMELT");
-  const kiemeltSection = kiemeltWindow.length
-    ? `<section id="kiemelt"><h2>🔴 KIEMELT tételek <span class="count">(utóbbi 14 nap)</span></h2>${digestItemList(kiemeltWindow, sourceNames)}</section>`
-    : "";
+  // honlap ugyanazt mutatja, mint az email (user 2026-08-31: email↔honlap szinkron). A közös
+  // helper VISSZATEKINTÉSKÉNT jelöli; a szekció a kapuzott (Sajtószemle) UTÁN áll (ld. lentebb).
+  const kiemeltSection = kiemeltSectionHtml(visible.filter((i) => i.significance === "KIEMELT"), sourceNames, { id: "kiemelt" });
 
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
@@ -379,13 +389,13 @@ export function renderReport(run) {
 
   ${keyNumbersSection(uj24, sourceNames)}
 
-  ${kiemeltSection}
-
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
     ${table(KUTATAS_LABEL, kutatasFresh, sourceNames)}
     ${table(SAJTO_LABEL, sajtoFresh, sourceNames)}
   </section>
+
+  ${kiemeltSection}
 
   <section id="forrasok">
     <h2>Forrás-ellenőrzés</h2>
@@ -413,6 +423,19 @@ function digestItemList(items, sourceNames) {
   ).join("")}</ul>`;
 }
 
+// 🔴 KIEMELT szekció (honlap + email KÖZÖS helper): a 14 napos ablak KIEMELT sztorijai, EGYÉRTELMŰEN
+// visszatekintésként jelölve (user 2026-08-31: „legyen egyértelműbb, hogy ez az elmúlt 14 napról
+// szól"). A szekció a Sajtószemle UTÁN áll (email: a levél VÉGÉN; honlap: a kapuzott után) — a
+// napi friss tartalom megy elöl, a visszatekintés a végén. Üres → "" (nincs üres doboz). EGY
+// helyen, hogy a két felület ne csússzon szét (CLAUDE.md 2).
+function kiemeltSectionHtml(kiemeltItems, sourceNames, opts = {}) {
+  if (!kiemeltItems.length) return "";
+  const id = opts.id ? ` id="${opts.id}"` : "";
+  return `<section${id}><h2>🔴 KIEMELT tételek <span class="count">— visszatekintés az elmúlt 14 napra</span></h2>
+    <p class="empty">A legfontosabb sztorik az elmúlt két hétből — nem csak a mai napról.</p>
+    ${digestItemList(kiemeltItems, sourceNames)}</section>`;
+}
+
 // A kapuzott szekció KÖZÖS tartalma az emailben: két al-csoport (Kutatások és hivatalos adatok /
 // Sajtószemle), a honlappal AZONOS bontásban — a hivatalos/kutatás/nemzetközi tétel a Kutatások,
 // a sajtó a Sajtószemle listába. Mindkettő jelentőség szerint rendezve (digestItemList → sortItems).
@@ -437,7 +460,7 @@ const freshRepresentatives = (run) =>
 // duplikált fallback-literál volt a bug forrása: az 5b772a5 csak a digestet javította, a
 // KIEMELT-levél iker-literálja link nélkül maradt — egy jövőbeli link-változás se maradjon le.
 const pagesLink = (run) => run.pagesUrl
-  ? `<p><a href="${esc(run.pagesUrl)}">Legfrissebb jelentés →</a></p>`
+  ? `<p><a href="${esc(run.pagesUrl)}"${LINK_ATTR}>Legfrissebb jelentés →</a></p>`
   : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
 
 // A napi levél TETEJÉN álló, kiemelt (nagyobb betűs) jelentés-link — user-kérés 2026-08-31.
@@ -445,7 +468,7 @@ const pagesLink = (run) => run.pagesUrl
 // kivonat) — „jelentés" + „honlap" a szövegben. UGYANARRA a gyökér-URL-re mutat, mint a
 // pagesLink (run.pagesUrl = PAGES_BASE) → a href-forrás közös, nem csúszhat szét (CLAUDE.md 2).
 const pagesLinkTop = (run) => run.pagesUrl
-  ? `<p class="toplink"><a href="${esc(run.pagesUrl)}">📄 Teljes napi jelentés a honlapon →</a></p>`
+  ? `<p class="toplink"><a href="${esc(run.pagesUrl)}"${LINK_ATTR}>📄 Teljes napi jelentés a honlapon →</a></p>`
   : `<p class="empty">A teljes jelentés a honlap-archívumban.</p>`;
 
 export function digestSubject(run) {
@@ -502,12 +525,10 @@ export function renderCombined(run) {
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
-  const kiemeltSection = kiemelt.length
-    ? `<section><h2>🔴 KIEMELT tételek <span class="count">(utóbbi 14 nap)</span></h2>${digestItemList(kiemelt, sourceNames)}</section>`
-    : "";
+  const kiemeltSection = kiemeltSectionHtml(kiemelt, sourceNames);
   // Szekció-sorrend (user-kérés 2026-08-31): FELÜL a kiemelt „teljes jelentés a honlapon" link
-  // (nagyobb betű), majd narratíva → 📊 Kulcsszámok → 🔴 KIEMELT (a Kulcsszámok ALÁ került) →
-  // kapuzott. Az alsó pagesLink kikerült (a link felülre költözött). Záró endash → nincs em-dash.
+  // (nagyobb betű), majd narratíva → 📊 Kulcsszámok → kapuzott → 🔴 KIEMELT (a levél VÉGÉN, a
+  // Sajtószemle UTÁN — visszatekintés az elmúlt 14 napra). Záró endash → nincs em-dash.
   return endash(`<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(combinedSubject(run))}</title><style>${STYLE}</style></head>
@@ -517,8 +538,8 @@ export function renderCombined(run) {
   ${pagesLinkTop(run)}
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
   ${keyNumbersSection(fresh, sourceNames)}
-  ${kiemeltSection}
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
+  ${kiemeltSection}
 </main></body></html>
 `);
 }
