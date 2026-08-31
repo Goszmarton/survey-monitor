@@ -18,9 +18,10 @@ const RUN = {
   ],
 };
 
-test("digestSubject: 24 órás kép a tárgyban", () => {
-  // UJ_24H + releváns tételek: median:1, ksh:1 → 2 új; ebből 1 KIEMELT
-  assert.equal(digestSubject(RUN), "Survey Monitor — 2 új (24h), ebből 1 kiemelt");
+test("digestSubject: 24 órás kép a tárgyban (rövid gondolatjellel)", () => {
+  // UJ_24H + releváns tételek: median:1, ksh:1 → 2 új; ebből 1 KIEMELT.
+  // Rövid gondolatjel (–, U+2013), NEM hosszú (—): magyar tipográfia + user-kérés 2026-08-31.
+  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h), ebből 1 kiemelt");
 });
 
 test("renderDigest: szintézis felül, majd UJ_24H tételek jelentőség szerint", () => {
@@ -152,21 +153,50 @@ test("renderKiemelt guard: unset pagesUrl → fallback-szöveg, nem törik (a le
 test("renderCombined: EGY HTML-dokumentum (nem két <!doctype> egymás után)", () => {
   const html = renderCombined({ ...RUN, pagesUrl: PAGES_BASE });
   assert.equal((html.match(/<!doctype html>/gi) || []).length, 1, "pontosan egy doctype");
-  // a Pages-link (helper) is egyszer szerepel — nem duplikálva a két ágból
-  assert.equal((html.match(/Legfrissebb jelentés →/g) || []).length, 1, "egy jelentés-link");
+  // a felső jelentés-link (helper) egyszer szerepel — nem duplikálva
+  assert.equal((html.match(/Teljes napi jelentés a honlapon →/g) || []).length, 1, "egy jelentés-link, felül");
+  // a régi, alsó „Legfrissebb jelentés →" link már NINCS a combined levélben (felülre került)
+  assert.ok(!html.includes("Legfrissebb jelentés →"), "a régi alsó link kikerült");
 });
 
-test("renderCombined: KIEMELT szekció FELÜL, alatta a teljes digest (narratíva + kapuzott)", () => {
-  const html = renderCombined(RUN);
-  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
+// 2026-08-31 (user): a levél tetejére kerül a NAGYOBB, egyértelmű „teljes jelentés a honlapon"
+// link; a 🔴 KIEMELT tételek szekció a 📊 Kulcsszámok ALÁ kerül. Új sorrend:
+//   felső link → narratíva → Kulcsszámok → KIEMELT → kapuzott.
+test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok → KIEMELT → kapuzott", () => {
+  const run = {
+    ...RUN,
+    pagesUrl: PAGES_BASE,
+    sourceNames: { ...RUN.sourceNames, hvg: "HVG" },
+    items: [
+      ...RUN.items,
+      { canonical_key: "hvg:n", source_id: "hvg", kind: "sajto", title: "97 000 forintos támogatás jön", url: "https://hvg.hu/n", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
+    ],
+  };
+  const html = renderCombined(run);
+  const topLinkIdx = html.indexOf("Teljes napi jelentés a honlapon →");
   const narrativaIdx = html.indexOf("📰 Napi narratíva (utolsó 24 óra)");
+  const kulcsIdx = html.indexOf("📊 Kulcsszámok ma");
+  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
   const kapuzottIdx = html.indexOf("📊 Adatjelentőség szerint, kapuzott");
-  assert.ok(kiemeltSectionIdx > 0, "van KIEMELT szekció");
-  assert.ok(kiemeltSectionIdx < narrativaIdx, "a KIEMELT szekció a narratíva ELŐTT (felül)");
-  assert.ok(narrativaIdx < kapuzottIdx, "a digest szekciók a megszokott sorrendben");
-  // a KIEMELT tétel a szekcióban; a nem-KIEMELT (Havi infláció) csak a digest-listában
+  assert.ok(topLinkIdx > 0, "van felső jelentés-link");
+  assert.ok(topLinkIdx < narrativaIdx, "a jelentés-link a narratíva ELŐTT (email tetején)");
+  assert.ok(narrativaIdx < kulcsIdx, "narratíva a Kulcsszámok előtt");
+  assert.ok(kulcsIdx > 0 && kulcsIdx < kiemeltSectionIdx, "a 🔴 KIEMELT szekció a 📊 Kulcsszámok ALATT");
+  assert.ok(kiemeltSectionIdx < kapuzottIdx, "a kapuzott a KIEMELT után");
+  // a KIEMELT tétel a szekcióban; a nem-KIEMELT (Havi infláció) a digest-listában
   assert.match(html, /nagy fordulat/);
   assert.match(html, /Havi infláció/);
+});
+
+// Rövid gondolatjel (–, U+2013) mindenhol; hosszú (—, U+2014) SEHOL — sem a törzsben, sem a
+// tárgyban, sem az LLM-narratívában (a záró normalizálás a sablonokat és a szintézist is fedi).
+test("renderCombined: nincs hosszú gondolatjel (—) a levélben és a tárgyban, csak rövid (–)", () => {
+  const run = { ...RUN, pagesUrl: PAGES_BASE, synthesisText: "Új adat jelent meg — fontos részlettel." };
+  const html = renderCombined(run);
+  assert.ok(!html.includes("—"), "nincs em-dash a levél HTML-jében (a narratívában sem)");
+  assert.ok(!combinedSubject(RUN).includes("—"), "nincs em-dash a tárgyban");
+  assert.ok(!digestSubject(RUN).includes("—"), "nincs em-dash a digest-tárgyban");
+  assert.ok(digestSubject(RUN).includes("–"), "a rövid gondolatjel (–) a tárgyban megmarad");
 });
 
 test("renderCombined: nincs kiemelt → NINCS KIEMELT szekció, de a digest megvan", () => {
@@ -183,10 +213,10 @@ test("renderCombined: nincs kiemelt → NINCS KIEMELT szekció, de a digest megv
 });
 
 test("combinedSubject: 🔴 előtag CSAK ha van KIEMELT szekció", () => {
-  assert.match(combinedSubject(RUN), /^🔴 Survey Monitor — /); // RUN-ban van KIEMELT
+  assert.match(combinedSubject(RUN), /^🔴 Survey Monitor – /); // RUN-ban van KIEMELT (rövid gondolatjel)
   const noKiemelt = { ...RUN, items: [{ canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" }] };
   assert.ok(!combinedSubject(noKiemelt).startsWith("🔴"), "kiemelt nélkül nincs előtag");
-  assert.match(combinedSubject(noKiemelt), /^Survey Monitor — /);
+  assert.match(combinedSubject(noKiemelt), /^Survey Monitor – /);
 });
 
 test("renderCombined: a Pages-link a helperből jön (gyökér, nem napi archív)", () => {

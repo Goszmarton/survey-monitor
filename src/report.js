@@ -9,6 +9,14 @@ import { groupStories } from "./lib/storygroup.js";
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// Magyar tipográfia (user-kérés 2026-08-31): gondolatjel = RÖVID (–, U+2013), NEM a hosszú
+// em-dash (—, U+2014). A kimenet (HTML-törzs + email-tárgy) ZÁRÓ normalizálása garantálja, hogy
+// sem a sablonok, sem az LLM-narratíva ne vigyen be hosszú gondolatjelet — most és a jövőben sem
+// (CLAUDE.md 2: a szándék — „ne legyen benne —" — egy helyen, kikerülhetetlenül érvényesül, nem
+// szanaszét a sablonokban, ahonnan a következő szerkesztés kifelejthetné). URL-t nem érint (abban
+// nincs U+2014). A render-függvények és a *Subject-helperek ezen keresztül adnak vissza.
+const endash = (s) => String(s ?? "").replace(/—/g, "–");
+
 // Cross-source story-dedup (spec 13.): a látható tételeket EGYSZER csoportosítjuk
 // run-szinten, és a run objektumon memoizáljuk — így a report + digest + KIEMELT
 // render mind UGYANAZT az egy csoportosítást használja (nem fut szekciónként/
@@ -227,6 +235,8 @@ const STYLE = `
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
+  .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
+  .toplink a{display:inline-block;padding:11px 20px;border:2px solid #0b5aa2;border-radius:6px;text-decoration:none;color:#0b5aa2}
   ul{margin:8px 0;padding-left:22px}
   li{margin:3px 0}
   footer{margin-top:48px;padding-top:12px;border-top:1px solid var(--line);font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--muted)}
@@ -291,7 +301,7 @@ export function renderReport(run) {
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : `<p>${uj24.length} tétel az elmúlt 24 órában.${run.triageDegraded ? "" : ' <span class="empty">Szintézis nem készült.</span>'}</p>`;
 
-  return `<!doctype html>
+  return endash(`<!doctype html>
 <html lang="hu">
 <head>
 <meta charset="utf-8">
@@ -339,7 +349,7 @@ export function renderReport(run) {
 </main>
 </body>
 </html>
-`;
+`);
 }
 
 // ---- Digest e-mail: az elmúlt 24 órára fókuszál ----
@@ -378,12 +388,20 @@ const pagesLink = (run) => run.pagesUrl
   ? `<p><a href="${esc(run.pagesUrl)}">Legfrissebb jelentés →</a></p>`
   : `<p class="empty">A teljes jelentés a GitHub Pages-archívumban.</p>`;
 
+// A napi levél TETEJÉN álló, kiemelt (nagyobb betűs) jelentés-link — user-kérés 2026-08-31.
+// A szöveg egyértelműsíti, hogy ez a TELJES napi jelentés a HONLAPON (a levél csak a 24 órás
+// kivonat) — „jelentés" + „honlap" a szövegben. UGYANARRA a gyökér-URL-re mutat, mint a
+// pagesLink (run.pagesUrl = PAGES_BASE) → a href-forrás közös, nem csúszhat szét (CLAUDE.md 2).
+const pagesLinkTop = (run) => run.pagesUrl
+  ? `<p class="toplink"><a href="${esc(run.pagesUrl)}">📄 Teljes napi jelentés a honlapon →</a></p>`
+  : `<p class="empty">A teljes jelentés a honlap-archívumban.</p>`;
+
 export function digestSubject(run) {
   // Mindkét szám a story-dedup UTÁNi halmazból — konzisztens a levél törzsével
   // (a nyers kiemeltCount-ot NEM keverjük ide, az a küldés-döntéshez van).
   const fresh = freshRepresentatives(run);
   const kiemelt = fresh.filter((i) => i.significance === "KIEMELT").length;
-  return `Survey Monitor — ${fresh.length} új (24h), ebből ${kiemelt} kiemelt`;
+  return endash(`Survey Monitor — ${fresh.length} új (24h), ebből ${kiemelt} kiemelt`);
 }
 
 export function renderDigest(run) {
@@ -392,7 +410,7 @@ export function renderDigest(run) {
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
-  return `<!doctype html>
+  return endash(`<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(digestSubject(run))}</title><style>${STYLE}</style></head>
 <body><main>
@@ -403,7 +421,7 @@ export function renderDigest(run) {
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
-`;
+`);
 }
 
 // ---- EGY összevont levél (2026-08-26): 🔴 KIEMELT szekció FELÜL (ha van) + teljes digest ----
@@ -428,19 +446,22 @@ export function renderCombined(run) {
   const kiemeltSection = kiemelt.length
     ? `<section><h2>🔴 KIEMELT tételek</h2>${digestItemList(kiemelt, sourceNames)}</section>`
     : "";
-  return `<!doctype html>
+  // Szekció-sorrend (user-kérés 2026-08-31): FELÜL a kiemelt „teljes jelentés a honlapon" link
+  // (nagyobb betű), majd narratíva → 📊 Kulcsszámok → 🔴 KIEMELT (a Kulcsszámok ALÁ került) →
+  // kapuzott. Az alsó pagesLink kikerült (a link felülre költözött). Záró endash → nincs em-dash.
+  return endash(`<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(combinedSubject(run))}</title><style>${STYLE}</style></head>
 <body><main>
   <header><h1>📊 Napi monitor — elmúlt 24 óra</h1>
     <div class="meta">${esc(run.generatedAt)} (Budapest) · ${fresh.length} új tétel</div></header>
-  ${kiemeltSection}
+  ${pagesLinkTop(run)}
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
   ${keyNumbersSection(fresh, sourceNames)}
+  ${kiemeltSection}
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
-  ${pagesLink(run)}
 </main></body></html>
-`;
+`);
 }
 
 // ---- 🔴 KIEMELT e-mail: csak a kiemelt tételek (csak ha van ilyen) ----
@@ -449,7 +470,7 @@ export function renderKiemelt(run) {
   // Story-dedup UTÁN (memoizált): egy sztori egyszer szerepel (a groupSig a legerősebb
   // tagé → egy KIEMELT framing felhozza a sztorit); a többi forrás a reprezentáns +N / press_urls.
   const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
-  return `<!doctype html>
+  return endash(`<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🔴 KIEMELT — ${esc(run.runId)}</title><style>${STYLE}</style></head>
 <body><main>
@@ -457,5 +478,5 @@ export function renderKiemelt(run) {
   <section>${digestItemList(kiemelt, sourceNames)}</section>
   ${pagesLink(run)}
 </main></body></html>
-`;
+`);
 }
