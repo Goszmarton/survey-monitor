@@ -569,18 +569,6 @@ export function renderInfoPage() {
   </section>
 
   <section class="info">
-    <h2>Elveink</h2>
-    <ul>
-      <li><b>Becsületes részlegesség.</b> Sosem állítjuk, hogy ellenőriztünk egy forrást, ha nem
-      tettük — a napló a tényadatokból áll össze, és a hiányt is kimondja.</li>
-      <li><b>A jelentés sosem marad el.</b> Ha egy forrás elérhetetlen vagy egy szolgáltató kiesik,
-      a jelentés degradáltan, de elkészül — soha nem csendes hibával.</li>
-      <li><b>Frissesség pontosan.</b> „Új (24h)" = a tétel az elmúlt 24 órában jelent meg; a
-      visszatekintés a legutóbbi ~két hét ablakára támaszkodik.</li>
-    </ul>
-  </section>
-
-  <section class="info">
     <h2>Ütemezés</h2>
     <p>A rendszer <b>naponta egyszer</b>, jellemzően <b>16:30 (Budapest)</b> körül fut le, és az
     előző futás óta megjelent termést fedi le — így nem marad ki és nem duplikálódik tartalom.</p>
