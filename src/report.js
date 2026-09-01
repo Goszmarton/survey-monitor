@@ -269,6 +269,12 @@ const STYLE = `
   dl.legend dt{font-weight:600;color:inherit;text-transform:uppercase;letter-spacing:.05em;font-size:12px;margin-bottom:6px}
   dl.legend dd{margin:0 0 5px;line-height:1.5}
   dl.legend dd b{color:var(--fg,inherit);font-weight:600}
+  nav.topnav{margin:8px 0 2px}
+  nav.topnav a{font-size:14px;font-weight:600}
+  section.info h2{font-size:1.1rem;margin:22px 0 8px}
+  section.info p,section.info li{line-height:1.65;max-width:70ch}
+  section.info ul,section.info ol{padding-left:22px}
+  section.info li{margin-bottom:6px}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
   .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
@@ -416,6 +422,7 @@ export function renderReport(run) {
   <header>
     <h1>📊 Magyar közéleti kutatás- és adatmonitor</h1>
     <div class="meta">futás: ${esc(run.runId)} · generálva: ${esc(run.generatedAt)} (Budapest)</div>
+    <nav class="topnav"><a href="info.html"${LINK_ATTR}>ℹ️ Az oldalról – hogyan gyűjtünk és mit látunk →</a></nav>
   </header>
 
   <section id="fejlec">
@@ -450,6 +457,136 @@ export function renderReport(run) {
     ${visible.length} tétel · ${checks.length} forrás · futási idő: ${run.durationMs} ms
     · LLM: ${esc(summarizeProviders(run.providersUsed))} · survey-monitor v0.1 (F2)
   </footer>
+</main>
+</body>
+</html>
+`);
+}
+
+// ---- Információs oldal (statikus „fül") — mi ez, hogyan gyűjtünk, hogyan vonjuk össze a
+// cikkeket, mit látunk a honlapon. NINCS futás-adat → tiszta függvény; a buildDist minden
+// futáskor (a no-op-nál is) újraírja info.html-ként → mindig a friss kóddal, mindkét felületre
+// (Pages + tükör). A leírás a VALÓS folyamatot tükrözi (ARCHITEKTURA.md + a tényleges render).
+export function renderInfoPage() {
+  return endash(`<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Az oldalról — Magyar közéleti kutatás- és adatmonitor</title>
+<style>${STYLE}</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ℹ️ Az oldalról</h1>
+    <div class="meta">Hogyan gyűjtjük az adatokat, hogyan vonjuk össze a cikkeket, és mit látunk a honlapon.</div>
+    <nav class="topnav"><a href="index.html"${LINK_ATTR}>← Vissza a napi jelentéshez</a></nav>
+  </header>
+
+  <section class="info">
+    <h2>Mi ez a felület?</h2>
+    <p>Ez egy automatizált <b>magyar közéleti kutatás- és adatmonitor</b>. Minden nap egyetlen
+    jelentést állít össze az <b>előző futás óta megjelent</b> magyar és nemzetközi
+    közvélemény-kutatásokról, intézeti felmérésekről, hivatalos statisztikai adatközlésekről és a
+    hozzájuk kapcsolódó sajtóról. A cél, hogy egy helyen, tömören, ellenőrizhető módon lásd, mi új
+    a közvélemény- és adatvilágban — a napi zaj kiszűrésével.</p>
+  </section>
+
+  <section class="info">
+    <h2>Honnan gyűjtünk?</h2>
+    <p>Több tucat forrást figyelünk automatikusan, több csoportban:</p>
+    <ul>
+      <li><b>Hazai kutatóintézetek és közvélemény-kutatók</b> (pl. Medián, Publicus, Nézőpont,
+      Iránytű, Republikon, Tárki, TK ELTE és társaik).</li>
+      <li><b>Hivatalos statisztikai szervek</b> (KSH, Eurostat, MNB) és nemzetközi szervezetek
+      (OECD, Pew, Ipsos, WHO, ECFR és mások).</li>
+      <li><b>Sajtó</b> — a közélet-releváns híreket adó lapok (Telex, 444, HVG, 24.hu, Portfolio,
+      Népszava és társaik).</li>
+    </ul>
+    <p>A források többségét szabványos <b>hír-csatornán (RSS/Atom feed)</b> keresztül olvassuk;
+    ahol nincs ilyen, ott az adott oldal listáját dolgozzuk fel saját beolvasóval. Néhány forrásnak
+    <b>több figyelt címe</b> is van (pl. a KSH-nak a gyorstájékoztatók ÉS a hírek külön csatornája) —
+    ezek a jelentés „Forrás-ellenőrzés" tábláiban a „Gyűjtött link" oszlopban láthatók (Forrás 1,
+    Forrás 2 …). A lekérés <b>naponta egyszer</b> fut.</p>
+  </section>
+
+  <section class="info">
+    <h2>Hogyan dolgozzuk fel? — a folyamat</h2>
+    <p>A rendszer vezérelve: <b>ami determinisztikus lehet, az kódban él</b> (dátumok, összevonás,
+    frissesség, ellenőrzési napló); a mesterséges intelligencia csak ott dönt, ahol valódi ítélet
+    kell (relevancia, jelentőség, összefoglaló). A lépések:</p>
+    <ol>
+      <li><b>Gyűjtés.</b> Végigolvassuk a forrásokat, és kigyűjtjük az új tételeket (cím, link, dátum).</li>
+      <li><b>Egységesítés.</b> Minden tétel közös formátumra kerül, függetlenül attól, honnan jött.</li>
+      <li><b>Összevonás és emlékezet.</b> Egy adatbázis nyilvántartja, mit láttunk már; a
+      duplikátumokat kiszűrjük, és a legutóbbi ~két hét számít a kontextushoz (lásd lentebb).</li>
+      <li><b>Triázs (relevancia + jelentőség).</b> Egy költséghatékony nyelvi modell minden tételről
+      eldönti, hogy <b>közéleti szempontból releváns-e</b>, és ha igen, milyen a jelentősége:
+      <b>🔴 KIEMELT</b>, <b>🟠 FONTOS</b> vagy <b>🟡 FIGYELENDŐ</b>.</li>
+      <li><b>Adat-kapuzás.</b> Ha egy tétel fontosnak <em>tűnik</em>, de nincs mögötte tényleges
+      adat/mérés, a rendszer óvatosan visszább sorolja — a szám nélküli állítás nem kap kiemelt helyet.</li>
+      <li><b>Összefoglaló.</b> A releváns, friss tételekből egy nyelvi modell rövid napi narratívát
+      ír, és a rendszer kigyűjti a címekben szereplő <b>konkrét számokat</b> (ezek szó szerintiek,
+      hogy ne legyen félreértés).</li>
+    </ol>
+  </section>
+
+  <section class="info">
+    <h2>Hogyan vonjuk össze a cikkeket? (a „+N" jelölés)</h2>
+    <p>Ugyanazt a hírt vagy kutatást gyakran <b>több forrás is lehozza</b>. Ilyenkor nem külön
+    sorokban, egymást ismételve jelenítjük meg, hanem <b>egyetlen tételbe vonjuk össze</b> (ez a
+    „story-összevonás"). A megjelenített változat a <b>reprezentáns</b>: a legjelentősebb / legtöbbet
+    mondó, illetve legkorábban észlelt verzió.</p>
+    <p>A forrás neve mellett a <b>„+N"</b> azt jelenti, hogy <b>további N forrás</b> is beszámolt
+    <b>ugyanarról a sztoriról</b>. Például a <b>„444 +2"</b> azt jelenti: a megjelenített forrás a
+    <b>444</b>, és rajta kívül <b>még 2 további forrás</b> is lehozta ugyanazt — összesen tehát három
+    helyen jelent meg.</p>
+    <p>Miért így? Egyrészt így <b>nincs duplikátum-zaj</b> (egy sztori egyszer szerepel), másrészt a
+    „+N" a <b>megerősítést</b> mutatja: minél több forrás hozza, annál szélesebb körben visszhangzik.
+    Az összevonás <b>determinisztikus</b> (kódban dől el, nem a modell tippjén múlik) és
+    <b>forrásokon átível</b>. Szándékosan óvatos: a valóban <b>különböző</b> témákat nem olvasztjuk
+    egybe — mert egy fontos, önálló tétel elrejtése súlyosabb hiba, mint egy megmaradt duplikátum.</p>
+    <p>Az így összevont, megerősített tételek adják az alapját a napi <b>összefoglalónak</b> és a
+    <b>Kulcsszámoknak</b> is.</p>
+  </section>
+
+  <section class="info">
+    <h2>Mit látunk a honlapon?</h2>
+    <ul>
+      <li><b>Fejléc</b> — az utolsó új kutatás és a legfrissebb hivatalos adat, kattintható linkkel.</li>
+      <li><b>📰 Napi narratíva</b> — rövid, gépi összefoglaló az elmúlt 24 óráról.</li>
+      <li><b>📊 Kulcsszámok ma</b> — a friss címekből szó szerint kiemelt, konkrét számok (garantáltan
+      valós, a címekből származó adatok).</li>
+      <li><b>📊 Adatjelentőség szerint, kapuzott</b> — a friss (24 órás) tételek jelentőség szerint
+      (🔴 KIEMELT → 🟠 FONTOS → 🟡 FIGYELENDŐ), Kutatások és Sajtószemle bontásban.</li>
+      <li><b>Forrás-ellenőrzés</b> — forrásonként, hogy elérhető volt-e és volt-e új tétel; a
+      „Gyűjtött link" oszlopban a figyelt cím(ek), a nem elérhető források a lista végén. Alatta
+      <b>jelmagyarázat</b> minden jelzéshez.</li>
+    </ul>
+    <p>A jelentés ugyanez az e-mailben is megérkezik (rövidebb, 24 órás kivonatként), a teljes verzió
+    pedig itt, a honlapon olvasható.</p>
+  </section>
+
+  <section class="info">
+    <h2>Elveink</h2>
+    <ul>
+      <li><b>Becsületes részlegesség.</b> Sosem állítjuk, hogy ellenőriztünk egy forrást, ha nem
+      tettük — a napló a tényadatokból áll össze, és a hiányt is kimondja.</li>
+      <li><b>A jelentés sosem marad el.</b> Ha egy forrás elérhetetlen vagy egy szolgáltató kiesik,
+      a jelentés degradáltan, de elkészül — soha nem csendes hibával.</li>
+      <li><b>Frissesség pontosan.</b> „Új (24h)" = a tétel az elmúlt 24 órában jelent meg; a
+      visszatekintés a legutóbbi ~két hét ablakára támaszkodik.</li>
+    </ul>
+  </section>
+
+  <section class="info">
+    <h2>Ütemezés</h2>
+    <p>A rendszer <b>naponta egyszer</b>, jellemzően <b>16:30 (Budapest)</b> körül fut le, és az
+    előző futás óta megjelent termést fedi le — így nem marad ki és nem duplikálódik tartalom.</p>
+  </section>
+
+  <nav class="topnav"><a href="index.html"${LINK_ATTR}>← Vissza a napi jelentéshez</a></nav>
 </main>
 </body>
 </html>

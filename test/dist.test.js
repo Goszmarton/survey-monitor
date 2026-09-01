@@ -32,6 +32,27 @@ test("buildDist: minden dátumozott archívot bemásol, a legújabb lesz az inde
   }
 });
 
+// 2026-09-01 (user): statikus „Az oldalról" info-fül. A buildDist minden futáskor újraírja
+// info.html-ként a gyökérbe ÉS minden aloldal-könyvtárba (hogy a relatív `info.html` link a
+// dátumozott archív oldalakról is működjön). Kódból generált, mindkét felületre (Pages + tükör).
+test("buildDist: info.html-t ír a gyökérbe ÉS az archív aloldalak könyvtárába", async () => {
+  const { archiveDir, distDir, base } = await tmp();
+  try {
+    await mkdir(join(archiveDir, "2026", "08"), { recursive: true });
+    await writeFile(join(archiveDir, "2026", "08", "15.html"), "<h1>15-i jelentés</h1>");
+
+    await buildDist({ archiveDir, distDir });
+
+    const rootInfo = await readFile(join(distDir, "info.html"), "utf8");
+    assert.match(rootInfo, /Az oldalról/, "a gyökér info.html a renderInfoPage kimenete");
+    // az aloldal (2026/08/15.html) mellett is ott az info.html → a relatív link nem 404-el
+    const subInfo = await readFile(join(distDir, "2026", "08", "info.html"), "utf8");
+    assert.match(subInfo, /Az oldalról/, "az archív alkönyvtárban is van info.html");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
 test("buildDist: a KORÁBBI nap archívja nem vész el (F4-B lényege — nem-additív Pages)", async () => {
   const { archiveDir, distDir, base } = await tmp();
   try {

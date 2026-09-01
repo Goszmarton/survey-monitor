@@ -8,8 +8,9 @@
 // (a dist/ gitignore-olt build-kimenet marad). buildDist a Pages-feltöltés ELŐTT a
 // TELJES archívot bemásolja a dist/-be, és a legújabb napot teszi index.html-nek.
 
-import { mkdir, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readdir, copyFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { renderInfoPage } from "./report.js";
 
 /** archiveDir alatti összes .html relatív útja (rekurzív), pl. "2026/08/15.html". */
 async function listHtml(archiveDir) {
@@ -44,5 +45,20 @@ export async function buildDist({ archiveDir, distDir }) {
     await mkdir(distDir, { recursive: true });
     await copyFile(join(archiveDir, latest), join(distDir, "index.html"));
   }
+
+  // Statikus „Az oldalról" info-fül (info.html). MINDEN futáskor (a no-op-nál is) újragenerálódik
+  // a KÓDBÓL (renderInfoPage) → mindig a friss leírás, mindkét felületre (Pages + tükör), egyetlen
+  // igazságforrásból. A jelentés fejlécéből relatív `info.html` link mutat rá; hogy a link a
+  // dátumozott archív aloldalakról (ÉÉÉÉ/HH/NN.html) is működjön, az info.html-t a gyökérbe ÉS
+  // minden olyan könyvtárba kiírjuk, ahol jelentés-oldal van.
+  const infoHtml = renderInfoPage();
+  const infoDirs = new Set(["."]);
+  for (const rel of files) infoDirs.add(dirname(rel));
+  for (const dir of infoDirs) {
+    const destDir = join(distDir, dir);
+    await mkdir(destDir, { recursive: true });
+    await writeFile(join(destDir, "info.html"), infoHtml);
+  }
+
   return { files, latest };
 }

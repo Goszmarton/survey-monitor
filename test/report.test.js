@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderReport } from "../src/report.js";
+import { renderReport, renderInfoPage } from "../src/report.js";
 
 const RUN = {
   runId: "2026-07-22",
@@ -304,6 +304,40 @@ test("Forrás-ellenőrzés: Gyűjtött link oszlop a gyűjtő-URL(ek)re; több f
   assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/hirek"[^>]*>Forrás 2<\/a>/);
   assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>Forrás<\/a>/, "egyetlen feed → sima Forrás cimke");
   assert.ok(!html.includes(">https://www.ksh.hu/rss/gyorstajekoztatok<"), "a teljes URL NEM link-szövegként (helytakarékos)");
+});
+
+// 2026-09-01 (user): külön „Az oldalról" info-fül — mi ez, hogyan gyűjtünk, hogyan vonjuk össze a
+// cikkeket (a „+N" jelölés), és mit látunk a honlapon. A jelentés fejlécéből link mutat rá.
+test("renderReport: a fejlécben van link az info-oldalra (info.html)", () => {
+  const html = renderReport(RUN);
+  assert.match(html, /<a href="info\.html"[^>]*>[^<]*Az oldalról[^<]*<\/a>/, "info-fül link a fejlécben");
+});
+
+test("renderInfoPage: valid HTML, visszalink a jelentéshez, és lefedi a fő témákat", () => {
+  const html = renderInfoPage();
+  assert.match(html, /^<!doctype html>/i);
+  assert.match(html, /<a href="index\.html"[^>]*>[^<]*jelentés[^<]*<\/a>/i, "vissza-link a jelentéshez");
+  // fő szekciók
+  assert.match(html, /Mi ez a felület/);
+  assert.match(html, /Honnan gyűjtünk/);
+  assert.match(html, /a folyamat|Hogyan dolgozzuk fel/);
+  assert.match(html, /Mit látunk a honlapon/);
+});
+
+test("renderInfoPage: elmagyarázza a cikk-összevonást és a +N jelölést (user kérése)", () => {
+  const html = renderInfoPage();
+  assert.match(html, /össze/, "összevonás fogalma");
+  assert.match(html, /\+N|„\+N"|\+2/, "a +N jelölés megnevezve");
+  assert.match(html, /444 \+2/, "konkrét példa a +N-re (444 +2)");
+  assert.match(html, /reprezentáns/, "a megjelenített változat = reprezentáns");
+  assert.match(html, /ugyanarról|ugyanazt/, "több forrás ugyanarról a sztoriról");
+});
+
+test("renderInfoPage: kifejti az adatgyűjtést az összefoglalóig (folyamat-lépések)", () => {
+  const html = renderInfoPage();
+  for (const t of ["Triázs", "KIEMELT", "FONTOS", "FIGYELENDŐ", "Kulcsszámok", "Összefoglaló", "RSS"]) {
+    assert.ok(html.includes(t), `az info-oldal említi: ${t}`);
+  }
 });
 
 // 2026-09-01 (user): a Forrás-ellenőrzés alatt legyen JELMAGYARÁZAT — mindenki értse a jelzéseket.
