@@ -18,19 +18,23 @@ const RUN = {
   ],
 };
 
-test("digestSubject: 24 órás kép a tárgyban (rövid gondolatjel + 14 napos KIEMELT-szám)", () => {
-  // UJ_24H + releváns: median:1, ksh:1 → 2 új (24h); a KIEMELT-szám a 14 napos ablaké (median:1).
+test("digestSubject: CSAK a 24 órás kép a tárgyban (nincs 14 napos KIEMELT-infó)", () => {
+  // UJ_24H + releváns: median:1, ksh:1 → 2 új (24h). A 14 napos „N kiemelt" rész KIKERÜLT
+  // (user 2026-09-01: napi jelentés, ne legyen benne az elmúlt 14 napról infó).
   // Rövid gondolatjel (–, U+2013), NEM hosszú (—): magyar tipográfia + user-kérés 2026-08-31.
-  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h) · 1 kiemelt (14 nap)");
+  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h)");
 });
 
-test("digestSubject: 14 napos KIEMELT is beleszámít, nem csak a friss (0 friss KIEMELT esetén is)", () => {
+test("digestSubject: a 14 napos (KORABBI) KIEMELT SEM jelenik meg a tárgyban", () => {
+  // user 2026-09-01: a napi levél tárgya csak a friss (24h) képet mutatja; a 14 napos ablak
+  // KIEMELT-je (KORABBI) sem számít bele — se szám, se „kiemelt (14 nap)" szöveg.
   const run = { ...RUN, items: [
     { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "Friss adat", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
     { canonical_key: "telex:k", source_id: "telex", kind: "sajto", title: "Régi kiemelt sztori", url: "https://telex.hu/k", freshness: "KORABBI", relevant: 1, significance: "KIEMELT" },
   ] };
-  // 1 friss (24h), 0 friss KIEMELT, de 1 KIEMELT a 14 napos ablakban → a tárgy jelzi
-  assert.equal(digestSubject(run), "Survey Monitor – 1 új (24h) · 1 kiemelt (14 nap)");
+  assert.equal(digestSubject(run), "Survey Monitor – 1 új (24h)");
+  assert.ok(!digestSubject(run).includes("kiemelt"), "nincs 'kiemelt' szó a tárgyban");
+  assert.ok(!digestSubject(run).includes("14 nap"), "nincs 14 napos infó a tárgyban");
 });
 
 test("renderDigest: szintézis felül, majd UJ_24H tételek jelentőség szerint", () => {
@@ -168,10 +172,10 @@ test("renderCombined: EGY HTML-dokumentum (nem két <!doctype> egymás után)", 
   assert.ok(!html.includes("Legfrissebb jelentés →"), "a régi alsó link kikerült");
 });
 
-// 2026-08-31 (user): a levél tetejére kerül a NAGYOBB, egyértelmű „teljes jelentés a honlapon"
-// link; a 🔴 KIEMELT tételek szekció a levél VÉGÉRE, a kapuzott (Sajtószemle) UTÁN kerül
-// (visszatekintés az elmúlt 14 napra). Sorrend: felső link → narratíva → Kulcsszámok → kapuzott → KIEMELT.
-test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok → kapuzott → KIEMELT (a végén)", () => {
+// 2026-09-01 (user): a napi levélből KIKERÜL a 14 napos KIEMELT visszatekintő szekció (email ÉS
+// honlap). A levél sorrendje: felső jelentés-link → narratíva → Kulcsszámok → kapuzott. NINCS
+// külön „🔴 KIEMELT tételek" szekció, és nincs „elmúlt 14 nap" szöveg — ez egy napi jelentés.
+test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok → kapuzott; NINCS 14 napos KIEMELT szekció", () => {
   const run = {
     ...RUN,
     pagesUrl: PAGES_BASE,
@@ -186,13 +190,13 @@ test("renderCombined: felül a jelentés-link, majd narratíva → Kulcsszámok 
   const narrativaIdx = html.indexOf("📰 Napi narratíva (utolsó 24 óra)");
   const kulcsIdx = html.indexOf("📊 Kulcsszámok ma");
   const kapuzottIdx = html.indexOf("📊 Adatjelentőség szerint, kapuzott");
-  const kiemeltSectionIdx = html.indexOf("🔴 KIEMELT tételek");
   assert.ok(topLinkIdx > 0, "van felső jelentés-link");
   assert.ok(topLinkIdx < narrativaIdx, "a jelentés-link a narratíva ELŐTT (email tetején)");
   assert.ok(narrativaIdx < kulcsIdx, "narratíva a Kulcsszámok előtt");
   assert.ok(kulcsIdx > 0 && kulcsIdx < kapuzottIdx, "a Kulcsszámok a kapuzott előtt");
-  assert.ok(kiemeltSectionIdx > kapuzottIdx, "a 🔴 KIEMELT szekció a kapuzott UTÁN (a levél végén)");
-  // a KIEMELT tétel a szekcióban; a nem-KIEMELT (Havi infláció) a digest-listában
+  assert.ok(!html.includes("🔴 KIEMELT tételek"), "NINCS külön 14 napos KIEMELT szekció a levélben");
+  assert.ok(!html.includes("elmúlt 14 nap"), "NINCS 14 napos visszatekintés-szöveg a levélben");
+  // a friss (24h) tételek a kapuzott listában vannak (a KIEMELT jelentőség jelölése ott maradhat)
   assert.match(html, /nagy fordulat/);
   assert.match(html, /Havi infláció/);
 });
@@ -221,17 +225,18 @@ test("renderCombined: nincs kiemelt → NINCS KIEMELT szekció, de a digest megv
   assert.match(html, /Havi infláció/);
 });
 
-test("combinedSubject: 🔴 előtag CSAK ha van KIEMELT szekció", () => {
-  assert.match(combinedSubject(RUN), /^🔴 Survey Monitor – /); // RUN-ban van KIEMELT (rövid gondolatjel)
-  const noKiemelt = { ...RUN, items: [{ canonical_key: "ksh:1", source_id: "ksh", title: "Havi infláció", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" }] };
-  assert.ok(!combinedSubject(noKiemelt).startsWith("🔴"), "kiemelt nélkül nincs előtag");
-  assert.match(combinedSubject(noKiemelt), /^Survey Monitor – /);
+test("combinedSubject: SOHA nincs 🔴 előtag (napi jelentés) — a tárgy = digest-tárgy", () => {
+  // user 2026-09-01: a 14 napos KIEMELT-kiemelés kikerült → a 🔴 előtag sincs, akkor sem, ha
+  // van KIEMELT tétel. A combined tárgy bájtazonos a digest-tárggyal.
+  assert.ok(!combinedSubject(RUN).startsWith("🔴"), "nincs 🔴 előtag akkor sem, ha van KIEMELT");
+  assert.match(combinedSubject(RUN), /^Survey Monitor – /);
+  assert.equal(combinedSubject(RUN), digestSubject(RUN), "a combined tárgy = digest tárgy");
 });
 
-// 2026-08-31 (user): a KIEMELT szekció (email ÉS honlap) a 14 napos ablak kiemeltjeit mutatja —
-// a friss 24h ritkán kap KIEMELT-et, ezért a 24h-szűkítés szinte mindig üres szekciót adna. A
-// két felület SZINKRONBAN van, és a cím JELZI, hogy ez a 14 napra vonatkozik.
-test("renderCombined: a KIEMELT szekció a 14 napos ablakot mutatja (friss + korábbi), '14 nap' jelöléssel", () => {
+// 2026-09-01 (user): a napi levélből teljesen kikerül a 14 napos KIEMELT visszatekintés. A friss
+// (24h) KIEMELT a kapuzott listában attól még megjelenhet, de a KORABBI (14 napos) KIEMELT NEM
+// szivároghat be, és nincs se „🔴 KIEMELT tételek" szekció, se „elmúlt 14 nap" szöveg.
+test("renderCombined: a 14 napos (KORABBI) KIEMELT NEM jelenik meg a levélben", () => {
   const run = {
     ...RUN,
     sourceNames: { hvg: "HVG", telex: "Telex" },
@@ -241,12 +246,9 @@ test("renderCombined: a KIEMELT szekció a 14 napos ablakot mutatja (friss + kor
     ],
   };
   const html = renderCombined(run);
-  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
-  assert.ok(kiemeltIdx > 0, "van KIEMELT szekció");
-  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 120), /elmúlt 14 nap/, "a 14 napos visszatekintés-jelölés a címben");
-  const sec = html.slice(kiemeltIdx); // a KIEMELT a levél VÉGÉN van
-  assert.match(sec, /Friss kiemelt/, "a friss KIEMELT a szekcióban");
-  assert.match(sec, /Régi kiemelt/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
+  assert.ok(!html.includes("🔴 KIEMELT tételek"), "nincs 14 napos KIEMELT szekció");
+  assert.ok(!html.includes("elmúlt 14 nap"), "nincs 14 napos visszatekintés-szöveg");
+  assert.ok(!html.includes("Régi kiemelt"), "a KORABBI (14 napos) KIEMELT nem szivárog be a napi levélbe");
 });
 
 test("renderCombined: a Pages-link a helperből jön (gyökér, nem napi archív)", () => {

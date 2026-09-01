@@ -297,8 +297,8 @@ export function renderReport(run) {
   const latestKutatas = sortItems(kutatas)[0];
   const uj24 = visible.filter((i) => i.freshness === "UJ_24H");
   // A kapuzott TÁBLÁK csak az elmúlt 24 óra (UJ_24H) tételeit sorolják — ez a szintézis
-  // halmaza (enrich.js relevantFresh) és az email digest-je is. A KORÁBBI tételeket a fejléc
-  // (latest*) és az email 🔴 KIEMELT-szekciója viszi tovább (a 14-napos ablak-feature).
+  // halmaza (enrich.js relevantFresh) és az email digest-je is. A KORÁBBI tételeket csak a fejléc
+  // (latest*) viszi tovább; a korábbi 14 napos KIEMELT visszatekintő szekció kikerült (2026-09-01).
   // Két csoport (KUTATAS_LABEL / SAJTO_LABEL): a Kutatások-tábla MINDEN nem-sajtó friss tételt
   // felvesz (hivatalos_adat + kutatas + nemzetkozi) → nincs néma eltűnés (CLAUDE.md 2).
   const kutatasFresh = uj24.filter((i) => !isSajtoItem(i));
@@ -359,11 +359,6 @@ export function renderReport(run) {
   const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && isNemzetkoziSource(c.source_id, sourceKinds)).sort(byName);
   const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
 
-  // Honlap 🔴 KIEMELT szekció: a 14 napos ablak KIEMELT sztorijai (NEM csak a mai 24h) — így a
-  // honlap ugyanazt mutatja, mint az email (user 2026-08-31: email↔honlap szinkron). A közös
-  // helper VISSZATEKINTÉSKÉNT jelöli; a szekció a kapuzott (Sajtószemle) UTÁN áll (ld. lentebb).
-  const kiemeltSection = kiemeltSectionHtml(visible.filter((i) => i.significance === "KIEMELT"), sourceNames, { id: "kiemelt" });
-
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
   const synth = run.synthesisText
@@ -405,8 +400,6 @@ export function renderReport(run) {
     ${table(SAJTO_LABEL, sajtoFresh, sourceNames)}
   </section>
 
-  ${kiemeltSection}
-
   <section id="forrasok">
     <h2>Forrás-ellenőrzés</h2>
     ${hazaiChecks.length ? checkTableKut(HAZAI_LABEL, hazaiChecks) : ""}
@@ -431,19 +424,6 @@ function digestItemList(items, sourceNames) {
   return `<ul>${grouped.map((it) =>
     `<li>${sigLabel(it)} <strong>${srcLabel(it, sourceNames)}</strong>: ${titleLink(it)}${pressUrlsHtml(it)}</li>`,
   ).join("")}</ul>`;
-}
-
-// 🔴 KIEMELT szekció (honlap + email KÖZÖS helper): a 14 napos ablak KIEMELT sztorijai, EGYÉRTELMŰEN
-// visszatekintésként jelölve (user 2026-08-31: „legyen egyértelműbb, hogy ez az elmúlt 14 napról
-// szól"). A szekció a Sajtószemle UTÁN áll (email: a levél VÉGÉN; honlap: a kapuzott után) — a
-// napi friss tartalom megy elöl, a visszatekintés a végén. Üres → "" (nincs üres doboz). EGY
-// helyen, hogy a két felület ne csússzon szét (CLAUDE.md 2).
-function kiemeltSectionHtml(kiemeltItems, sourceNames, opts = {}) {
-  if (!kiemeltItems.length) return "";
-  const id = opts.id ? ` id="${opts.id}"` : "";
-  return `<section${id}><h2>🔴 KIEMELT tételek <span class="count">— visszatekintés az elmúlt 14 napra</span></h2>
-    <p class="empty">A legfontosabb sztorik az elmúlt két hétből — nem csak a mai napról.</p>
-    ${digestItemList(kiemeltItems, sourceNames)}</section>`;
 }
 
 // A kapuzott szekció KÖZÖS tartalma az emailben: két al-csoport (Kutatások és hivatalos adatok /
@@ -482,14 +462,12 @@ const pagesLinkTop = (run) => run.pagesUrl
   : `<p class="empty">A teljes jelentés a honlap-archívumban.</p>`;
 
 export function digestSubject(run) {
-  // Az „N új (24h)" a friss (UJ_24H) reprezentánsok száma; a KIEMELT-szám viszont a 14 napos
-  // ablaké (a KIEMELT szekcióval és a 🔴 előtaggal KONZISZTENS) — user 2026-08-31. A friss 24h
-  // ritkán kap KIEMELT-et, ezért a régi „ebből N kiemelt" (24h-alapú) a 🔴 előtag mellett
-  // „ebből 0 kiemelt"-et adott → félrevezető. A „(14 nap)" jelzi, hogy ez az ablakra vonatkozik;
-  // 0 KIEMELT esetén a rész kimarad (nincs „0 kiemelt" zaj, és 🔴 előtag sincs).
+  // A tárgy CSAK a 24 órás képet mutatja: „N új (24h)" = a friss (UJ_24H) reprezentánsok száma.
+  // A korábbi „· N kiemelt (14 nap)" rész KIKERÜLT (user 2026-09-01: napi jelentés, ne legyen
+  // benne az elmúlt 14 napról infó — se a tárgyban, se a törzsben; a 14 napos KIEMELT szekció is
+  // eltűnt az emailből és a honlapról egyaránt).
   const fresh = freshRepresentatives(run);
-  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT").length;
-  return endash(`Survey Monitor — ${fresh.length} új (24h)${kiemelt ? ` · ${kiemelt} kiemelt (14 nap)` : ""}`);
+  return endash(`Survey Monitor — ${fresh.length} új (24h)`);
 }
 
 export function renderDigest(run) {
@@ -512,33 +490,27 @@ export function renderDigest(run) {
 `);
 }
 
-// ---- EGY összevont levél (2026-08-26): 🔴 KIEMELT szekció FELÜL (ha van) + teljes digest ----
-// A korábbi két külön levél (renderDigest + renderKiemelt) helyett egy levél. A tartalom a kettő
-// UNIÓJA, UGYANAZOKBÓL a helperekből (storyGroups KIEMELT-reprezentánsai a szekcióhoz + a digest
-// freshRepresentatives-listája + digestItemList + a KÖZÖS pagesLink), hogy egy jövőbeli
-// render-változásnál a két ág ne csússzon szét (CLAUDE.md 2). renderDigest/renderKiemelt
-// exportok megmaradnak (teszteltek), csak a küldés-ág nem használja őket külön.
+// ---- EGY összevont napi levél: felső jelentés-link + narratíva + Kulcsszámok + kapuzott digest ----
+// (2026-09-01: a korábbi 🔴 KIEMELT 14 napos visszatekintő szekció kikerült.) A tartalom a
+// friss (24h) digest, UGYANAZOKBÓL a helperekből (freshRepresentatives + digestKapuzott/
+// digestItemList + a KÖZÖS pagesLink), hogy egy jövőbeli render-változásnál a digest és a combined
+// ág ne csússzon szét (CLAUDE.md 2). renderDigest/renderKiemelt exportok megmaradnak (teszteltek),
+// csak a küldés-ág nem használja őket külön.
 export function combinedSubject(run) {
-  // 🔴 előtag CSAK ha van KIEMELT szekció (= a levélben ténylegesen megjelenő KIEMELT-reprezentáns).
-  // 🔴 előtag ha van KIEMELT a 14 napos ablakban (a KIEMELT szekció is ezt mutatja).
-  const hasKiemelt = storyGroups(run).representatives.some((i) => i.significance === "KIEMELT");
-  return hasKiemelt ? `🔴 ${digestSubject(run)}` : digestSubject(run);
+  // 2026-09-01 (user): a napi levélből kikerült a 14 napos KIEMELT visszatekintés → a 🔴 előtag
+  // is megszűnt (az a 14 napos KIEMELT meglétéhez volt kötve). A combined tárgy = digest tárgy.
+  return digestSubject(run);
 }
 
 export function renderCombined(run) {
   const sourceNames = run.sourceNames ?? {};
   const fresh = freshRepresentatives(run);
-  // A KIEMELT szekció a 14 napos ablak KIEMELT sztorijait mutatja (a honlap is ugyanezt — user
-  // 2026-08-31: email↔honlap szinkron). A friss 24h ritkán kap KIEMELT-et, ezért nem szűkítjük
-  // 24h-ra (különben szinte mindig üres lenne); a címke JELZI, hogy ez a 14 napra vonatkozik.
-  const kiemelt = storyGroups(run).representatives.filter((i) => i.significance === "KIEMELT");
   const synth = run.synthesisText
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : (run.triageDegraded ? `<p class="empty">⚠️ triázs kihagyva (nincs LLM) — nyers 24 órás lista.</p>` : "");
-  const kiemeltSection = kiemeltSectionHtml(kiemelt, sourceNames);
-  // Szekció-sorrend (user-kérés 2026-08-31): FELÜL a kiemelt „teljes jelentés a honlapon" link
-  // (nagyobb betű), majd narratíva → 📊 Kulcsszámok → kapuzott → 🔴 KIEMELT (a levél VÉGÉN, a
-  // Sajtószemle UTÁN — visszatekintés az elmúlt 14 napra). Záró endash → nincs em-dash.
+  // Szekció-sorrend: FELÜL a kiemelt „teljes jelentés a honlapon" link (nagyobb betű), majd
+  // narratíva → 📊 Kulcsszámok → kapuzott. A 14 napos 🔴 KIEMELT visszatekintő szekció KIKERÜLT
+  // (user 2026-09-01: napi jelentés, ne legyen benne az elmúlt 14 napról infó). Záró endash → nincs em-dash.
   return endash(`<!doctype html>
 <html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(combinedSubject(run))}</title><style>${STYLE}</style></head>
@@ -549,7 +521,6 @@ export function renderCombined(run) {
   <section><h2>📰 Napi narratíva (utolsó 24 óra)</h2>${synth}</section>
   ${keyNumbersSection(fresh, sourceNames)}
   <section><h2>📊 Adatjelentőség szerint, kapuzott</h2>${digestKapuzott(fresh, sourceNames)}</section>
-  ${kiemeltSection}
 </main></body></html>
 `);
 }

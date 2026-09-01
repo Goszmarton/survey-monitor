@@ -137,9 +137,9 @@ test("kapuzott tábla: CSAK az elmúlt 24 óra (UJ_24H) tételei — a KORÁBBI 
     ],
   };
   const html = renderReport(run);
-  // A kapuzott tábla a tablak-szekció; a KIEMELT (14 napos) szekció UTÁNA jön (id="kiemelt"),
-  // ezért a kapuzott tartalmat oda-ig szűkítjük (a KORÁBBI KIEMELT a KIEMELT szekcióban van, nem itt).
-  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="kiemelt"'));
+  // A kapuzott tábla a tablak-szekció; utána közvetlenül a Forrás-ellenőrzés (id="forrasok") jön
+  // (2026-09-01: a 14 napos KIEMELT szekció kikerült), ezért a kapuzott tartalmat oda-ig szűkítjük.
+  const tablak = html.slice(html.indexOf('id="tablak"'), html.indexOf('id="forrasok"'));
   assert.match(html, /ÚJ/, "a UJ_24H frissesség-címke megjelenik");
   assert.match(tablak, /Telex cikk/, "a 24h-s tétel a kapuzott táblában");
   assert.ok(!tablak.includes("Korábbi sajtóhír (nem 24h)"), "a KORÁBBI tétel NEM a kapuzott táblában (akkor sem, ha KIEMELT)");
@@ -256,7 +256,11 @@ test("kapuzott tábla: a publikálva/frissesség cella egy sorban (nowrap)", () 
   assert.match(html, /<td class="nowrap">[^<]*\d{4}\. \d{2}\. \d{2}\./, "a publikálva-cella nowrap");
 });
 
-test("honlap KIEMELT szekció: a 14 napos ablak KIEMELT-jei (friss + korábbi), '14 nap' jelöléssel", () => {
+// 2026-09-01 (user): a honlapról (renderReport) is kikerül a 14 napos KIEMELT visszatekintő
+// szekció — ez egy napi jelentés, nem kell benne az elmúlt 14 napról infó. A friss (24h) KIEMELT
+// a kapuzott táblában attól még megjelenhet, de a KORABBI (14 napos) KIEMELT nem szivároghat be,
+// és nincs se „🔴 KIEMELT tételek" szekció, se „elmúlt 14 nap" szöveg.
+test("honlap: NINCS 14 napos KIEMELT szekció — a KORABBI KIEMELT nem jelenik meg", () => {
   const run = {
     ...RUN,
     sourceNames: { ...RUN.sourceNames, hvg: "HVG" },
@@ -266,13 +270,9 @@ test("honlap KIEMELT szekció: a 14 napos ablak KIEMELT-jei (friss + korábbi), 
     ],
   };
   const html = renderReport(run);
-  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
-  assert.ok(kiemeltIdx > 0, "van 🔴 KIEMELT szekció a honlapon");
-  assert.ok(kiemeltIdx > html.indexOf('id="tablak"'), "a KIEMELT a kapuzott (tablak) UTÁN");
-  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 120), /elmúlt 14 nap/, "a 14 napos visszatekintés-jelölés a címben");
-  const sec = html.slice(kiemeltIdx, html.indexOf('id="forrasok"')); // KIEMELT a kapuzott és a forrás-szekció közt
-  assert.match(sec, /Friss kiemelt hír/, "a friss KIEMELT a szekcióban");
-  assert.match(sec, /Régi kiemelt hír/, "a korábbi (KORABBI) KIEMELT IS a szekcióban (14 napos ablak)");
+  assert.ok(!html.includes("🔴 KIEMELT tételek"), "nincs külön 14 napos KIEMELT szekció a honlapon");
+  assert.ok(!html.includes("elmúlt 14 nap"), "nincs 14 napos visszatekintés-jelölés");
+  assert.ok(!html.includes("Régi kiemelt hír"), "a KORABBI (14 napos) KIEMELT nem szivárog be a napi jelentésbe");
 });
 
 test("Forrás-ellenőrzés: a Kutatások tábla 2 altáblára bomlik — Hazai / Nemzetközi", () => {
@@ -328,17 +328,6 @@ test("minden link új tabban nyílik (target=_blank rel=noopener)", () => {
   const links = [...html.matchAll(/<a href="[^"]*"([^>]*)>/g)];
   assert.ok(links.length > 0, "van link a jelentésben");
   for (const m of links) assert.match(m[1], /target="_blank"/, "minden <a> target=_blank-kel nyílik");
-});
-
-test("honlap: a KIEMELT szekció a kapuzott (Sajtószemle) UTÁN van, 14 napos visszatekintés-jelöléssel", () => {
-  const run = { ...RUN, sourceNames: { ...RUN.sourceNames, hvg: "HVG" }, items: [
-    { canonical_key: "hvg:k", source_id: "hvg", kind: "sajto", title: "Kiemelt sztori X", url: "https://hvg.hu/k", published_at: "2026-07-22T03:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
-  ] };
-  const html = renderReport(run);
-  const tablakIdx = html.indexOf('id="tablak"');
-  const kiemeltIdx = html.indexOf("🔴 KIEMELT tételek");
-  assert.ok(kiemeltIdx > tablakIdx, "a KIEMELT szekció a kapuzott tábla UTÁN van");
-  assert.match(html.slice(kiemeltIdx, kiemeltIdx + 140), /elmúlt 14 nap/, "egyértelmű 14 napos visszatekintés a címben");
 });
 
 test("Forrás-ellenőrzés: Eurostat és Europion/Opinio a Nemzetközi altáblában (nem Hazai)", () => {
