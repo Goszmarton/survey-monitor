@@ -342,12 +342,14 @@ export function renderReport(run) {
     return it ? titleLink(it) : "";
   };
   const nameCell = (c) => `<td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td>`;
-  // „Gyűjtött link" cella: a forrás összes gyűjtő-URL-je kattinthatóan (több feed → mind, külön
-  // sorban). A URL maga a link-szöveg (a user LÁTNI akarja, honnan gyűjt). Üres → „—".
+  // „Gyűjtött link" cella: a forrás összes gyűjtő-URL-je kattinthatóan, de RÖVID címkével (a teljes
+  // URL sok helyet foglalt — user 2026-09-01): egy link → „Forrás", több → „Forrás 1"/„Forrás 2".
+  // A teljes URL a href-ben ÉS a title-tooltipben marad (hover megmutatja). Üres → „—".
   const linksCell = (c) => {
     const urls = sourceUrls[c.source_id] ?? [];
     if (!urls.length) return `<td class="empty">—</td>`;
-    return `<td class="srclinks">${urls.map((u) => `<a href="${esc(u)}"${LINK_ATTR}>${esc(u)}</a>`).join("<br>")}</td>`;
+    const label = (i) => (urls.length === 1 ? "Forrás" : `Forrás ${i + 1}`);
+    return `<td class="srclinks">${urls.map((u, i) => `<a href="${esc(u)}"${LINK_ATTR} title="${esc(u)}">${esc(label(i))}</a>`).join("<br>")}</td>`;
   };
   // Státusz-cella RELEVANCIA-TUDATOS (user 2026-08-31): egy forrás lehet OK_UJ (hozott új tételt),
   // de az új tételét a relevancia-szűrő KÖZÉLETI szempontból nem tartotta fontosnak → nem jelenik

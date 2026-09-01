@@ -298,6 +298,12 @@ test("Forrás-ellenőrzés: Gyűjtött link oszlop a gyűjtő-URL(ek)re; több f
   assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/gyorstajekoztatok"[^>]*>/, "a KSH 1. feedje kattintható");
   assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/hirek"[^>]*>/, "a KSH 2. feedje (feeds_extra) IS megjelenik");
   assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>/, "a sajtó (Sajtószemle) táblán is ott a gyűjtő-link");
+  // A link SZÖVEGE rövid címke (nem a teljes URL — helytakarékos): több feed → „Forrás 1"/„Forrás 2",
+  // egy feed → „Forrás". A teljes URL a href-ben (és title-tooltipben) marad.
+  assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/gyorstajekoztatok"[^>]*>Forrás 1<\/a>/);
+  assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/hirek"[^>]*>Forrás 2<\/a>/);
+  assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>Forrás<\/a>/, "egyetlen feed → sima Forrás cimke");
+  assert.ok(!html.includes(">https://www.ksh.hu/rss/gyorstajekoztatok<"), "a teljes URL NEM link-szövegként (helytakarékos)");
 });
 
 // 2026-09-01 (user): a Forrás-ellenőrzés alatt legyen JELMAGYARÁZAT — mindenki értse a jelzéseket.
