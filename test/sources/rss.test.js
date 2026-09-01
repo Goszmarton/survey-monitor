@@ -86,6 +86,29 @@ test("HIBA: időtúllépés (AbortError)", async () => {
   assert.match(r.check.detail, /időtúllépés|abort/i);
 });
 
+// 2026-09-01 (user bug): egyes feedek (TK ELTE: szoc/jog/kisebbség) RELATÍV <link>-et adnak
+// ("/hirek/2026/08/…"), amit a jelentés más hostról (github.io / napihir tükör) szolgál ki →
+// kattintva 404. A feed spec szerint a relatív link a feed-dokumentumhoz értendő → a source.feed
+// a base. A fetchNew a tárolt url-t abszolúttá teszi; a guid (dedup-alap) VÁLTOZATLAN marad.
+const relFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>TK ELTE Szociológia</title>
+  <item><title>Szalai, A. (2026)</title><link>/hirek/2026/08/szalai-godon</link><pubDate>Mon, 31 Aug 2026 13:57:00 +0200</pubDate></item>
+</channel></rss>`;
+
+test("relatív <link> abszolúttá válik a feed hostjához oldva (nincs 404)", async () => {
+  const tk = { id: "tk_szoc", name: "TK ELTE Szociológia", feed: "https://szociologia.tk.elte.hu/rss" };
+  const r = await fetchNew(tk, { since: 0, fetchImpl: stub(relFeed) });
+  assert.equal(r.check.status, "OK_UJ");
+  assert.equal(r.items[0].url, "https://szociologia.tk.elte.hu/hirek/2026/08/szalai-godon",
+    "a relatív link a feed hostjához oldva (abszolút)");
+});
+
+test("abszolút <link> változatlan marad (nem törjük el a jó URL-eket)", async () => {
+  const r = await fetchNew(src, { since: T("2026-07-22T00:00:00Z"), fetchImpl: stub(fx("rss_sample.xml")) });
+  assert.equal(r.check.status, "OK_UJ");
+  for (const it of r.items) assert.match(it.url, /^https?:\/\//, "abszolút URL marad");
+});
+
 test("iso-8859-2 feed a fetcheren át is helyesen dekódolódik", async () => {
   const ksh = { id: "ksh", name: "KSH", feed: "https://www.ksh.hu/rss/gyorstajekoztatok" };
   const r = await fetchNew(ksh, {

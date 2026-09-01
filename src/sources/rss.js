@@ -6,6 +6,21 @@
 import { parseFeed } from "../lib/feedparse.js";
 import { httpGet, describeError, noNewItemsDetail, DEFAULT_TIMEOUT_MS } from "./http.js";
 
+// A tétel-URL abszolúttá tétele a feed URL-jéhez oldva. Sok feed (pl. TK ELTE szoc/jog/kisebbség)
+// RELATÍV <link>-et ad ("/hirek/…"), amit a jelentés más hostról (github.io / napihir tükör)
+// szolgál ki → kattintva 404. A feed spec szerint a relatív link a feed-dokumentumhoz értendő,
+// ezért a source.feed a base. FONTOS: CSAK az url-t oldjuk fel; a guid-ot NEM (a canonicalKey
+// alapja `guid ?? url` — ha a guid abszolúttá válna, a kulcs elcsúszna és duplikátum keletkezne).
+// Hibás / már abszolút / nem-http sémájú (tel:, mailto:) URL változatlan marad.
+function absolutizeUrl(rawUrl, base) {
+  if (!rawUrl) return rawUrl;
+  try {
+    return new URL(rawUrl, base).href;
+  } catch {
+    return rawUrl;
+  }
+}
+
 /**
  * @param {{id:string,name?:string,feed:string}} source
  * @param {{since?:number, now?:number, fetchImpl?:function, timeoutMs?:number}} opts
@@ -18,7 +33,10 @@ export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAU
       return { items: [], check: { status: "HIBA", detail: `HTTP ${res.status}`, url } };
     }
     const bytes = await res.bytes();
-    const { format, items } = parseFeed(bytes, res.contentType);
+    const { format, items: parsed } = parseFeed(bytes, res.contentType);
+    // A relatív <link>-ek abszolúttá tétele a feed URL-jéhez oldva (különben a más hostról
+    // szolgált jelentésben 404). A guid VÁLTOZATLAN → a dedup-kulcs stabil marad.
+    const items = parsed.map((it) => ({ ...it, url: absolutizeUrl(it.url, url) }));
 
     if (format === "unknown") {
       return { items: [], check: { status: "HIBA", detail: "nem RSS/Atom válasz (soft-404?)", url } };
