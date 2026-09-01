@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb, startRun } from "../src/state/db.js";
-import { collect, combineStatus, channelsOf } from "../src/collect.js";
+import { collect, combineStatus, channelsOf, sourceEndpoints } from "../src/collect.js";
 import * as europeelects from "../src/sources/europeelects.js";
 
 // E2/A: dedikált adapter-routing. Egy forrás a `feed`/`list_url` generikus csatornái helyett
@@ -23,6 +23,36 @@ test("channelsOf: adapter nélkül a generikus feed/list_url útvonal marad (reg
   const ch = channelsOf({ id: "x", feed: "https://x/rss", list_url: "https://x/list" });
   assert.equal(ch.length, 2);
   assert.deepEqual(ch.map((c) => c.name), ["feed", "lista"]);
+});
+
+// 2026-09-01 (user bug): a config `feeds_extra[]` mezőjét (ksh 2. feed = /rss/hirek, mnb 2. feed
+// = /rss/7 kiadványok) a channelsOf KORÁBBAN NEM olvasta → a 2. feedről némán NEM gyűjtött
+// (CLAUDE.md 2 sérülés). Mostantól MINDEN feed külön csatorna; a 2.+ csatorna a feeds_extra URL-jét
+// húzza (source.feed felülírva), a többi mező (title_filter stb.) örökölve.
+test("channelsOf: feeds_extra → minden feed külön csatorna (a 2. feedet is gyűjti)", () => {
+  const ch = channelsOf({ id: "ksh", feed: "https://ksh/a", feeds_extra: ["https://ksh/b"] });
+  assert.equal(ch.length, 2, "két feed → két csatorna");
+  assert.deepEqual(ch.map((c) => c.name), ["feed", "feed2"]);
+  assert.equal(ch[0].source.feed, "https://ksh/a", "az 1. csatorna az elsődleges feed");
+  assert.equal(ch[1].source.feed, "https://ksh/b", "a 2. csatorna a feeds_extra URL-jét húzza");
+  assert.equal(ch[0].fetcher.fetchNew, ch[1].fetcher.fetchNew, "mindkettő az rss fetcher");
+});
+
+test("channelsOf: feed + feeds_extra + list_url mind külön csatorna, sorrendben", () => {
+  const ch = channelsOf({ id: "x", feed: "https://x/a", feeds_extra: ["https://x/b", "https://x/c"], list_url: "https://x/list" });
+  assert.deepEqual(ch.map((c) => c.name), ["feed", "feed2", "feed3", "lista"]);
+});
+
+// sourceEndpoints: EGY igazságforrás a gyűjtött (channelsOf) és a megjelenített (Forrás-ellenőrzés
+// link-oszlop) végpontokra — a kettő nem csúszhat szét (CLAUDE.md 2).
+test("sourceEndpoints: feed + feeds_extra minden URL-je megjelenik", () => {
+  const eps = sourceEndpoints({ id: "ksh", feed: "https://ksh/a", feeds_extra: ["https://ksh/b"] });
+  assert.deepEqual(eps.map((e) => e.url), ["https://ksh/a", "https://ksh/b"]);
+});
+
+test("sourceEndpoints: adapteres forrás végpontja a list_url (azt olvassa az adapter)", () => {
+  const eps = sourceEndpoints({ id: "europeelects", adapter: "europeelects", list_url: "https://x/hu.html" });
+  assert.deepEqual(eps.map((e) => e.url), ["https://x/hu.html"]);
 });
 
 // B2-előkészítés (routing-plumbing, LEVÉL-SEMLEGES): a channelsOf adapter-registryje
@@ -159,6 +189,29 @@ test("collect: két csatornás forrás (feed + list_url) mindkettőt lekéri, eg
     assert.equal(checks[0].status, "OK_UJ");
     assert.match(checks[0].detail, /feed:/);
     assert.match(checks[0].detail, /lista:/);
+    cleanup();
+  } catch (e) { cleanup(); throw e; }
+});
+
+test("collect: feeds_extra → a forrás MINDKÉT feedjéről gyűjt, egy napló-sor mindkét csatornával", async () => {
+  const { db, cleanup } = tempDb();
+  try {
+    const now = Date.parse("2026-07-22T06:00:00Z");
+    const rs = new Date(now).toISOString();
+    // ksh: elsődleges feed = telex (2 tétel) + feeds_extra = ksh feed (1 tétel) → 3 tétel egy forrásból
+    const src = [{
+      id: "ksh", name: "KSH", kaszt: "A", kind: "hivatalos",
+      feed: "https://telex.hu/rss",
+      feeds_extra: ["https://www.ksh.hu/rss/gyorstajekoztatok"],
+    }];
+    startRun(db, { runId: "r", startedAt: rs });
+    const r = await collect({ db, sources: src, now, runId: "r", runStartedAt: rs, since: 0, fetchImpl: routedFetch });
+
+    assert.equal(r.items.length, 3, "2 (feed) + 1 (feed2) = 3 tétel");
+    const checks = r.sourceChecks.filter((c) => c.source_id === "ksh");
+    assert.equal(checks.length, 1, "egyetlen napló-sor a forrásra");
+    assert.match(checks[0].detail, /feed:/, "az 1. feed a naplóban");
+    assert.match(checks[0].detail, /feed2:/, "a 2. feed (feeds_extra) is a naplóban — nincs csendes kimaradás");
     cleanup();
   } catch (e) { cleanup(); throw e; }
 });

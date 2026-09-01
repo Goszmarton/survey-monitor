@@ -260,6 +260,8 @@ const STYLE = `
   table.checks{table-layout:fixed}
   table.checks th:nth-child(1),table.checks td:nth-child(1){width:26%}
   table.checks th:nth-child(2),table.checks td:nth-child(2){width:15%}
+  td.srclinks{font-size:12px;word-break:break-all}
+  td.srclinks a{line-height:1.5}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
   .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
@@ -312,6 +314,9 @@ export function renderReport(run) {
   // forrásnév szerint (hu locale). A forrás kind-je a run.sourceKinds-ból; hiányában minden
   // forrás a Kutatások csoportba esik (fallback régi run/teszt esetén).
   const sourceKinds = run.sourceKinds ?? {};
+  // Forrás → a TÉNYLEGES gyűjtő-URL(ek) listája (run.js: sourceEndpoints). Egy forrás több linkről
+  // is gyűjthet (ksh/mnb: feeds_extra; eurostat: feed+lista) → mindegyik megjelenik a link-oszlopban.
+  const sourceUrls = run.sourceUrls ?? {};
   const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
   // Forrás → a MAI (UJ_24H) LÁTHATÓ (releváns) tételének linkje = „az új, amiből dolgozott".
   // A Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg (user 2026-08-31).
@@ -326,6 +331,13 @@ export function renderReport(run) {
     return it ? titleLink(it) : "";
   };
   const nameCell = (c) => `<td>${esc(sourceNames[c.source_id] ?? c.source_id)}</td>`;
+  // „Gyűjtött link" cella: a forrás összes gyűjtő-URL-je kattinthatóan (több feed → mind, külön
+  // sorban). A URL maga a link-szöveg (a user LÁTNI akarja, honnan gyűjt). Üres → „—".
+  const linksCell = (c) => {
+    const urls = sourceUrls[c.source_id] ?? [];
+    if (!urls.length) return `<td class="empty">—</td>`;
+    return `<td class="srclinks">${urls.map((u) => `<a href="${esc(u)}"${LINK_ATTR}>${esc(u)}</a>`).join("<br>")}</td>`;
+  };
   // Státusz-cella RELEVANCIA-TUDATOS (user 2026-08-31): egy forrás lehet OK_UJ (hozott új tételt),
   // de az új tételét a relevancia-szűrő KÖZÉLETI szempontból nem tartotta fontosnak → nem jelenik
   // meg a jelentésben. A „✅ új" melletti üres „Új tétel" cella emiatt zavaró volt (néma hiány,
@@ -338,19 +350,20 @@ export function renderReport(run) {
       : (CHECK[c.status] ?? c.status);
     return `<td class="nowrap">${esc(label)}</td>`;
   };
-  // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre a nyers detail helyett).
+  // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre) | Gyűjtött link
+  // (a forrás összes gyűjtő-URL-je, user 2026-09-01).
   const checkTableKut = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
     <table class="checks">
-      <tr><th>Forrás</th><th>Státusz</th><th>Új tétel</th></tr>
-      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}<td>${newItemCell(c)}</td></tr>`).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
+      <tr><th>Forrás</th><th>Státusz</th><th>Új tétel</th><th>Gyűjtött link</th></tr>
+      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}<td>${newItemCell(c)}</td>${linksCell(c)}</tr>`).join("\n") : `<tr><td colspan="4" class="empty">nincs ellenőrzött forrás</td></tr>`}
     </table>`;
-  // Sajtószemle altábla: Forrás | Státusz — a RÉSZLET-oszlop TÖRÖLVE (user: „itt a részlet oszlop nem kell").
-  // Ugyanaz a `checks` fix elrendezés (26%/15% az első két oszlopon) → a STÁTUSZ minden altáblában
-  // UGYANOTT kezdődik/végződik, nem tolódik el a tartalom szerint (user 2026-08-31).
+  // Sajtószemle altábla: Forrás | Státusz | Gyűjtött link (a RÉSZLET-oszlop TÖRÖLVE, user 2026-08-31;
+  // a „Gyűjtött link" oszlop viszont ITT is kell, user 2026-09-01). Ugyanaz a `checks` fix elrendezés
+  // (26%/15% az első két oszlopon) → a STÁTUSZ minden altáblában UGYANOTT kezdődik/végződik.
   const checkTableSajto = (label, list) => `<h3>${esc(label)} <span class="count">(${list.length})</span></h3>
     <table class="checks">
-      <tr><th>Forrás</th><th>Státusz</th></tr>
-      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}</tr>`).join("\n") : `<tr><td colspan="2" class="empty">nincs ellenőrzött forrás</td></tr>`}
+      <tr><th>Forrás</th><th>Státusz</th><th>Gyűjtött link</th></tr>
+      ${list.length ? list.map((c) => `<tr>${nameCell(c)}${statusCell(c)}${linksCell(c)}</tr>`).join("\n") : `<tr><td colspan="3" class="empty">nincs ellenőrzött forrás</td></tr>`}
     </table>`;
   // A Kutatások/hivatalos forrás-ellenőrzés két altáblára: Hazai (hivatalos + intézet) vs
   // Nemzetközi (kind=nemzetkozi); a sajtó külön (detail nélkül). Fallback (nincs sourceKinds):

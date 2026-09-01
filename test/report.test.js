@@ -275,6 +275,31 @@ test("honlap: NINCS 14 napos KIEMELT szekció — a KORABBI KIEMELT nem jelenik 
   assert.ok(!html.includes("Régi kiemelt hír"), "a KORABBI (14 napos) KIEMELT nem szivárog be a napi jelentésbe");
 });
 
+// 2026-09-01 (user): a Forrás-ellenőrzés táblák (Hazai/Nemzetközi/Sajtószemle) kapnak egy
+// „Gyűjtött link" oszlopot — forrásonként a TÉNYLEGES gyűjtő-URL(ek), kattinthatóan. Ha egy forrás
+// több linkről gyűjt (ksh/mnb: feeds_extra; eurostat: feed+lista), MINDEGYIK megjelenik. Az URL-ek
+// a run.sourceUrls-ból (id → URL-lista, a sourceEndpoints-ból származtatva a run.js-ben).
+test("Forrás-ellenőrzés: Gyűjtött link oszlop a gyűjtő-URL(ek)re; több feed esetén MIND (kattintható)", () => {
+  const run = {
+    ...RUN, items: [],
+    sourceNames: { ksh: "KSH", telex: "Telex" },
+    sourceKinds: { ksh: "hivatalos", telex: "sajto" },
+    sourceUrls: {
+      ksh: ["https://www.ksh.hu/rss/gyorstajekoztatok", "https://www.ksh.hu/rss/hirek"],
+      telex: ["https://telex.hu/rss"],
+    },
+    sourceChecks: [
+      { source_id: "ksh", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "telex", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const html = renderReport(run);
+  assert.match(html, /Gyűjtött link/, "van Gyűjtött link oszlopfejléc");
+  assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/gyorstajekoztatok"[^>]*>/, "a KSH 1. feedje kattintható");
+  assert.match(html, /<a href="https:\/\/www\.ksh\.hu\/rss\/hirek"[^>]*>/, "a KSH 2. feedje (feeds_extra) IS megjelenik");
+  assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>/, "a sajtó (Sajtószemle) táblán is ott a gyűjtő-link");
+});
+
 test("Forrás-ellenőrzés: a Kutatások tábla 2 altáblára bomlik — Hazai / Nemzetközi", () => {
   const run = {
     ...RUN, items: [],

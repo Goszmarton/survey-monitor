@@ -65,23 +65,40 @@ export function applyTitleFilter(items, keywords) {
 // A modul a htmllist/rss-sel azonos szerződést teljesíti: fetchNew(source, opts) → {items, check}.
 const ADAPTERS = { europeelects, eurobarometer };
 
-// Egy forrásnak több csatornája is lehet: verifikált RSS ÉS HTML-listaoldal
-// (pl. Eurostat: katalógus-feed + euro-indicators lista). Mindkettőt lekérjük.
+// A forrás GYŰJTŐ-VÉGPONTJAI (name + url + kind) — EGY igazságforrás a fetch (channelsOf) ÉS a
+// megjelenítés (Forrás-ellenőrzés link-oszlop, run.js) számára, hogy a kettő ne csússzon szét
+// (CLAUDE.md 2). Adapteres forrásnál a list_url a végpont (azt olvassa az adapter). Egyébként:
+// a `feed` ÉS az összes `feeds_extra` (mindegyik külön RSS-csatorna), majd a `list_url` (HTML-lista).
+export function sourceEndpoints(source) {
+  if (source.adapter) return source.list_url ? [{ name: source.adapter, url: source.list_url, kind: "adapter" }] : [];
+  const eps = [];
+  const feeds = [source.feed, ...(Array.isArray(source.feeds_extra) ? source.feeds_extra : [])].filter(Boolean);
+  feeds.forEach((url, i) => eps.push({ name: i === 0 ? "feed" : `feed${i + 1}`, url, kind: "feed" }));
+  if (source.list_url) eps.push({ name: "lista", url: source.list_url, kind: "lista" });
+  return eps;
+}
+
+// Egy forrásnak több csatornája is lehet: több RSS-feed (`feed` + `feeds_extra[]`, pl. KSH:
+// gyorstajekoztatok + hirek; MNB: sajtószoba + kiadványok) ÉS/VAGY HTML-listaoldal (`list_url`,
+// pl. Eurostat: katalógus-feed + euro-indicators lista). MINDET lekérjük. A 2.+ feed-csatorna a
+// feeds_extra URL-jét húzza (a source.feed felülírva; a többi mező — title_filter stb. — örökölve).
 // Ha a forrásnak dedikált adaptere van (source.adapter), az az EGYETLEN csatorna: a
 // list_url-t az adapter birtokolja (saját parse), a generikus htmllist NEM indul mellette.
 // A `adapters` registry INJEKTÁLHATÓ (default a valós ADAPTERS): egy új dedikált forrás
 // routingja így FAKE adapterrel tesztelhető, a modul valós I/O-ja nélkül (B2-előkészítés).
 // Ismeretlen adapter → üres lista (fail-closed): a collect HIBA-t naplóz, NEM esik vissza
 // némán a generikus feed/list_url útra (a dedikált forrás explicit szerződést vár).
+// Minden csatorna hordozza a SAJÁT (esetleg felülírt) forrás-objektumát (`.source`) → a collect
+// ezt adja a fetchernek (a feeds_extra feedjei így a helyes URL-t húzzák).
 export function channelsOf(source, adapters = ADAPTERS) {
   if (source.adapter) {
     const a = adapters[source.adapter];
-    return a ? [{ name: source.adapter, fetcher: a }] : [];
+    return a ? [{ name: source.adapter, fetcher: a, source }] : [];
   }
-  const ch = [];
-  if (source.feed) ch.push({ name: "feed", fetcher: rss });
-  if (source.list_url) ch.push({ name: "lista", fetcher: htmllist });
-  return ch;
+  return sourceEndpoints(source).map((ep) =>
+    ep.kind === "lista"
+      ? { name: ep.name, fetcher: htmllist, source }
+      : { name: ep.name, fetcher: rss, source: ep.url === source.feed ? source : { ...source, feed: ep.url } });
 }
 
 // Kombinált státusz több csatornából: a „legjobb" nyer (van-e bárhol új?).
@@ -116,7 +133,7 @@ export async function collect({ db, sources, now, runId, runStartedAt, since, fe
       }
       const results = await Promise.all(
         channels.map(async (c) => {
-          const { items, check } = await c.fetcher.fetchNew(source, { since, fetchImpl, timeoutMs });
+          const { items, check } = await c.fetcher.fetchNew(c.source ?? source, { since, fetchImpl, timeoutMs });
           return { name: c.name, items, check };
         }),
       );

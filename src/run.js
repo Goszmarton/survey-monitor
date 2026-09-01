@@ -9,7 +9,7 @@ import { renderReport, renderCombined, combinedSubject, storyGroups, PAGES_BASE 
 import { buildDist } from "./dist.js";
 import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt, hasCompletedRun } from "./state/db.js";
-import { collect, selectActiveSources } from "./collect.js";
+import { collect, selectActiveSources, sourceEndpoints } from "./collect.js";
 import { complete } from "./llm/complete.js";
 import { enrichWithTriage } from "./enrich.js";
 import { deriveInstitutes } from "./lib/storygroup.js";
@@ -101,6 +101,9 @@ async function main() {
     runStartedAt: now.iso,
     sourceNames: Object.fromEntries(sources.map((s) => [s.id, s.name])),
     sourceKinds: Object.fromEntries(sources.map((s) => [s.id, s.kind])),
+    // Forrás → a TÉNYLEGES gyűjtő-URL(ek) (sourceEndpoints = ugyanaz az igazságforrás, mint a
+    // channelsOf) → a Forrás-ellenőrzés „Gyűjtött link" oszlopa. Több feed → mind megjelenik.
+    sourceUrls: Object.fromEntries(sources.map((s) => [s.id, sourceEndpoints(s).map((e) => e.url)])),
     items,
     sourceChecks: collected.sourceChecks,
     newCount: collected.newCount,
