@@ -300,6 +300,26 @@ test("Forrás-ellenőrzés: Gyűjtött link oszlop a gyűjtő-URL(ek)re; több f
   assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>/, "a sajtó (Sajtószemle) táblán is ott a gyűjtő-link");
 });
 
+// 2026-09-01 (user): a hibás (nem elérhető) források a Forrás-ellenőrzés tábla VÉGÉRE kerüljenek
+// (ne az ABC közepén tűnjenek fel), és a státusz BESZÉDESEBB legyen a puszta „hiba" helyett.
+test("Forrás-ellenőrzés: a nem elérhető források a tábla VÉGÉRE, beszédes státusszal", () => {
+  const run = {
+    ...RUN, items: [],
+    sourceNames: { aaa: "Aaa Intézet", zzz: "Zzz Intézet" },
+    sourceKinds: { aaa: "hivatalos", zzz: "hivatalos" },
+    sourceUrls: { aaa: ["https://a"], zzz: ["https://z"] },
+    sourceChecks: [
+      { source_id: "aaa", status: "HIBA", detail: "lista: HTTP 403", checked_at: "2026-07-22T04:00:00.000Z" },
+      { source_id: "zzz", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" },
+    ],
+  };
+  const html = renderReport(run);
+  assert.ok(html.indexOf(">Zzz Intézet<") < html.indexOf(">Aaa Intézet<"),
+    "az OK Zzz (ABC-ben későbbi) a HIBA Aaa ELŐTT — a hibás a tábla végén");
+  assert.match(html, /jelenleg nem elérhető/, "a HIBA státusz beszédesebb címkét kap");
+  assert.ok(!html.includes("❌ hiba"), "a puszta 'hiba' címke eltűnt");
+});
+
 test("Forrás-ellenőrzés: a Kutatások tábla 2 altáblára bomlik — Hazai / Nemzetközi", () => {
   const run = {
     ...RUN, items: [],

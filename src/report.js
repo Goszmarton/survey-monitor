@@ -53,7 +53,10 @@ const SIGNIF = {
   FIGYELENDO: { label: "🟡 FIGYELENDO", rank: 2 },
 };
 
-const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "⚠️ részleges", SKIPPED_VALIDATION: "🚫 validáció elutasította", HIBA: "❌ hiba" };
+// HIBA: a forrás LÉTEZIK, de a gyűjtő-környezetből most nem érhető el (datacenter-egress blokk
+// vagy átmeneti hálózati hiba) — a puszta „hiba" félrevezető (nem a forrással van baj). A
+// beszédesebb címke ezt fejezi ki (user 2026-09-01).
+const CHECK = { OK_UJ: "✅ új", OK_NINCS_UJ: "☑️ nincs új", RESZLEGES: "⚠️ részleges", SKIPPED_VALIDATION: "🚫 validáció elutasította", HIBA: "⚠️ jelenleg nem elérhető" };
 
 // Egységes taxonómia a honlapon és az emailben: minden NEM-sajtó tétel/forrás a „Kutatások és
 // hivatalos adatok" csoportba esik (hivatalos_adat + kutatas + nemzetkozi), a sajtó külön. Így a
@@ -318,6 +321,10 @@ export function renderReport(run) {
   // is gyűjthet (ksh/mnb: feeds_extra; eurostat: feed+lista) → mindegyik megjelenik a link-oszlopban.
   const sourceUrls = run.sourceUrls ?? {};
   const byName = (a, b) => String(sourceNames[a.source_id] ?? a.source_id).localeCompare(String(sourceNames[b.source_id] ?? b.source_id), "hu");
+  // Rendezés: az elérhető források elöl (ABC), a HIBA-státuszúak (most nem elérhetők) a tábla
+  // VÉGÉRE, egymás közt szintén ABC (user 2026-09-01) — ne az ABC közepén tűnjenek fel.
+  const isUnavailable = (c) => /HIBA/.test(c.status);
+  const bySort = (a, b) => (isUnavailable(a) ? 1 : 0) - (isUnavailable(b) ? 1 : 0) || byName(a, b);
   // Forrás → a MAI (UJ_24H) LÁTHATÓ (releváns) tételének linkje = „az új, amiből dolgozott".
   // A Kutatások/hivatalos táblákon a nyers RÉSZLET-szöveg helyett EZ jelenik meg (user 2026-08-31).
   const freshVisibleBySource = {};
@@ -368,9 +375,9 @@ export function renderReport(run) {
   // A Kutatások/hivatalos forrás-ellenőrzés két altáblára: Hazai (hivatalos + intézet) vs
   // Nemzetközi (kind=nemzetkozi); a sajtó külön (detail nélkül). Fallback (nincs sourceKinds):
   // minden nem-sajtó a Hazai-ba esik (a nemzetkozi-szűrő üres). Mindegyik ABC forrásnév szerint.
-  const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && !isNemzetkoziSource(c.source_id, sourceKinds)).sort(byName);
-  const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && isNemzetkoziSource(c.source_id, sourceKinds)).sort(byName);
-  const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(byName);
+  const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && !isNemzetkoziSource(c.source_id, sourceKinds)).sort(bySort);
+  const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && isNemzetkoziSource(c.source_id, sourceKinds)).sort(bySort);
+  const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(bySort);
 
   const degradedNote = run.triageDegraded ? ` <strong>⚠️ triázs kihagyva (nincs elérhető LLM-provider) — nyers tétellista.</strong>` : "";
 
