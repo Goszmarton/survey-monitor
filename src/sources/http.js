@@ -1,8 +1,24 @@
-// Közös HTTP-réteg a fetcherekhez: 20s timeout, udvarias User-Agent,
+// Közös HTTP-réteg a fetcherekhez: 20s timeout, BÖNGÉSZŐ User-Agent, tranziens-retry,
 // injektálható fetchImpl (a tesztek így hálózat nélkül futnak).
 
-export const USER_AGENT = "survey-monitor/0.1 (+https://github.com/Goszmarton/survey-monitor)";
+// 2026-09-01 (user: 21kutato/policysol „meg kell oldani"): a korábbi bot-UA
+// ("survey-monitor/0.1 …") ellen egyes Cloudflare-védett helyek 403-at adtak (bot-heurisztika).
+// Böngésző-UA-ra váltunk — semlegesebb, több helyen átmegy; a szerver-renderelt HTML/RSS
+// tartalmát ez nem változtatja (nincs JS-végrehajtás nálunk). Ha egy IP/ASN HARD-blokkolt
+// (pl. GitHub Actions egress egyes Cloudflare-szabályoknál), az UA önmagában nem elég — azt a
+// következő éles futás source_check-je mutatja meg.
+export const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 export const DEFAULT_TIMEOUT_MS = 20_000;
+
+// Tranziens-retry: a napi 56-forrásos söprésben bármely forrás „fetch failed"-elhet átmenetileg
+// (DNS/TLS/kapcsolat-reset, rate-limit, 5xx) — egy pár próbálkozás visszahozza (pl. a policysol
+// 08-31-i burst-beli fetch failed-je). NEM próbálunk újra: időtúllépést (AbortError — a teljes
+// időt korlátozzuk) és DETERMINISZTIKUS státuszt (403/404 stb.). Retry-célok: dobott (nem-Abort)
+// hiba + 429/5xx.
+export const MAX_ATTEMPTS = 3;
+export const RETRY_DELAY_MS = 500;
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Egy GET-lekérés timeouttal. A választ nyersen adja vissza (status + testolvasók),
@@ -17,41 +33,57 @@ export const DEFAULT_TIMEOUT_MS = 20_000;
  * controlleren (a body-stream a fetch signaljára abortál), és a végén törli.
  * @returns {Promise<{status:number, ok:boolean, contentType:string|null, bytes:()=>Promise<Buffer>, text:()=>Promise<string>}>}
  */
-export async function httpGet(url, { fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const controller = new AbortController();
-  const arm = () => setTimeout(() => controller.abort(), timeoutMs);
-  let timer = arm();
-  let res;
-  try {
-    res = await fetchImpl(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "User-Agent": USER_AGENT, Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.5" },
-    });
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
-  clearTimeout(timer); // fejléc megvan; a törzs-olvasás saját (újra-felhúzott) korlátot kap
-
-  // A törzs-olvasót UGYANAZZAL a controllerrel korlátozzuk (a body-stream a fetch
-  // signaljára abortál) — külön controller nem szakítaná meg az undici stream-jét.
-  const readBody = async (consume) => {
-    const t = arm();
+export async function httpGet(url, { fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS, attempts = MAX_ATTEMPTS, retryDelayMs = RETRY_DELAY_MS } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    // Minden próbálkozás SAJÁT controllere (a fejléc-fázis korlátja); a sikeres próbálkozás
+    // controllerét zárja körül a body-olvasó is.
+    const controller = new AbortController();
+    let timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
     try {
-      return await consume();
-    } finally {
-      clearTimeout(t);
+      res = await fetchImpl(url, {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: { "User-Agent": USER_AGENT, Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.5" },
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      // Időtúllépést NEM próbálunk újra (a teljes időt korlátozzuk); minden más dobott hiba
+      // (ECONNRESET, „fetch failed", DNS, TLS) TRANZIENS lehet → újrapróbáljuk backoff-fal.
+      if (err?.name === "AbortError" || attempt >= attempts) throw err;
+      lastErr = err;
+      await sleep(retryDelayMs * attempt);
+      continue;
     }
-  };
+    clearTimeout(timer); // fejléc megvan; a törzs-olvasás saját (újra-felhúzott) korlátot kap
 
-  return {
-    status: res.status,
-    ok: res.ok,
-    contentType: res.headers?.get?.("content-type") ?? null,
-    bytes: () => readBody(async () => Buffer.from(await res.arrayBuffer())),
-    text: () => readBody(() => res.text()),
-  };
+    // 429/5xx → tranziens szerver-oldal, újrapróbáljuk; 403/404/egyéb → determinista, visszaadjuk.
+    if (RETRYABLE_STATUS.has(res.status) && attempt < attempts) {
+      await sleep(retryDelayMs * attempt);
+      continue;
+    }
+
+    // A törzs-olvasót UGYANAZZAL a controllerrel korlátozzuk (a body-stream a fetch
+    // signaljára abortál) — külön controller nem szakítaná meg az undici stream-jét.
+    const readBody = async (consume) => {
+      const t = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await consume();
+      } finally {
+        clearTimeout(t);
+      }
+    };
+
+    return {
+      status: res.status,
+      ok: res.ok,
+      contentType: res.headers?.get?.("content-type") ?? null,
+      bytes: () => readBody(async () => Buffer.from(await res.arrayBuffer())),
+      text: () => readBody(() => res.text()),
+    };
+  }
+  throw lastErr; // elvi ág: a ciklus vagy visszatér, vagy a fenti throw-nál kilép
 }
 
 /**

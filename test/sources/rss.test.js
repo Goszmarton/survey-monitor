@@ -71,7 +71,8 @@ test("HIBA: 200-as, de nem feed (soft-404 HTML)", async () => {
 });
 
 test("HIBA: hálózati hiba/kivétel elkapva", async () => {
-  const r = await fetchNew(src, { since: 0, fetchImpl: async () => { throw new Error("ECONNRESET"); } });
+  // attempts:1 → a retryt kikapcsoljuk (ez az EGYSZERI-hiba útját teszteli, nem a retryt; gyors marad)
+  const r = await fetchNew(src, { since: 0, attempts: 1, fetchImpl: async () => { throw new Error("ECONNRESET"); } });
   assert.equal(r.check.status, "HIBA");
   assert.match(r.check.detail, /ECONNRESET/);
 });

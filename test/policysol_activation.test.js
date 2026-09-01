@@ -34,5 +34,5 @@ test("scrape Policy Solutions: aktív forrás (kaszt A, kind intezet, list_url)"
   assert.ok(s, "policysol aktív");
   assert.equal(s.kind, "intezet");
   assert.equal(s.kaszt, "A");
-  assert.match(s.list_url, /policysolutions\.hu\/elemzesek/);
+  assert.match(s.list_url, /policysolutions\.hu\/hu\/elemzesek/);
 });

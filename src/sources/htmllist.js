@@ -300,10 +300,10 @@ const PARSERS = { "21kutato": extract21kutato, republikon: extractRepublikon, mi
  * @param {{id:string,name?:string,list_url:string}} source
  * @param {{since?:number, fetchImpl?:function, timeoutMs?:number}} opts
  */
-export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, attempts, retryDelayMs } = {}) {
   const url = source.list_url;
   try {
-    const res = await httpGet(url, { fetchImpl, timeoutMs });
+    const res = await httpGet(url, { fetchImpl, timeoutMs, attempts, retryDelayMs });
     if (!res.ok) {
       return { items: [], check: { status: "HIBA", detail: `HTTP ${res.status}`, url } };
     }

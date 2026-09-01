@@ -41,6 +41,52 @@ test("httpGet: a TÖRZS-olvasás (text) is időtúllépik megállt body-streamn�
   await assert.rejects(res.text(), (e) => e.name === "AbortError");
 });
 
+// 2026-09-01: tranziens-retry. A dobott (nem-Abort) hibát és a 429/5xx-et újrapróbáljuk, a
+// determinisztikus státuszt (403/404) NEM. retryDelayMs:0 → a teszt nem vár valós backoffot.
+const okResp = (body = "ok", status = 200) => ({
+  ok: status >= 200 && status < 300, status,
+  headers: { get: () => "text/plain" },
+  arrayBuffer: async () => Buffer.from(body).buffer, text: async () => body,
+});
+
+test("httpGet: dobott (tranziens) hiba → újrapróbál, majd sikerül", async () => {
+  let n = 0;
+  const fetchImpl = async () => { n++; if (n < 3) throw new Error("fetch failed"); return okResp("nyert"); };
+  const res = await httpGet("https://x.test/a", { fetchImpl, retryDelayMs: 0 });
+  assert.equal(n, 3, "kétszer bukott, harmadszorra sikerült");
+  assert.equal(await res.text(), "nyert");
+});
+
+test("httpGet: 503 (tranziens szerver) → újrapróbál, majd 200", async () => {
+  let n = 0;
+  const fetchImpl = async () => { n++; return n < 2 ? okResp("hiba", 503) : okResp("jo", 200); };
+  const res = await httpGet("https://x.test/b", { fetchImpl, retryDelayMs: 0 });
+  assert.equal(res.status, 200);
+  assert.equal(n, 2);
+});
+
+test("httpGet: 403 DETERMINISZTIKUS → NEM próbál újra (egyetlen hívás)", async () => {
+  let n = 0;
+  const fetchImpl = async () => { n++; return okResp("tiltva", 403); };
+  const res = await httpGet("https://x.test/c", { fetchImpl, retryDelayMs: 0 });
+  assert.equal(res.status, 403);
+  assert.equal(n, 1, "403-ra nincs retry (nem tranziens)");
+});
+
+test("httpGet: minden próbálkozás bukik → az utolsó hibát dobja", async () => {
+  let n = 0;
+  const fetchImpl = async () => { n++; throw new Error("ECONNRESET"); };
+  await assert.rejects(httpGet("https://x.test/d", { fetchImpl, retryDelayMs: 0 }), /ECONNRESET/);
+  assert.equal(n, 3, "3 próbálkozás (MAX_ATTEMPTS)");
+});
+
+test("httpGet: időtúllépés (AbortError) → NEM próbál újra (a teljes időt korlátozzuk)", async () => {
+  let n = 0;
+  const fetchImpl = async () => { n++; throw Object.assign(new Error("aborted"), { name: "AbortError" }); };
+  await assert.rejects(httpGet("https://x.test/e", { fetchImpl, retryDelayMs: 0 }), (e) => e.name === "AbortError");
+  assert.equal(n, 1, "AbortError-ra nincs retry");
+});
+
 test("httpGet: egészséges törzs-olvasás változatlanul működik (nincs regresszió)", async () => {
   const buf = Buffer.from("hello");
   const fetchImpl = async () => ({

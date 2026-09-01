@@ -25,10 +25,10 @@ function absolutizeUrl(rawUrl, base) {
  * @param {{id:string,name?:string,feed:string}} source
  * @param {{since?:number, now?:number, fetchImpl?:function, timeoutMs?:number}} opts
  */
-export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function fetchNew(source, { since = 0, fetchImpl, timeoutMs = DEFAULT_TIMEOUT_MS, attempts, retryDelayMs } = {}) {
   const url = source.feed;
   try {
-    const res = await httpGet(url, { fetchImpl, timeoutMs });
+    const res = await httpGet(url, { fetchImpl, timeoutMs, attempts, retryDelayMs });
     if (!res.ok) {
       return { items: [], check: { status: "HIBA", detail: `HTTP ${res.status}`, url } };
     }
