@@ -265,6 +265,10 @@ const STYLE = `
   table.checks th:nth-child(2),table.checks td:nth-child(2){width:15%}
   td.srclinks{font-size:12px;word-break:break-all}
   td.srclinks a{line-height:1.5}
+  dl.legend{margin:14px 0 4px;font-size:13px;color:var(--muted)}
+  dl.legend dt{font-weight:600;color:inherit;text-transform:uppercase;letter-spacing:.05em;font-size:12px;margin-bottom:6px}
+  dl.legend dd{margin:0 0 5px;line-height:1.5}
+  dl.legend dd b{color:var(--fg,inherit);font-weight:600}
   th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   a{color:#0b5aa2}
   .toplink{margin:18px 0 8px;text-align:center;font-size:1.2rem;font-weight:700}
@@ -375,6 +379,18 @@ export function renderReport(run) {
   // A Kutatások/hivatalos forrás-ellenőrzés két altáblára: Hazai (hivatalos + intézet) vs
   // Nemzetközi (kind=nemzetkozi); a sajtó külön (detail nélkül). Fallback (nincs sourceKinds):
   // minden nem-sajtó a Hazai-ba esik (a nemzetkozi-szűrő üres). Mindegyik ABC forrásnév szerint.
+  // Jelmagyarázat a Forrás-ellenőrzés alá — közérthetően, hogy mindenki értse a jelzéseket (user
+  // 2026-09-01). A szövegek a statusCell/CHECK-címkékkel KONZISZTENSEK (ha ott változik egy címke,
+  // itt is frissítsd — CLAUDE.md 2).
+  const checksLegend = `<dl class="legend"><dt>Jelmagyarázat</dt>
+    <dd><b>✅ új – releváns</b> — friss tétel érkezett, és közéleti szempontból releváns → bekerült a jelentésbe.</dd>
+    <dd><b>⚪ új – nem releváns</b> — friss tétel érkezett, de közéleti szempontból nem releváns → nem került a jelentésbe.</dd>
+    <dd><b>☑️ nincs új</b> — a forrás elérhető, de nincs új tétel az elmúlt időszakban.</dd>
+    <dd><b>⚠️ részleges</b> — a forrás válaszolt, de üres vagy hiányos tartalmat adott.</dd>
+    <dd><b>🚫 validáció elutasította</b> — az adat megérkezett, de a beépített ellenőrzés gyanúsnak találta, ezért nem került be.</dd>
+    <dd><b>⚠️ jelenleg nem elérhető</b> — a forrás létezik, de a gyűjtő-környezetből most nem érhető el (átmeneti hálózati hiba vagy blokk); magától visszaáll, amint újra elérhető.</dd>
+    <dd><b>Gyűjtött link</b> — a webcím(ek), ahonnan a rendszer az adott forrás adatait figyeli (egy forrásnak több is lehet).</dd></dl>`;
+
   const hazaiChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && !isNemzetkoziSource(c.source_id, sourceKinds)).sort(bySort);
   const nemzChecks = checks.filter((c) => sourceKinds[c.source_id] !== "sajto" && isNemzetkoziSource(c.source_id, sourceKinds)).sort(bySort);
   const sajtoChecks = checks.filter((c) => sourceKinds[c.source_id] === "sajto").sort(bySort);
@@ -425,6 +441,7 @@ export function renderReport(run) {
     ${hazaiChecks.length ? checkTableKut(HAZAI_LABEL, hazaiChecks) : ""}
     ${nemzChecks.length ? checkTableKut(NEMZ_LABEL, nemzChecks) : ""}
     ${sajtoChecks.length ? checkTableSajto(SAJTO_LABEL, sajtoChecks) : ""}
+    ${checksLegend}
   </section>
 
   <footer>

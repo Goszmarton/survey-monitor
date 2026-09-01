@@ -300,6 +300,26 @@ test("Forrás-ellenőrzés: Gyűjtött link oszlop a gyűjtő-URL(ek)re; több f
   assert.match(html, /<a href="https:\/\/telex\.hu\/rss"[^>]*>/, "a sajtó (Sajtószemle) táblán is ott a gyűjtő-link");
 });
 
+// 2026-09-01 (user): a Forrás-ellenőrzés alatt legyen JELMAGYARÁZAT — mindenki értse a jelzéseket.
+test("Forrás-ellenőrzés: jelmagyarázat a tábla alatt (minden jelzés magyarázata)", () => {
+  const run = {
+    ...RUN, items: [],
+    sourceNames: { ksh: "KSH" }, sourceKinds: { ksh: "hivatalos" }, sourceUrls: { ksh: ["https://ksh.hu"] },
+    sourceChecks: [{ source_id: "ksh", status: "OK_NINCS_UJ", detail: "x", checked_at: "2026-07-22T04:00:00.000Z" }],
+  };
+  const html = renderReport(run);
+  const legend = html.slice(html.indexOf("Jelmagyarázat"));
+  assert.ok(html.includes("Jelmagyarázat"), "van Jelmagyarázat blokk");
+  // a fő jelzések magyarázata jelen van
+  assert.match(legend, /új – releváns/);
+  assert.match(legend, /új – nem releváns/);
+  assert.match(legend, /nincs új/);
+  assert.match(legend, /jelenleg nem elérhető/);
+  assert.match(legend, /Gyűjtött link/);
+  // a jelmagyarázat a forrasok szekción belül, a footer ELŐTT
+  assert.ok(html.indexOf("Jelmagyarázat") < html.indexOf("<footer>"), "a jelmagyarázat a footer előtt");
+});
+
 // 2026-09-01 (user): a hibás (nem elérhető) források a Forrás-ellenőrzés tábla VÉGÉRE kerüljenek
 // (ne az ABC közepén tűnjenek fel), és a státusz BESZÉDESEBB legyen a puszta „hiba" helyett.
 test("Forrás-ellenőrzés: a nem elérhető források a tábla VÉGÉRE, beszédes státusszal", () => {
