@@ -48,30 +48,55 @@ const disjoint = (a, b) => { for (const t of a) if (b.has(t)) return false; retu
  */
 export function deriveInstitutes(sources = [], dedupCfg = {}) {
   const generic = new Set(dedupCfg.institute_generic_tokens ?? []);
-  const map = new Map(); // key -> Set(token)
-  const add = (key, token) => {
-    const t = slug(token);
-    if (!t || generic.has(t) || (t.length < 4 && !/^[0-9]/.test(t))) return;
-    if (!map.has(key)) map.set(key, new Set());
-    map.get(key).add(t);
+  const map = new Map(); // key -> { tokens:Set<string>, bigrams:Array<[string,string]> }
+  const ensure = (key) => { if (!map.has(key)) map.set(key, { tokens: new Set(), bigrams: [] }); return map.get(key); };
+  // Egy szó felvétele token-matcherként. A PUSZTÁN NUMERIKUS token (pl. '21', '93') SOHA nem önálló
+  // matcher: illeszkedne bármely cím párt-százalékára/évszámára ('Fidesz 21%') → a tétel hamisan
+  // felvenné a 21kutato/realpr93 intézet-kulcsot (institute-token kollízió; a hamis összevonás a
+  // drágább hibamód, ARCHITEKTURA 2–3., CLAUDE.md 5). A numerikus tokent CSAK bigramban használjuk
+  // (lásd addName). A rövid (<4) nem-numerikus token is kimarad (túl gyenge jel).
+  const addToken = (key, word) => {
+    const t = slug(word);
+    if (!t || generic.has(t) || /^[0-9]+$/.test(t) || t.length < 4) return;
+    ensure(key).tokens.add(t);
+  };
+  // Intézetnév felvétele: szavanként token, ÉS 'numerikus szó + következő szó' BIGRAM, hogy a
+  // '21 Kutatóközpont' felismerhető legyen (a bare '21' tiltása mellett), de a 'Fidesz 21 százalék' NE.
+  const addName = (key, name) => {
+    const words = slug(name).split("-").filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+      addToken(key, words[i]);
+      if (/^[0-9]+$/.test(words[i]) && words[i + 1]) ensure(key).bigrams.push([words[i], words[i + 1]]);
+    }
   };
   for (const s of sources) {
     if (s.kind !== "intezet") continue;
-    add(s.id, s.id);
-    for (const w of slug(s.name).split("-")) add(s.id, w);
+    addToken(s.id, s.id); // az id egészben (pl. '21kutato' — nem numerikus-only, ezért matcher)
+    addName(s.id, s.name);
   }
   for (const [key, aliases] of Object.entries(dedupCfg.institutes ?? {})) {
-    for (const a of aliases) for (const w of slug(a).split("-")) add(key, w);
+    for (const a of aliases) addName(key, a);
   }
-  return [...map.entries()].map(([key, tokens]) => ({ key, tokens }));
+  return [...map.entries()].map(([key, v]) => ({ key, tokens: v.tokens, bigrams: v.bigrams }));
 }
 
-/** Egy tételhez tartozó intézet-kulcsok halmaza (a címben/forrásban megnevezettek). */
-function instituteKeysOf(item, institutes) {
-  const hay = new Set(slug(`${item.source_id ?? ""} ${item.title ?? ""}`).split("-"));
+/** Egy tételhez tartozó intézet-kulcsok halmaza (a címben/forrásban megnevezettek). Exportált a
+ *  kollízió-teszthez. A token-matchen felül a BIGRAM (numerikus + következő szó, pl. '21 kutatóközpont')
+ *  SZOMSZÉDOS párként illeszt a cím szó-sorozatában — így a bare '21' nem illeszkedik párt-%-ra. */
+export function instituteKeysOf(item, institutes) {
+  const words = slug(`${item.source_id ?? ""} ${item.title ?? ""}`).split("-").filter(Boolean);
+  const hay = new Set(words);
   const keys = new Set();
   for (const inst of institutes) {
-    for (const tok of inst.tokens) if (hay.has(tok)) { keys.add(inst.key); break; }
+    let matched = false;
+    for (const tok of inst.tokens) if (hay.has(tok)) { matched = true; break; }
+    if (!matched && inst.bigrams) {
+      for (const [a, b] of inst.bigrams) {
+        for (let i = 0; i < words.length - 1; i++) if (words[i] === a && words[i + 1] === b) { matched = true; break; }
+        if (matched) break;
+      }
+    }
+    if (matched) keys.add(inst.key);
   }
   return keys;
 }
@@ -191,7 +216,14 @@ export function groupStories(items, { cfg = {}, institutes = [], _naive = false 
   // configban (levél-semleges); a feltöltése külön, levél-ható flip. A poliszém 'magyar'
   // (=Hungarian ÉS Magyar Péter) KIMARAD a listából — kivétele valódi parafrázisokat törne
   // (dice-él ≥1 közös-salient guard-ja), lásd a name-hub-guard tesztet.
-  const stop = new Set([...(cfg.stopwords ?? []), ...(cfg.title_generic_tokens ?? []), ...(cfg.name_hub_tokens ?? [])]);
+  // + procedural_hub_tokens (2026-09-03 mérés): GENERIKUS JOGI-ELJÁRÁSI kifejezések ('hűtlen
+  // kezelés', 'nyomoz', 'rendőrség', 'hivatali visszaélés', 'házkutatás', 'feljelentés'), amelyek a
+  // containment-élen KÜLÖNBÖZŐ korrupciós/nyomozati ÜGYEKET hidalnak egyetlen blobbá (mért éles: egy
+  // 26-tagú blob fűzte össze az Eximbank + Paks-2 tőkeemelés + 'nyuszimotor' + Orbán Győző–Mészáros +
+  // Covid ügyeket). Ugyanaz a HIBAOSZTÁLY, mint a személynév-hub, csak eljárási szókincsen. Az ügyek
+  // a SAJÁT entitásukon (eximbank/paks/nyuszimotor) csoportosulnak, a generikus eljárási hídon NEM; a
+  // valódi, ugyanazon ügyről szóló parafrázisok (közös entitás/magas dice) érintetlenek.
+  const stop = new Set([...(cfg.stopwords ?? []), ...(cfg.title_generic_tokens ?? []), ...(cfg.name_hub_tokens ?? []), ...(cfg.procedural_hub_tokens ?? [])]);
   const nodes = items.map((it) => ({
     it,
     stoks: new Set(rawTokens(it.title, stop).map(stem)),
