@@ -1,0 +1,56 @@
+{
+  "themes": [],
+  "frequencies": [],
+  "calendars": [
+    {
+      "lastUpdateDate": "2026.09.07. 08:30",
+      "nextUpdateDate": "2026.12.07. 08:30",
+      "type": "Tájékoztató",
+      "title": "MNB-lakásárindex",
+      "frequency": "Negyedéves",
+      "referencePeriod": "2026. II. negyedév",
+      "publicationThemes": ["005-003-001"],
+      "url": "/publikacios-temak/arak_-arfolyamok/lakasarak/tajekoztato---mnb-lakasarindex"
+    },
+    {
+      "lastUpdateDate": "2026.09.07. 08:30",
+      "nextUpdateDate": "2026.10.07. 08:30",
+      "type": "Idősor",
+      "title": "BUX index adatok",
+      "frequency": "Havi",
+      "referencePeriod": "2026. augusztus",
+      "publicationThemes": ["002-001-001"],
+      "url": "/publikacios-temak/kamatlabak/bux-index-adatok"
+    },
+    {
+      "lastUpdateDate": "2026.09.14. 00:00",
+      "nextUpdateDate": "2026.10.14. 00:00",
+      "type": "Tájékoztató",
+      "title": "Havi fizetési mérleg",
+      "frequency": "Havi",
+      "referencePeriod": "2026. július",
+      "publicationThemes": ["001-003-001"],
+      "url": "/publikacios-temak/fizetesi-merleg/havi-adatok"
+    },
+    {
+      "lastUpdateDate": "2026.06.03. 08:30",
+      "nextUpdateDate": "2026.09.03. 08:30",
+      "type": "Tájékoztató",
+      "title": "Régi negyedéves kiadvány",
+      "frequency": "Negyedéves",
+      "referencePeriod": "2026. I. negyedév",
+      "publicationThemes": ["001-001-001"],
+      "url": "/publikacios-temak/regi/kiadvany"
+    },
+    {
+      "lastUpdateDate": "",
+      "nextUpdateDate": "2026.09.30. 08:30",
+      "type": "Tájékoztató",
+      "title": "Hiányos dátumú bejegyzés",
+      "frequency": "Havi",
+      "referencePeriod": "2026. augusztus",
+      "publicationThemes": ["001-001-002"],
+      "url": "/publikacios-temak/hianyos/datum"
+    }
+  ]
+}

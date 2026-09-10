@@ -8,6 +8,7 @@ import * as rss from "./sources/rss.js";
 import * as htmllist from "./sources/htmllist.js";
 import * as europeelects from "./sources/europeelects.js";
 import * as eurobarometer from "./sources/eurobarometer.js";
+import * as mnbpubnap from "./sources/mnbpubnap.js";
 import {
   upsertItems,
   recordSourceCheck,
@@ -63,7 +64,7 @@ export function applyTitleFilter(items, keywords) {
 
 // Dedikált forrás-adapterek (nem a generikus feed/list_url út): source.adapter → modul.
 // A modul a htmllist/rss-sel azonos szerződést teljesíti: fetchNew(source, opts) → {items, check}.
-const ADAPTERS = { europeelects, eurobarometer };
+const ADAPTERS = { europeelects, eurobarometer, mnbpubnap };
 
 // A forrás GYŰJTŐ-VÉGPONTJAI (name + url + kind) — EGY igazságforrás a fetch (channelsOf) ÉS a
 // megjelenítés (Forrás-ellenőrzés link-oszlop, run.js) számára, hogy a kettő ne csússzon szét
