@@ -64,18 +64,19 @@ test("feed-aktiválás: realpr93 B→A WordPress-feed, a mentett feed 10 tétel 
   assert.equal(latestDay(r.items), "2026-02-09", "legfrissebb tétel 2026-02-09 — 180 nap, a STALE-határon");
 });
 
-// tarskutato (2026-08-09): feed-aktiválás, mint realpr93 — a csatorna ÉL és INGYEN van, a
-// STALE-kor (határ FÖLÖTT) NEM ejtő ok (elvi rögzítés: forrást csak gépi csatorna hiánya vagy
-// megszűnés ejt). PIROS a flip ELŐTT (kaszt="?"), ZÖLD kaszt A + feed után. A mai mentett feed
-// a szerződés: 10 keltezett tétel, legfrissebb 2026-01-26.
-test("feed-aktiválás: tarskutato ? → A WordPress-feed, a mentett feed 10 tétel / legfr. 2026-01-26 (határ-fölötti STALE, élő csatorna)", async () => {
-  const s = selectActiveSources(sources).find((x) => x.id === "tarskutato");
-  assert.ok(s, "tarskutato aktív forrás (kaszt ?→A + feed)");
-  assert.equal(s.feed, "https://tarsadalomkutato.hu/feed/", "WordPress fő-feed");
-  const r = await fetchNew(s, { since: 0, fetchImpl: stub(fx("tarskutato_feed.xml")) });
-  assert.equal(r.check.status, "OK_UJ");
-  assert.equal(r.items.length, 10, "a mai mentett feed 10 tétele");
-  assert.equal(latestDay(r.items), "2026-01-26", "legfrissebb tétel 2026-01-26 — határ FÖLÖTTI STALE, mégis élő csatorna");
+// tarskutato NYUGDÍJAZVA (2026-09-21): a WordPress-csatorna MEGHALT. A tarsadalomkutato.hu 2026-09-16
+// óta üres (gyökér 200/0 bájt), a /feed/ + sitemap + wp-json mind Apache-404 (a WordPress eltűnt) —
+// NEM a 21kutato-féle átmeneti runner-IP-blokk, hanem a szabadeu-féle MEGSZŰNT csatorna. A forrás
+// eleve szunnyadó opportunista bekötés volt (utolsó tartalom 2026-01-26, 0 tétel a DB-ben). status
+// MEGSZUNT + revisit:"never" → kikerül a fetcherből (nincs napi HIBA-zaj), tombstone marad a configban.
+// A `revisit:"never"` az isActiveSource ELŐFELTÉTELÉN kizár (mint szabadeu). Ha valaha újra publikál,
+// egy sorral visszaköthető. RED a config-flip ELŐTT (tarskutato akkor még aktív), ZÖLD utána.
+test("nyugdíjazás: tarskutato MEGSZŰNT csatorna → NEM aktív (tombstone, revisit:never)", () => {
+  const s = sources.find((x) => x.id === "tarskutato");
+  assert.ok(s, "tarskutato a configban MARAD (tombstone, audit-nyom)");
+  assert.equal(s.revisit, "never", "revisit=never (halott csatorna, sose nézd újra)");
+  assert.equal(s.status, "MEGSZUNT", "status=MEGSZUNT (a WordPress-feed 2026-09-16 óta 404)");
+  assert.ok(!selectActiveSources(sources).some((x) => x.id === "tarskutato"), "kikerült az aktív forrásokból (nincs napi lekérdezés)");
 });
 
 // ipsos (2026-08-09): feed-aktiválás — ugyanaz az eset, mint tarskutato/realpr93, csak
