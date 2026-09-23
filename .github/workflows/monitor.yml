@@ -2,15 +2,17 @@ name: daily-monitor
 
 on:
   schedule:
-    # BACKUP-slot (2026-08-28). Az ELSŐDLEGES napi indító a SZERVER: curl → workflow_dispatch
-    # 16:30 Europe/Budapest-kor (systemd-timer, DST-biztos, pontos — nem függ a scheduled-cron
-    # sorállásától; ld. scripts/gh-trigger.sh + docs/UZEMELTETES.md). Ez a cron csak BACKUP arra
-    # az esetre, ha a szerver-trigger nem lő (kiesés/hálózat/PAT). A dupla indítást (ha mindkettő
-    # fut) a run.js idempotencia-őre dedupolja (hasCompletedRun) → pontosan egy levél megy ki.
+    # BACKUP-slot. Az ELSŐDLEGES napi indító a SZERVER: curl → workflow_dispatch
+    # 15:55 Europe/Budapest-kor (systemd-timer, DST-biztos, pontos — nem függ a scheduled-cron
+    # sorállásától; ld. scripts/gh-trigger.sh + docs/UZEMELTETES.md). 2026-09-23: a korábbi 16:30-ról
+    # 15:55-re hozva (user), hogy a levél ~16:15-re kimenjen (a lánc: trigger → futás ~14 perc →
+    # deploy + tükör-frissítés + küldés ~3-4 perc). Ez a cron csak BACKUP arra az esetre, ha a
+    # szerver-trigger nem lő (kiesés/hálózat/PAT). A dupla indítást (ha mindkettő fut) a run.js
+    # idempotencia-őre dedupolja (hasCompletedRun) → pontosan egy levél megy ki.
     #
     # 16:00 UTC: a szerver-trigger MÖGÉ tolva, év közben végig utána — nyáron 18:00 CEST
-    # (~1,5h a szerver-trigger után), TÉLEN 17:00 CET (~0,5h után). DST-figyelmeztetés: egy fix
-    # UTC-cron nem tud egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
+    # (~2h a szerver-trigger után), TÉLEN 17:00 CET (~1h után). Coarse safety net; DST-figyelmeztetés:
+    # egy fix UTC-cron nem tud egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
     # A korábbi 14:33 UTC (esti, 2026-08-26) és a 08:43 UTC (15:00-s SLA) ELÉVÜLT — ld. git-történet.
     - cron: "0 16 * * *"
   workflow_dispatch:
@@ -50,12 +52,14 @@ jobs:
       - name: Test-gate (config-blocklist + regresszió)
         run: npm test
 
-      - name: Napi futás (jelentés + email)
+      - name: Napi futás (jelentés + levél-előkészítés)
         # A LÉPÉS saját timeoutja kisebb a job-énál (30) — így egy beragadt fetch a LÉPÉST
         # buktatja (failure()), tartalékkal a hiba-email lefutására, a job-szintű cancel
         # ELŐTT. (2026-08-24: egy időtlen body-stream 30 percig némán függött, a job-cancel
         # skippelt MINDENT, a failure()-höz kötött hiba-email is elmaradt.) Az egy-hívásos
         # body-timeout már a http.js-ben ül; ez a step-timeout a második védővonal.
+        # 2026-09-23: a run.js már csak ELŐKÉSZÍTI a levelet (outbox/), a KÜLDÉS a deploy utáni
+        # lépésbe került (tükör-frissítés után) → SMTP itt már nem kell.
         timeout-minutes: 25
         env:
           # FORCE_RUN=1 átlépi az idempotencia-őrt (run.js): kézi dispatch force=true esetén a
@@ -65,9 +69,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          MAIL_TO: ${{ secrets.MAIL_TO }}
         run: node src/run.js
 
       - name: Állapot-DB + archív visszacommit (main)
@@ -103,6 +104,36 @@ jobs:
       - name: Pages deploy (retry — tranziens beragadásra)
         if: steps.deploy1.outcome == 'failure'
         uses: actions/deploy-pages@v4
+
+      # 2026-09-23: a levél a Pages-deploy + tükör-frissítés UTÁN megy ki (nem a run.js-ben), hogy a
+      # linkre (napihir tükör) kattintva a MAI jelentés jöjjön. A send-email.mjs opcionálisan
+      # megpiszkálja a szerver tükör-újraépítését (MIRROR_REBUILD_HOOK), megvárja a tükör frissülését
+      # (fail-open: türelmi idő után is küld — a napi levél sosem maradhat el), majd küld + a valós
+      # státuszt a DB-be írja. A run.js már outbox/-ba készítette a tárgyat/törzset.
+      - name: Levél küldése (tükör-frissítés után)
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          # Opcionális: védett szerver-végpont a tükör azonnali újraépítéséhez (a 30 perces sweep
+          # helyett). Ha nincs beállítva, a send-email a rendes sweepre vár (fail-openig).
+          MIRROR_REBUILD_HOOK: ${{ secrets.MIRROR_REBUILD_HOOK }}
+        run: node scripts/send-email.mjs
+
+      - name: Levél-státusz visszacommit (main)
+        # A send-email.mjs a küldés után a VALÓS email_status-t írta a DB-be (a run.js "prepared"-öt
+        # commitolt). Ezt visszacommitoljuk, hogy a reggeli rutin / audit a valós állapotot lássa.
+        # A concurrency-group (daily-monitor) sorosít, más nem push-ol közben → fast-forward.
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/monitor.db
+          if git diff --cached --quiet; then
+            echo "Nincs email_status-változás — nincs mit commitolni."
+          else
+            git commit -m "state: levél-státusz $(date -u +%F)"
+            git push
+          fi
 
       - name: Hiba-email (ha a futás elhasalt)
         # failure() ÉS cancelled(): a job-szintű timeout CANCELLED-del öl (nem failure), így

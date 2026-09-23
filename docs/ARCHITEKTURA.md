@@ -41,7 +41,7 @@ architektúra épül:
 
 ```mermaid
 flowchart TD
-    SRV["Szerver-trigger (PRIMARY)\ncurl → workflow_dispatch\n16:30 Europe/Budapest"] --> RUN[run.js — napi futás]
+    SRV["Szerver-trigger (PRIMARY)\ncurl → workflow_dispatch\n15:55 Europe/Budapest"] --> RUN[run.js — napi futás]
     CRON["GitHub cron (BACKUP)\n0 16 * * * UTC"] --> RUN
     RUN --> GUARD{"őr: ma már\nlefutott? (hasCompletedRun)"}
     GUARD -->|igen, force nélkül| SKIP["no-op (buildDist a Pages-hez)"]
@@ -86,7 +86,8 @@ flowchart TD
 
 - **Indítás — SZERVER-trigger PRIMARY + GitHub-cron BACKUP (2026-08-28):** az
   ELSŐDLEGES napi indító a **Hetzner-szerver** (a napihir-tükör hosztja): egy
-  systemd-timer **16:30 Europe/Budapest**-kor (DST-biztos helyi idő) `curl`-lel
+  systemd-timer **15:55 Europe/Budapest**-kor (DST-biztos helyi idő; 2026-09-23-tól, korábban
+  16:30 — hogy a levél ~16:15-re kimenjen) `curl`-lel
   `workflow_dispatch`-et küld a GitHub Actionsnek (`scripts/gh-trigger.sh`;
   owner/repo a git remote-ból, PAT külön szerver-fájlból — repóba SOHA; HTTP 204 =
   siker). MIÉRT: a `workflow_dispatch` pontos, nem függ a scheduled-cron

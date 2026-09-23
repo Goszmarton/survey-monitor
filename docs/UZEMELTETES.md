@@ -269,16 +269,24 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   mind levél-semleges (csak a lábléc jelez).
 - **A gemini tartósan degradált, de a groq viszi** a triázst. A 08-26-i step-timeout-bukás
   gyök-oka (timeout nélküli LLM-adapterek) **javítva** (§6): per-hívás 30s bounded timeout.
-- **Ütemezés (2026-08-28-tól):** az ELSŐDLEGES indító a **szerver-trigger** (`curl →
-  workflow_dispatch`, 16:30 Europe/Budapest, systemd-timer a Hetzner-en); a GitHub scheduled
-  cron **BACKUP** (`0 16 * * *` UTC), a szerver-trigger mögé tolva. A dupla-indítást a `run.js`
-  idempotencia-őre dedupolja → **egy** összevont levél. Runbook: **§8**.
+- **Ütemezés:** az ELSŐDLEGES indító a **szerver-trigger** (`curl → workflow_dispatch`,
+  **15:55 Europe/Budapest** — 2026-09-23-tól, korábban 16:30 —, systemd-timer a Hetzner-en); a
+  GitHub scheduled cron **BACKUP** (`0 16 * * *` UTC), a szerver-trigger mögé tolva. A dupla-indítást
+  a `run.js` idempotencia-őre dedupolja → **egy** összevont levél. Runbook: **§8**.
+- **A levél a deploy UTÁN megy ki (2026-09-23):** a `run.js` már csak ELŐKÉSZÍTI a levelet
+  (`outbox/`), a tényleges küldést a workflow utolsó lépése végzi (`scripts/send-email.mjs`), a
+  Pages-deploy + a **tükör-frissítés UTÁN** — hogy a levél linkjére (napihir tükör) kattintva a MAI
+  jelentés jöjjön (korábban a tükör a levélnél később renderelt → a tegnapit mutatta). A send-email
+  megvárja a tükör frissülését, de **FAIL-OPEN**: türelmi idő után is küld (a napi levél sosem marad
+  el). A teljes lánc ~18 perc (trigger → futás ~14p → deploy+tükör+küldés ~4p) → a levél ~16:15-re
+  landol. Opcionális gyorsítás: `MIRROR_REBUILD_HOOK` titok (védett szerver-végpont, ami azonnal
+  újraépíti a tükröt a 30 perces sweep helyett).
 
 ## 8. Szerver-trigger — napi pontos indítás (PRIMARY) + GitHub-cron (BACKUP)
 
 **Miért:** a GitHub scheduled cron sorállása kiszámíthatatlan (`+18…+78` perc, néha több). A
 pontos napi indításhoz a **Hetzner-szerver** (a `napihir`-tükör hosztja) `curl`-lel
-`workflow_dispatch`-et küld 16:30 Europe/Budapest-kor; a scheduled cron csak backup, ha a
+`workflow_dispatch`-et küld 15:55 Europe/Budapest-kor; a scheduled cron csak backup, ha a
 szerver nem lő.
 
 **Hogyan dedupál (az „őr"):** ha a szerver-trigger ÉS a backup-cron is elindít egy futást, a
@@ -320,7 +328,7 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    # elvárt: "OK (HTTP 204)" + az Actionsben megjelenik egy futás
    ```
 
-4. **systemd service + timer** (`napi` userként; a szerver TZ-je adja a 16:30 helyit):
+4. **systemd service + timer** (`napi` userként; explicit TZ adja a 15:55 helyit):
    ```ini
    # /etc/systemd/system/gh-trigger.service
    [Unit]
@@ -341,11 +349,12 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    ```ini
    # /etc/systemd/system/gh-trigger.timer
    [Unit]
-   Description=Napi monitor trigger 16:30 (Europe/Budapest)
+   Description=Napi monitor trigger 15:55 (Europe/Budapest)
 
    [Timer]
-   # Explicit TZ (systemd ≥240) → DST-biztos, a szerver rendszer-TZ-jétől FÜGGETLENÜL 16:30 helyi.
-   OnCalendar=*-*-* 16:30:00 Europe/Budapest
+   # Explicit TZ (systemd ≥240) → DST-biztos, a szerver rendszer-TZ-jétől FÜGGETLENÜL 15:55 helyi.
+   # 2026-09-23: 16:30 → 15:55 (user), hogy a levél ~16:15-re kimenjen (a küldés a deploy+tükör után).
+   OnCalendar=*-*-* 15:55:00 Europe/Budapest
    Persistent=true
 
    [Install]
@@ -354,8 +363,14 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable --now gh-trigger.timer
-   systemctl list-timers gh-trigger.timer      # a következő tüzelés 16:30 helyi
+   systemctl list-timers gh-trigger.timer      # a következő tüzelés 15:55 helyi
    sudo systemctl start gh-trigger.service      # kézi próba → journalctl -u gh-trigger
+   ```
+   **Az idő módosítása (pl. 15:55-re) egy már működő telepítésen:**
+   ```bash
+   sudo sed -i 's/16:30:00/15:55:00/' /etc/systemd/system/gh-trigger.timer
+   sudo systemctl daemon-reload && sudo systemctl restart gh-trigger.timer
+   systemctl list-timers gh-trigger.timer      # ellenőrzés: NEXT = 15:55 helyi
    ```
 
 **Ha a szerver-trigger bukik** (`systemctl --failed`, `journalctl -u gh-trigger`): nem vészes —

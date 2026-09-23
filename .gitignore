@@ -14,3 +14,7 @@ state/*.db-shm
 
 # Kapu-A/B kísérlet kimenete (nem prod állapot)
 state/experiments/
+
+# A napi levél előkészített tartalma (run.js írja, a send-email.mjs olvassa a workflow
+# utolsó lépésében). Job-lokális átadás, NEM verziózott.
+outbox/

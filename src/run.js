@@ -7,7 +7,6 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { renderReport, renderCombined, combinedSubject, storyGroups, PAGES_BASE } from "./report.js";
 import { buildDist } from "./dist.js";
-import { sendMail } from "./email.js";
 import { openDb, startRun, finishRun, getLastRunStartedAt, hasCompletedRun } from "./state/db.js";
 import { collect, selectActiveSources, sourceEndpoints } from "./collect.js";
 import { complete } from "./llm/complete.js";
@@ -173,22 +172,31 @@ async function main() {
   // (A reportPath-t továbbra is írjuk dist/-be és a finishRun-ba, csak nem ez a link célja.)
   run.pagesUrl = PAGES_BASE;
 
-  // ---- E-mail: EGY összevont levél (SMTP-konfig nélkül a futás nem hasal el) ----
-  // 08-26 döntés: a korábbi két külön levél (digest + 🔴 KIEMELT) egybe vonva — a KIEMELT
-  // szekció a digest tetején (renderCombined). Az emailStatus továbbra is megkülönbözteti a
-  // kiemeltet is tartalmazó levelet (sent+kiemelt) a sima digesttől (sent) — a DB/audit folytonos.
+  // ---- E-mail: ELŐKÉSZÍTÉS (a küldés a deploy UTÁN, scripts/send-email.mjs) ----
+  // 2026-09-23 (user + kolléga-visszajelzés): a levelet korábban ITT küldtük, a futás végén — DE a
+  // commit/push + a tükör (napihir, a levél link-célja) újraépítése CSAK EZUTÁN történt, így a levél
+  // megjöttekor a link a TEGNAPI jelentést mutatta. Megoldás: a run.js már csak ELŐKÉSZÍTI a levelet
+  // (outbox/), és a tényleges küldés a workflow UTOLSÓ lépésébe került (a Pages-deploy + tükör-frissítés
+  // UTÁN), ahol előbb megvárjuk a tükör frissülését (fail-open), és csak utána küldünk. A run.js emiatt
+  // SMTP-t már nem érint. (08-26 döntés változatlan: EGY összevont levél, KIEMELT-szekció a tetején.)
   const hasKiemelt = kiemeltCount > 0;
-  const emailSent = await sendMail(combinedSubject(run), renderCombined(run));
-  console.log(emailSent ? `Levél elküldve${hasKiemelt ? " (KIEMELT szekcióval)" : ""}.` : "Levél kihagyva (nincs SMTP-konfig).");
-  mark("email");
+  await mkdir("outbox", { recursive: true });
+  await writeFile("outbox/subject.txt", combinedSubject(run));
+  await writeFile("outbox/body.html", renderCombined(run));
+  await writeFile("outbox/meta.json", JSON.stringify({ runId, kiemelt: hasKiemelt }));
+  console.log(`Levél előkészítve (outbox) — a küldés a deploy utáni lépésben (send-email.mjs)${hasKiemelt ? ", KIEMELT szekcióval" : ""}.`);
+  mark("email-prepare");
 
+  // A futás LEZÁRVA (finishedAt → az idempotencia-őr innentől dedupolja a dupla-triggert). Az
+  // emailStatus egyelőre "prepared"; a valós státuszt (sent/sent+kiemelt/skipped) a send-email.mjs
+  // írja felül a küldés után, és a workflow azt is visszacommitolja → az audit a VALÓS állapotot látja.
   finishRun(db, {
     runId,
     attemptId,
     finishedAt: new Date().toISOString(),
     providersUsed,
     reportUrl: reportPath,
-    emailStatus: emailSent ? (hasKiemelt ? "sent+kiemelt" : "sent") : "skipped",
+    emailStatus: "prepared",
   });
   db.close();
 }

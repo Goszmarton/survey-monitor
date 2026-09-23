@@ -26,7 +26,7 @@ test("package.json type=module — a --check ESM-ként parse-ol", () => {
 // hívja a main()-t a modul-törzsben, a reset-script pedig a top-level-en FUTTATJA a
 // migrációt → importra mindkettő mellékhatást okozna (valódi futás / DB-írás). Ezért
 // ezeket csak statikusan --check-eljük, a fenti korlátokat tudomásul véve.
-const checkOnly = ["src/run.js", "scripts/reset-stuck-verdicts.mjs"];
+const checkOnly = ["src/run.js", "scripts/send-email.mjs", "scripts/reset-stuck-verdicts.mjs"];
 
 // email.js argv-guarddal fut (a send CSAK `--failure` argv-re) és mellékhatás nélkül
 // betölthető (config env nélkül null → nincs SMTP-hívás) → dinamikus import()-tal
