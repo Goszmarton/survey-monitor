@@ -631,7 +631,10 @@ export function digestSubject(run) {
   // benne az elmúlt 14 napról infó — se a tárgyban, se a törzsben; a 14 napos KIEMELT szekció is
   // eltűnt az emailből és a honlapról egyaránt).
   const fresh = freshRepresentatives(run);
-  return endash(`Survey Monitor — ${fresh.length} új (24h)`);
+  // 2026-09-23 (user, kolléga-visszajelzés): a nap DÁTUMA (runId) a tárgyban. A korábbi dátumtalan,
+  // napról napra azonos mintájú tárgy a levelezőben egy szálba fűződött / duplikátumnak tűnt (főleg
+  // ha az „N" egyezett), így a mai levelet tegnapinak nézték. A dátum minden napot egyedivé tesz.
+  return endash(`Survey Monitor — ${run.runId} — ${fresh.length} új (24h)`);
 }
 
 export function renderDigest(run) {

@@ -22,7 +22,17 @@ test("digestSubject: CSAK a 24 órás kép a tárgyban (nincs 14 napos KIEMELT-i
   // UJ_24H + releváns: median:1, ksh:1 → 2 új (24h). A 14 napos „N kiemelt" rész KIKERÜLT
   // (user 2026-09-01: napi jelentés, ne legyen benne az elmúlt 14 napról infó).
   // Rövid gondolatjel (–, U+2013), NEM hosszú (—): magyar tipográfia + user-kérés 2026-08-31.
-  assert.equal(digestSubject(RUN), "Survey Monitor – 2 új (24h)");
+  // 2026-09-23 (user, kolléga-visszajelzés): a tárgyba KERÜLT a nap dátuma (runId) — a dátumtalan,
+  // napról napra azonos mintájú tárgy ("Survey Monitor – N új (24h)") a levelezőben egy szálba
+  // fűződött / duplikátumnak tűnt, így a mai levelet tegnapinak nézték. A dátum egyedivé teszi.
+  assert.equal(digestSubject(RUN), "Survey Monitor – 2026-07-22 – 2 új (24h)");
+});
+
+test("digestSubject: a nap DÁTUMA (runId) a tárgyban van (kolléga-visszajelzés 2026-09-23)", () => {
+  assert.ok(digestSubject(RUN).includes("2026-07-22"), "a runId dátum a tárgyban");
+  // két különböző nap tárgya KÜLÖNBÖZIK, még azonos számnál is (nincs szál-összefűzés)
+  const masnap = { ...RUN, runId: "2026-07-23" };
+  assert.notEqual(digestSubject(RUN), digestSubject(masnap), "más nap → más tárgy");
 });
 
 test("digestSubject: a 14 napos (KORABBI) KIEMELT SEM jelenik meg a tárgyban", () => {
@@ -32,7 +42,7 @@ test("digestSubject: a 14 napos (KORABBI) KIEMELT SEM jelenik meg a tárgyban", 
     { canonical_key: "ksh:1", source_id: "ksh", kind: "hivatalos_adat", title: "Friss adat", url: "https://ksh.hu/1", freshness: "UJ_24H", relevant: 1, significance: "FONTOS" },
     { canonical_key: "telex:k", source_id: "telex", kind: "sajto", title: "Régi kiemelt sztori", url: "https://telex.hu/k", freshness: "KORABBI", relevant: 1, significance: "KIEMELT" },
   ] };
-  assert.equal(digestSubject(run), "Survey Monitor – 1 új (24h)");
+  assert.equal(digestSubject(run), "Survey Monitor – 2026-07-22 – 1 új (24h)");
   assert.ok(!digestSubject(run).includes("kiemelt"), "nincs 'kiemelt' szó a tárgyban");
   assert.ok(!digestSubject(run).includes("14 nap"), "nincs 14 napos infó a tárgyban");
 });
