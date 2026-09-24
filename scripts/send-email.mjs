@@ -12,6 +12,7 @@
 // SOSEM marad el" garancia (ARCHITEKTURA) nem sérülhet. Csak a valódi SMTP-hiba bukik (→ hiba-email).
 
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { sendMail } from "../src/email.js";
 import { PAGES_BASE } from "../src/report.js";
@@ -62,7 +63,20 @@ async function pokeRebuild(hook, log = console.log, fetchImpl = fetch) {
   }
 }
 
+// Van-e előkészített levél? A run.js CSAK akkor ír outbox-ot, ha ténylegesen renderelt egy
+// jelentést. Ha az idempotencia-őr no-opolt (a mai futás már lezárult egy korábbi triggerből —
+// pl. a backup-cron a szerver-trigger UTÁN), nincs outbox → NINCS küldenivaló (a levél már kiment
+// a primary futással). Ekkor a send-email is no-opol (nem hibázik). Enélkül minden backup-futás
+// téves hiba-emailt küldene (2026-09-23 incidens: a 19:30Z backup-cron a hiányzó outbox-on elhasalt).
+export function outboxReady(dir = OUTBOX) {
+  return existsSync(`${dir}/meta.json`);
+}
+
 export async function main() {
+  if (!outboxReady()) {
+    console.log("Nincs előkészített levél (outbox hiányzik) — a futás valószínűleg az idempotencia-őr miatt no-opolt; a levél már kiment a primary futással. Kilépés küldés nélkül.");
+    return;
+  }
   const [subject, body, metaRaw] = await Promise.all([
     readFile(`${OUTBOX}/subject.txt`, "utf8"),
     readFile(`${OUTBOX}/body.html`, "utf8"),

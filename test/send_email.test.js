@@ -1,10 +1,36 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMirrorFresh, waitForMirror } from "../scripts/send-email.mjs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isMirrorFresh, waitForMirror, outboxReady } from "../scripts/send-email.mjs";
 
 // 2026-09-23: a levél a Pages-deploy + tükör-frissítés UTÁN megy ki (send-email.mjs), hogy a linkre
 // (napihir tükör) kattintva a MAI jelentés jöjjön. A tükör frissülését megvárjuk, DE FAIL-OPEN: a
 // türelmi idő letelte után is küldünk (a napi levél sosem maradhat el — ARCHITEKTURA/CLAUDE.md).
+
+// 2026-09-23 incidens-regresszió: a backup-cron a szerver-trigger UTÁN fut, az idempotencia-őr
+// no-opol → NINCS outbox. A send-email-nek ekkor NO-OPOLNIA kell (nem hibázhat), különben minden
+// backup-futás téves "a mai jelentés nem készült el" hiba-emailt küld.
+test("outboxReady: hiányzó outbox → false (a send-email no-opol, nem hibázik)", () => {
+  const empty = mkdtempSync(join(tmpdir(), "outbox-empty-"));
+  try {
+    assert.equal(outboxReady(empty), false, "üres könyvtár → nincs meta.json → false");
+    assert.equal(outboxReady(join(empty, "nincs-is")), false, "nem létező könyvtár → false");
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test("outboxReady: meglévő meta.json → true (van küldenivaló)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "outbox-full-"));
+  try {
+    writeFileSync(join(dir, "meta.json"), JSON.stringify({ runId: "2026-09-24", kiemelt: false }));
+    assert.equal(outboxReady(dir), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("isMirrorFresh: a mai runId 'futás:' markerére illeszt, tegnapi archív-linkre NEM", () => {
   const runId = "2026-09-23";
