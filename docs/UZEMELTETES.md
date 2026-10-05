@@ -376,3 +376,49 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
 **Ha a szerver-trigger bukik** (`systemctl --failed`, `journalctl -u gh-trigger`): nem vészes —
 a **backup-cron** (16:00 UTC) aznap elkapja. A tartós bukást a §1 pipahiánya (nem jött levél)
 jelzi. A PAT lejárta a leggyakoribb ok → a `journalctl` HTTP 401/403-at mutat.
+
+### 8b. Tükör-proxy feed-cache (datacenter-blokkolt források) — 2026-10-05
+
+**Miért:** a Cloudflare egyes forrásokat (telex, policysol) a GitHub-runner datacenter-ASN-jéről
+BLOKKOL (403/fetch failed), de a Hetzner-szerverről ELÉR (mérve). A szerver letölti őket a webroot
+cache-ébe, a Caddy kiszolgálja (`napihir.duckdns.org/cache/…`), és az Actions ONNAN olvassa (a config
+`feed`/`list_url` a cache-URL-re mutat). A `scripts/mirror-feeds.sh` FAIL-SAFE (hibás letöltésnél a
+régi cache marad); a `build-site.mjs` nem-törlő → a `cache/` túléli a tükör-újraépítést.
+
+**Telepítés (`napi` userként):**
+```bash
+cd ~/survey-monitor && git pull --ff-only          # a script behúzása
+CACHE_DIR=/srv/napihir/cache bash scripts/mirror-feeds.sh   # kézi próba (OK sorok)
+curl -s -o /dev/null -w '%{http_code}\n' https://napihir.duckdns.org/cache/telex.xml  # 200 kell
+```
+```ini
+# /etc/systemd/system/mirror-feeds.service
+[Unit]
+Description=Tükör-proxy feed-cache (telex, policysol)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=napi
+Environment=CACHE_DIR=/srv/napihir/cache
+ExecStart=-/usr/bin/git -C /home/napi/survey-monitor pull --ff-only -q
+ExecStart=/usr/bin/bash /home/napi/survey-monitor/scripts/mirror-feeds.sh
+```
+```ini
+# /etc/systemd/system/mirror-feeds.timer
+[Unit]
+Description=Tükör-proxy feed-cache 15 percenként
+[Timer]
+OnCalendar=*-*-* *:00/15 Europe/Budapest
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now mirror-feeds.timer
+systemctl list-timers mirror-feeds.timer
+```
+**Ha a cache 404/nem frissül:** ellenőrizd, a Caddy a `/srv/napihir`-t (benne `cache/`) szolgálja-e,
+és a `mirror-feeds` timer fut-e (`journalctl -u mirror-feeds`). A forrás a cache megállásakor nem ad
+HAMIS adatot (a since-szűrő pubDate-alapú), csak kimaradhat egy nap. 21kutato: a Hetznert IS tiltja
+(403) → NEM cache-elhető innen, marad halasztva.
