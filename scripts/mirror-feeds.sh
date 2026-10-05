@@ -23,7 +23,8 @@ fetch_raw() { # url outfile
   local url="$1" out="$2" tmp
   tmp="$(mktemp)"
   if curl -fsS -A "$UA" --max-time 30 "$url" -o "$tmp" && [ -s "$tmp" ]; then
-    mv "$tmp" "$out"; echo "OK   $url -> $out ($(wc -c <"$out") B)"
+    mv "$tmp" "$out"; chmod 644 "$out"   # az mktemp 0600-at ad → a Caddy (más user) nem olvasná (403); világolvashatóvá tesszük
+    echo "OK   $url -> $out ($(wc -c <"$out") B)"
   else
     rm -f "$tmp"; echo "HIBA $url (a régi cache marad)" >&2; rc=1
   fi
@@ -37,6 +38,7 @@ fetch_abs() { # url outfile absbase
   tmp="$(mktemp)"
   if curl -fsS -A "$UA" --max-time 30 "$url" -o "$tmp" && [ -s "$tmp" ]; then
     sed -e "s|href=\"/|href=\"${base}/|g" -e "s|src=\"/|src=\"${base}/|g" "$tmp" > "$out"
+    chmod 644 "$out"   # világolvasható, hogy a Caddy (más user) kiszolgálhassa
     echo "OK   $url -> $out ($(wc -c <"$out") B, abszolutizálva: $base)"; rm -f "$tmp"
   else
     rm -f "$tmp"; echo "HIBA $url (a régi cache marad)" >&2; rc=1
