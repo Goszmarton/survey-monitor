@@ -271,7 +271,8 @@ Az §1–5 azt írja le, mi a normális; ez az egyetlen rész, ami akkor segít,
   gyök-oka (timeout nélküli LLM-adapterek) **javítva** (§6): per-hívás 30s bounded timeout.
 - **Ütemezés:** az ELSŐDLEGES indító a **szerver-trigger** (`curl → workflow_dispatch`,
   **15:55 Europe/Budapest** — 2026-09-23-tól, korábban 16:30 —, systemd-timer a Hetzner-en); a
-  GitHub scheduled cron **BACKUP** (`0 16 * * *` UTC), a szerver-trigger mögé tolva. A dupla-indítást
+  GitHub scheduled cron **BACKUP** (`0 14 * * *` UTC — 2026-10-07: 16:00→14:00, hogy a GitHub-cron
+  késése ne csússzon át éjfélen CEST, ld. §8), a szerver-trigger mögé tolva. A dupla-indítást
   a `run.js` idempotencia-őre dedupolja → **egy** összevont levél. Runbook: **§8**.
 - **A levél a deploy UTÁN megy ki (2026-09-23):** a `run.js` már csak ELŐKÉSZÍTI a levelet
   (`outbox/`), a tényleges küldést a workflow utolsó lépése végzi (`scripts/send-email.mjs`), a
@@ -374,7 +375,7 @@ remote-ból olvassa, a PAT-ot egy külön fájlból (repóba SOHA), és HTTP 204
    ```
 
 **Ha a szerver-trigger bukik** (`systemctl --failed`, `journalctl -u gh-trigger`): nem vészes —
-a **backup-cron** (16:00 UTC) aznap elkapja. A tartós bukást a §1 pipahiánya (nem jött levél)
+a **backup-cron** (14:00 UTC) aznap elkapja. A tartós bukást a §1 pipahiánya (nem jött levél)
 jelzi. A PAT lejárta a leggyakoribb ok → a `journalctl` HTTP 401/403-at mutat.
 
 ### 8b. Tükör-proxy feed-cache (datacenter-blokkolt források) — 2026-10-05

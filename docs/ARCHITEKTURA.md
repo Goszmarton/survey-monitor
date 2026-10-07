@@ -42,7 +42,7 @@ architektúra épül:
 ```mermaid
 flowchart TD
     SRV["Szerver-trigger (PRIMARY)\ncurl → workflow_dispatch\n15:55 Europe/Budapest"] --> RUN[run.js — napi futás]
-    CRON["GitHub cron (BACKUP)\n0 16 * * * UTC"] --> RUN
+    CRON["GitHub cron (BACKUP)\n0 14 * * * UTC"] --> RUN
     RUN --> GUARD{"őr: ma már\nlefutott? (hasCompletedRun)"}
     GUARD -->|igen, force nélkül| SKIP["no-op (buildDist a Pages-hez)"]
 
@@ -93,10 +93,13 @@ flowchart TD
   siker). MIÉRT: a `workflow_dispatch` pontos, nem függ a scheduled-cron
   kiszámíthatatlan sorállásától (`+18…+78` perc, néha több). Üzemeltetés:
   `docs/UZEMELTETES.md` §8.
-  - **Backup-cron:** `0 16 * * *` (UTC), a szerver-trigger MÖGÉ tolva — nyáron
-    18:00 CEST (~1,5h után), TÉLEN 17:00 CET (~0,5h után). Csak akkor számít, ha a
-    szerver-trigger nem lő (kiesés/hálózat/PAT). **DST:** egy fix UTC-cron nem tud
-    egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
+  - **Backup-cron:** `0 14 * * *` (UTC), a szerver-trigger (13:55 UTC) MÖGÉ, DE korán.
+    Csak akkor számít, ha a szerver-trigger nem lő (kiesés/hálózat/PAT). **2026-10-07:**
+    16:00 → 14:00 UTC, mert a GitHub-cron erős késése (3–6,5h) a 16:00-t ÁTCSÚSZTATTA
+    22:00 UTC (= éjfél CEST) után → a budapesti runId a KÖVETKEZŐ napra esett, az őr nem
+    no-opolt, hanem ÉJSZAKAI teljes futást csinált (10-06 incidens). 14:00 UTC + a mért
+    késés is < 22:00 UTC → nincs átcsúszás. **DST:** egy fix UTC-cron nem tud egész évben
+    azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
   - **Dupla-indítás dedup (az „őr"):** ha a szerver-trigger ÉS a backup is fut, a
     `run.js` idempotencia-őre (`hasCompletedRun`) no-opolja a másodikat →
     **pontosan egy levél**. Sorrend-független (a `concurrency` sorosít, az őr a
@@ -105,7 +108,8 @@ flowchart TD
   - **Sorállás-történet (kontextus):** a 08:43-ra MÉRT **112–218 perc** miatt vált a
     scheduled cron megbízhatatlanná — ez indokolja a szerver-triggert. Cron-történet:
     `43 0 * * *` → `43 8 * * *` (15:00-s SLA, 2026-08-08) → `33 14 * * *` (esti,
-    2026-08-26) → `0 16 * * *` (backup, szerver-primary mögé, 2026-08-28).
+    2026-08-26) → `0 16 * * *` (backup, szerver-primary mögé, 2026-08-28) →
+    `0 14 * * *` (éjfél-átcsúszás ellen, 2026-10-07).
   Mellékhatás: a jelentés az előző futás óta megjelent
   termést fedi. A "since last run" ablak a tényleges előző futás
   `started_at`-jához kötött (nem a cron-időhöz), ezért az átállás nem hagy

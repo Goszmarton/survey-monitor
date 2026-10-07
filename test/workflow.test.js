@@ -2,13 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// 2026-08-28: a napi futás ELSŐDLEGES indítója a SZERVER (curl → workflow_dispatch, 16:30
-// Budapest, pontos — nem függ a scheduled-cron sorállásától). A GitHub scheduled cron BACKUP-ra
-// tolva a szerver-trigger MÖGÉ: 16:00 UTC (nyáron 18:00 CEST, télen 17:00 CET — év közben végig a
-// szerver-trigger után). A dupla indítást a run.js idempotencia-őre dedupolja (hasCompletedRun).
-test("workflow: a scheduled cron BACKUP-slotra tolva (16:00 UTC), a régi 14:33 nincs többé", () => {
+// 2026-08-28: a napi futás ELSŐDLEGES indítója a SZERVER (curl → workflow_dispatch, 15:55
+// Budapest, pontos — nem függ a scheduled-cron sorállásától). A GitHub scheduled cron BACKUP.
+// 2026-10-07: a backup 16:00 UTC → 14:00 UTC-re hozva. OK: a GitHub-cron erősen késhet (mért
+// sorállás 3–6,5h); 16:00 UTC + ekkora késés ÁTCSÚSZHAT 22:00 UTC (= éjfél CEST) után → a budapesti
+// runId a KÖVETKEZŐ napra esik, az őr nem no-opol, hanem ÉJSZAKAI teljes futást csinál (2026-10-06
+// incidens: a 10-06 jelentés 00:40 CEST-kor ment, a 15:55-ös trigger no-opolt). 14:00 UTC a primary
+// (13:55 UTC) UTÁN van, és a legnagyobb késéssel sem lépi át az éjfelet → nincs átcsúszás.
+test("workflow: a backup cron 14:00 UTC (a primary mögött, éjfél-átcsúszás ellen), a régiek nincsenek", () => {
   const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
-  assert.match(yml, /cron:\s*"0 16 \* \* \*"/, "a backup cron 16:00 UTC-re állítva");
+  assert.match(yml, /cron:\s*"0 14 \* \* \*"/, "a backup cron 14:00 UTC-re állítva");
+  assert.ok(!/cron:\s*"0 16 \* \* \*"/.test(yml), "a régi 16:00 UTC cron nincs többé (éjfél-átcsúszás)");
   assert.ok(!/cron:\s*"33 14 \* \* \*"/.test(yml), "a régi 14:33 UTC cron nincs többé");
   assert.ok(!/cron:\s*"43 8 \* \* \*"/.test(yml), "a régi 08:43 UTC sincs");
 });
@@ -24,9 +28,9 @@ test("workflow: workflow_dispatch force input + FORCE_RUN env az inputból (őr-
 });
 
 // A cron-indoklás a szerver-trigger PRIMARY-t + a backup cront + a DST-eltolódást rögzíti.
-test("ARCHITEKTURA 3.: a szerver-trigger PRIMARY + a backup cron (16:00 UTC) + DST dokumentálva", () => {
+test("ARCHITEKTURA 3.: a szerver-trigger PRIMARY + a backup cron (14:00 UTC) + DST dokumentálva", () => {
   const md = readFileSync(new URL("../docs/ARCHITEKTURA.md", import.meta.url), "utf8");
-  assert.match(md, /0 16 \* \* \*/, "a doksi az új backup cront (16:00 UTC) írja");
+  assert.match(md, /0 14 \* \* \*/, "a doksi az új backup cront (14:00 UTC) írja");
   assert.match(md, /workflow_dispatch|curl|szerver-trigger/i, "a szerver-trigger primary dokumentálva");
   assert.match(md, /DST/, "a DST-eltolódás dokumentálva");
 });

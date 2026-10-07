@@ -10,11 +10,15 @@ on:
     # szerver-trigger nem lő (kiesés/hálózat/PAT). A dupla indítást (ha mindkettő fut) a run.js
     # idempotencia-őre dedupolja (hasCompletedRun) → pontosan egy levél megy ki.
     #
-    # 16:00 UTC: a szerver-trigger MÖGÉ tolva, év közben végig utána — nyáron 18:00 CEST
-    # (~2h a szerver-trigger után), TÉLEN 17:00 CET (~1h után). Coarse safety net; DST-figyelmeztetés:
-    # egy fix UTC-cron nem tud egész évben azonos helyit (a szerver-timer viszont DST-biztos helyi idő).
-    # A korábbi 14:33 UTC (esti, 2026-08-26) és a 08:43 UTC (15:00-s SLA) ELÉVÜLT — ld. git-történet.
-    - cron: "0 16 * * *"
+    # 14:00 UTC (2026-10-07): a primary (13:55 UTC) MÖGÉ, DE korán. A GitHub-cron erősen késhet
+    # (mért sorállás 3–6,5h); a korábbi 16:00 UTC + ekkora késés ÁTCSÚSZOTT 22:00 UTC (= éjfél CEST)
+    # után → a budapesti runId a KÖVETKEZŐ napra esett, az őr nem no-opolt, hanem ÉJSZAKAI teljes
+    # futást csinált (2026-10-06 incidens: a jelentés 00:40 CEST-kor ment, a nappali hírek kimaradtak,
+    # a 15:55-ös trigger no-opolt). 14:00 UTC + a legnagyobb mért késés is < 22:00 UTC → nincs
+    # átcsúszás. A primary után van, a concurrency-group amúgy is sorosít → ha a primary még megy, a
+    # backup bevárja és no-opol. (DST: fix UTC-cron nem tud egész évben azonos helyit; a szerver-timer
+    # viszont DST-biztos helyi idő. A korábbi 16:00/14:33/08:43 UTC ELÉVÜLT — ld. git-történet.)
+    - cron: "0 14 * * *"
   workflow_dispatch:
     inputs:
       force:
