@@ -50,6 +50,30 @@ test("workflow: a Pages-deploynak van natív retry-ága (F4-C)", () => {
   assert.match(yml, /steps\.deploy1\.outcome == 'failure'/, "bukáskor fut a retry-lépés");
 });
 
+// 2026-11-24 INCIDENS-REGRESSZIÓ: a Pages-deploy bukása (az elavult upload-pages-artifact@v3 →
+// "No artifacts named github-pages were found") MEGBUKTATTA a jobot → a "Levél küldése" lépés
+// kimaradt → aznap NEM ment napi levél (pedig a levél a napihir-tükörre linkel, a deploytól
+// független). Fix: (1) az action-verziók v5-re (új artifact-backend), (2) MINDKÉT deploy-kísérlet
+// continue-on-error → a github.io (másodlagos csatorna) bukása SOHA nem állítja meg a levelet.
+test("workflow: a Pages-deploy NON-FATAL — a deploy-bukás nem állítja meg a levelet (11-24 incidens)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  // mindkét deploy-kísérlet continue-on-error (a retry is) → a job nem bukik a deploytól
+  const coe = [...yml.matchAll(/continue-on-error:\s*true/g)].length;
+  assert.ok(coe >= 2, `mindkét deploy-kísérlet continue-on-error (talált: ${coe})`);
+  // a "Levél küldése" a deploy UTÁN van, de mivel a deploy non-fatal, a lépés elérhető marad
+  const sendIdx = yml.indexOf("Levél küldése");
+  const deployIdx = yml.indexOf("Pages deploy");
+  assert.ok(sendIdx > deployIdx && sendIdx > 0, "a levél-küldés a deploy után van (de non-fatal deploy → elérhető)");
+});
+
+// 2026-11-25: a leszállított v3 artifact-backend miatt v5-re frissítve (a "No artifacts" hiba fixe).
+test("workflow: a Pages-action-ök v5-ösek (nem a leszállított v3 artifact-backend)", () => {
+  const yml = readFileSync(new URL("../.github/workflows/monitor.yml", import.meta.url), "utf8");
+  assert.match(yml, /uses:\s*actions\/upload-pages-artifact@v5/, "upload-pages-artifact v5 (új backend)");
+  assert.match(yml, /uses:\s*actions\/deploy-pages@v5/, "deploy-pages v5");
+  assert.ok(!/uses:\s*actions\/upload-pages-artifact@v3/.test(yml), "a leszállított v3 artifact-backend nincs használatban (uses:)");
+});
+
 // (a) test-gate: a config-blocklist guard (config_llm.test.js — deprecated groq-modell
 // tiltása) csak akkor VÉD élesben, ha a CI ténylegesen futtatja a teszteket a napi futás
 // ELŐTT. Enélkül egy leállt modellt (mint a 08-16-i llama-deprecation) semmi nem fog el

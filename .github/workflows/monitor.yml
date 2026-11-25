@@ -90,24 +90,36 @@ jobs:
             git push
           fi
 
+      # 2026-11-25: v3 → v5. A `upload-pages-artifact@v3` a LESZÁLLÍTOTT `upload-artifact@v3`
+      # artifact-backendet használta → a deploy-pages "No artifacts named github-pages were found"
+      # hibával bukott (2026-11-24 incidens). A v5 az új backendet használja + Node 24 (nincs
+      # Node 20 deprecation-warn sem).
       - name: Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
-      # F4-C: a deploy-pages 2026-08-06-on egy TRANZIENS Pages-backend beragadásba futott
-      # (10 perc self-timeout, nem concurrency). F4-B óta a napi archív ÉRTÉKES (egy bukott
-      # deploy egy napot késleltetne), ezért egy natív 1-retry (nincs marketplace-függés):
-      # az első kísérlet continue-on-error, bukáskor egy második próba fut ugyanarra az
-      # artifactra. Ha a második is bukik, a job elhasal → hiba-email.
+      # F4-C: a deploy-pages TRANZIENS Pages-backend beragadásra natív 1-retry. 2026-11-25 ÓTA
+      # NON-FATAL: a github.io a MÁSODLAGOS csatorna (a napihir-tükör az ELSŐDLEGES + a levél
+      # link-célja). Egy Pages-deploy bukás TÖBBÉ NEM állítja meg a napi levelet (az a napihirre megy,
+      # a deploytól függetlenül) és NEM küld téves "jelentés nem készült el" hiba-emailt. A 2026-11-24
+      # incidens: a deploy-bukás megbuktatta a jobot → a "Levél küldése" lépés kimaradt → aznap nem
+      # ment levél. Mindkét deploy-kísérlet continue-on-error; ha mindkettő bukik, csak figyelmeztetünk.
       - name: Pages deploy
         id: deploy1
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         continue-on-error: true
 
       - name: Pages deploy (retry — tranziens beragadásra)
+        id: deploy2
         if: steps.deploy1.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+
+      - name: Pages-deploy állapot (NON-FATAL figyelmeztetés)
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: |
+          echo "::warning title=Pages deploy::A github.io Pages-deploy MINDKÉT kísérlete bukott. A napi LEVÉL és a napihir-tükör ettől FÜGGETLEN (a levél link-célja a napihir), a github.io egy napot késhet, a következő futás helyreállítja. Nem fail (a levél kimegy)."
 
       # 2026-09-23: a levél a Pages-deploy + tükör-frissítés UTÁN megy ki (nem a run.js-ben), hogy a
       # linkre (napihir tükör) kattintva a MAI jelentés jöjjön. A send-email.mjs opcionálisan
