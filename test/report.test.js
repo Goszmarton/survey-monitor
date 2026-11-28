@@ -115,7 +115,8 @@ test("Forrás-ellenőrzés: két csoport (Kutatások és hivatalos adatok / Sajt
       { source_id: "444", status: "OK_UJ", detail: "feed: friss", checked_at: "2026-07-22T04:00:00.000Z" },
     ],
   };
-  const forras = renderReport(run).slice(renderReport(run).indexOf("Forrás-ellenőrzés"));
+  // A szekció id-jától vágunk (az oldalsáv menüje és a stat-sor is tartalmazza a címkéket — 2026-11-28 redesign).
+  const forras = renderReport(run).slice(renderReport(run).indexOf('id="forrasok"'));
   const kutIdx = forras.indexOf("📈 Kutatások és hivatalos adatok");
   const sajtoIdx = forras.indexOf("📰 Sajtószemle");
   assert.ok(kutIdx > 0 && sajtoIdx > kutIdx, "két csoport-cím a forrás-szekcióban, Kutatások előbb");
@@ -393,7 +394,7 @@ test("Forrás-ellenőrzés: a Kutatások tábla 2 altáblára bomlik — Hazai /
     ],
   };
   const full = renderReport(run);
-  const forras = full.slice(full.indexOf("Forrás-ellenőrzés")); // a kapuzott tábla ez ELŐTT van
+  const forras = full.slice(full.indexOf('id="forrasok"')); // a kapuzott tábla ez ELŐTT van (id-tól: az oldalsáv is tartalmazza a címet)
   const hazaiIdx = forras.indexOf("Hazai");
   const nemzIdx = forras.indexOf("Nemzetközi");
   const sajtoIdx = forras.indexOf("📰 Sajtószemle");
@@ -430,7 +431,9 @@ test("minden link új tabban nyílik (target=_blank rel=noopener)", () => {
     { canonical_key: "median:1", source_id: "median", kind: "kutatas", title: "Medián kutatás", url: "https://median.hu/x", published_at: "2026-07-22T02:00:00.000Z", first_seen_at: "2026-07-22T04:00:00.000Z", freshness: "UJ_24H", relevant: 1, significance: "KIEMELT" },
   ] };
   const html = renderReport(run);
-  const links = [...html.matchAll(/<a href="[^"]*"([^>]*)>/g)];
+  // Az oldalon BELÜLI ugrás (href="#…" — az oldalsáv szekció-menüje, 2026-11-28) kivétel: új tabban
+  // értelmetlen. Minden más (külső + oldalak közti) link új tabban.
+  const links = [...html.matchAll(/<a href="(?!#)[^"]*"([^>]*)>/g)];
   assert.ok(links.length > 0, "van link a jelentésben");
   for (const m of links) assert.match(m[1], /target="_blank"/, "minden <a> target=_blank-kel nyílik");
 });

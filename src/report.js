@@ -2,7 +2,8 @@
 // az e-mail (digest) az elmúlt 24 órára fókuszál (szintézis + UJ_24H tételek
 // jelentőség szerint). Triázs után a nem-releváns tételek kimaradnak a
 // megjelenítésből (a DB-ben maradnak); degradált (LLM nélküli) módban minden
-// tétel nyersen látszik. Stílus: email-barát, beágyazott CSS.
+// tétel nyersen látszik. Stílus: a levél email-barát beágyazott CSS-t (STYLE) kap; a honlap
+// (jelentés + info-oldal) a külön WEB_STYLE-t (oldalsáv, kártyák, saját paletta — 2026-11-28).
 
 import { groupStories } from "./lib/storygroup.js";
 
@@ -284,6 +285,178 @@ const STYLE = `
   footer{margin-top:48px;padding-top:12px;border-top:1px solid var(--line);font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--muted)}
   .phase{display:inline-block;background:var(--ink);color:var(--paper);font:12px/1 ui-monospace,Consolas,monospace;padding:4px 8px;border-radius:3px}`;
 
+// ---- HONLAP-dizájn (2026-11-28, user-kérés) ----
+// Az „adattár"-minta szerkezete (teljes magasságú sötét oldalsáv, felső sáv breadcrumb-bal,
+// oldalfejléc állapot-pill-lel, kártyák, stat-sor) a projekt SAJÁT palettájával. KIZÁRÓLAG a
+// honlap (renderReport + renderInfoPage) kapja; a levél-renderelők a fenti, email-barát STYLE-t
+// használják tovább (Gmail nem kezel CSS-változót / oldalsávot) — a levél bájtazonos marad.
+// A színek EGY helyen, a :root-ban; a szabályok csak var(--…)-ra hivatkoznak.
+const WEB_STYLE = `
+  :root{--sidebar-bg:#2A1A2E;--sidebar-fg:#D3C6D6;--sidebar-section:#9A889E;--nav-active-bg:#EBC7D9;--nav-active-fg:#2A1A2E;--bg:#F7F5F6;--card:#FFFFFF;--border:#E6E1E4;--text:#1D1A1F;--text-muted:#6E6872;--accent:#9C3D6B;--ok:#2E8B57;--warn:#D9A21B;--err:#C8414B;--neutral:#9A98A0;--radius:12px;--shadow-hover:0 4px 14px rgba(42,26,46,.07)}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:16px}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-underline-offset:2px}
+  a:hover{text-decoration-thickness:2px}
+  a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);min-height:100vh}
+  .sidebar{background:var(--sidebar-bg);color:var(--sidebar-fg);position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;padding:28px 18px 20px}
+  .brand{display:flex;align-items:center;gap:12px;padding:0 10px 22px;border-bottom:1px solid rgba(211,198,214,.14);color:#fff;text-decoration:none}
+  .brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:var(--nav-active-bg);color:var(--nav-active-fg)}
+  .brand-name{font-size:1.45rem;font-weight:800;letter-spacing:-.02em}
+  .brand-name b{color:var(--nav-active-bg)}
+  .scope{display:flex;align-items:center;gap:14px;padding:18px 10px;border-bottom:1px solid rgba(211,198,214,.14);font-size:13px;line-height:1.35}
+  .scope-code{font-weight:700;font-size:1.05rem;color:#fff}
+  .scope small{display:block;color:var(--sidebar-section)}
+  .scope span{color:#fff}
+  .nav-section{margin:24px 10px 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--sidebar-section)}
+  .sidebar nav ul{list-style:none;margin:0;padding:0}
+  .sidebar nav li{margin:2px 0}
+  .sidebar nav a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:999px;color:var(--sidebar-fg);text-decoration:none;font-size:14.5px}
+  .sidebar nav a:hover{background:rgba(235,199,217,.10);color:#fff}
+  .sidebar nav a[aria-current="page"]{background:var(--nav-active-bg);color:var(--nav-active-fg);font-weight:600}
+  .sidebar nav a:focus-visible{outline-color:var(--nav-active-bg)}
+  .ico{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+  .badge{margin-left:auto;min-width:24px;padding:1px 7px;border-radius:999px;background:rgba(211,198,214,.16);color:var(--sidebar-fg);font-size:11.5px;font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
+  .sidebar-foot{margin-top:auto;padding:18px 10px 0;font-size:12px;color:var(--sidebar-section);display:flex;align-items:center;gap:8px}
+  .sidebar-foot .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:22px 48px;border-bottom:1px solid var(--border);background:var(--bg);font-size:13px;color:var(--text-muted)}
+  .crumbs ol{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0}
+  .crumbs li+li::before{content:"/";margin-right:10px;color:var(--neutral)}
+  .crumbs li:last-child{color:var(--text)}
+  .crumbs a{color:inherit;text-decoration:none}
+  .updated{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+  .updated .ico{width:14px;height:14px}
+  main{max-width:1180px;padding:40px 48px 64px}
+  .page-head{margin-bottom:28px}
+  .eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px;font-size:12px;color:var(--text-muted)}
+  .status-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
+  .status-pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--neutral)}
+  .status-pill.ok::before{background:var(--ok)}
+  .status-pill.warn::before{background:var(--warn)}
+  .pill-date{padding:2px 9px;border:1px solid var(--border);border-radius:6px;background:var(--card);font-variant-numeric:tabular-nums}
+  h1{font-size:2rem;line-height:1.2;font-weight:800;letter-spacing:-.02em;margin:0 0 8px}
+  .page-head .meta{color:var(--text-muted);font-size:14px;font-variant-numeric:tabular-nums}
+  nav.topnav{margin-top:14px}
+  nav.topnav a{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:13.5px;font-weight:600;text-decoration:none}
+  nav.topnav a:hover{box-shadow:var(--shadow-hover)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:16px}
+  .stat,.headline,main>section,section.info{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);transition:box-shadow .15s ease}
+  .stat:hover,.headline:hover,main>section:hover{box-shadow:var(--shadow-hover)}
+  .stat{padding:18px 20px;display:flex;flex-direction:column;gap:6px}
+  .stat-label{font-size:12.5px;color:var(--text-muted)}
+  .stat-value{font-size:1.75rem;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  main>section{margin-top:20px;padding:24px 28px;overflow-x:auto}
+  main>section#fejlec{background:none;border:0;padding:0;margin-top:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;overflow:visible;box-shadow:none}
+  .headline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:18px 20px;margin:0;font-size:14.5px}
+  .headline>span:first-child{font-size:15px}
+  .headline .label{font-size:11.5px;font-weight:600;letter-spacing:.1em;color:var(--text-muted)}
+  .headline>span:last-child{flex-basis:100%;font-weight:600;line-height:1.45;font-variant-numeric:tabular-nums}
+  h2{font-size:1.1rem;font-weight:700;margin:0 0 14px;letter-spacing:-.005em}
+  h2 .count,h3 .count,caption .count{color:var(--text-muted);font-weight:400}
+  h3{font-size:.95rem;font-weight:700;margin:22px 0 8px}
+  .empty{color:var(--text-muted);font-style:italic}
+  .synth{font-size:1.05rem;line-height:1.7;margin:0;max-width:75ch}
+  #kulcsszamok ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  #kulcsszamok li{margin:0;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin-bottom:10px}
+  caption{text-align:left;font-weight:700;padding:16px 0 8px;font-size:.95rem}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-weight:600;color:var(--text-muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;background:var(--bg)}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover td,table tr:hover td{background:rgba(247,245,246,.7)}
+  td.nowrap{white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.checks{table-layout:fixed}
+  table.checks th:nth-child(1),table.checks td:nth-child(1){width:26%}
+  table.checks th:nth-child(2),table.checks td:nth-child(2){width:20%}
+  td.srclinks{font-size:12.5px;word-break:break-all}
+  td.srclinks a{line-height:1.6}
+  .st{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid transparent}
+  .st-ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 25%,transparent)}
+  .st-warn{color:#8a6510;background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+  .st-err{color:var(--err);background:color-mix(in srgb,var(--err) 9%,transparent);border-color:color-mix(in srgb,var(--err) 25%,transparent)}
+  .st-neutral{color:#625f68;background:color-mix(in srgb,var(--neutral) 12%,transparent);border-color:color-mix(in srgb,var(--neutral) 28%,transparent)}
+  dl.legend{margin:20px 0 0;padding-top:16px;border-top:1px solid var(--border);font-size:13px;color:var(--text-muted)}
+  dl.legend dt{font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-size:11.5px;margin-bottom:8px}
+  dl.legend dd{margin:0 0 6px;line-height:1.55}
+  dl.legend dd b{color:var(--text);font-weight:600}
+  section.info{margin-top:20px;padding:24px 28px}
+  section.info h2{font-size:1.1rem;margin:0 0 10px}
+  section.info p,section.info li{line-height:1.7;max-width:75ch}
+  section.info ul,section.info ol{padding-left:22px}
+  section.info li{margin-bottom:6px}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:3px 0}
+  footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--border);font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text-muted)}
+  @media (max-width:900px){
+    .layout{grid-template-columns:minmax(0,1fr)}
+    .sidebar{position:static;height:auto;padding:18px 16px}
+    .brand{padding:0 4px 14px}
+    .scope{display:none}
+    .nav-section{margin:14px 4px 6px}
+    .sidebar nav ul{display:flex;flex-wrap:wrap;gap:4px}
+    .sidebar nav a{padding:7px 12px;font-size:13.5px}
+    .sidebar-foot{display:none}
+    .topbar{padding:14px 16px;flex-wrap:wrap}
+    main{padding:24px 16px 48px}
+    h1{font-size:1.5rem}
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .stat{padding:14px 16px}
+    .stat-value{font-size:1.5rem}
+    main>section,section.info{padding:18px 16px}
+  }`;
+
+// Vonalas ikonok (lucide-készlet, inline SVG — nincs külső függőség, a statikus oldal önálló).
+const ICON_PATHS = {
+  logo: '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  report: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  overview: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  narrative: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
+  numbers: '<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
+  items: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  sources: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+};
+const icon = (name) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
+
+// Menüpont: ikon + felirat + opcionális szám-badge; `current` → aktív „pill" (aria-current).
+const navItem = ({ href, ico, label, badge, current, attrs = "" }) =>
+  `<li><a href="${href}"${attrs}${current ? ' aria-current="page"' : ""}>${icon(ico)}<span>${esc(label)}</span>${badge != null ? `<span class="badge">${esc(badge)}</span>` : ""}</a></li>`;
+
+// Teljes magasságú oldalsáv: logó/cím, alatta szekciókba csoportosított menü.
+// `page`: "report" | "info" (melyik oldal aktív); `sections`: a jelentés szekció-ugrói.
+function sidebarHtml(page, sections = []) {
+  const pages = [
+    navItem({ href: page === "report" ? "#" : "index.html", ico: "report", label: "Napi jelentés", current: page === "report", attrs: page === "report" ? "" : LINK_ATTR }),
+    navItem({ href: "info.html", ico: "info", label: "Az oldalról", current: page === "info", attrs: page === "info" ? "" : LINK_ATTR }),
+  ].join("");
+  const onPage = sections.length
+    ? `<div class="nav-section">Ezen az oldalon</div><ul>${sections.map(navItem).join("")}</ul>`
+    : "";
+  return `<aside class="sidebar">
+    <a class="brand" href="${page === "report" ? "#" : "index.html"}"><span class="brand-mark">${icon("logo")}</span><span class="brand-name">monitor<b>.</b></span></a>
+    <div class="scope"><span class="scope-code">HU</span><div><span>Magyarország</span><small>Közéleti kutatás- és adatmonitor</small></div></div>
+    <nav aria-label="Fő menü"><div class="nav-section">Munkaterület</div><ul>${pages}</ul>${onPage}</nav>
+    <div class="sidebar-foot"><span class="dot"></span>Napi automatikus futás</div>
+  </aside>`;
+}
+
+// Felső sáv: breadcrumb balra, diszkréten az utolsó frissítés jobbra (ha van).
+// `home`: a „Napi jelentés" morzsa célja ("#" a jelentésen, "index.html" az info-oldalon).
+const topbarHtml = (home, crumb, updated) => `<div class="topbar">
+    <nav class="crumbs" aria-label="Morzsamenü"><ol><li><a href="${home}"${home === "#" ? "" : LINK_ATTR}>Napi jelentés</a></li><li>${esc(crumb)}</li></ol></nav>
+    ${updated ? `<div class="updated">${icon("clock")}<span>Utolsó frissítés: ${esc(updated)}</span></div>` : ""}
+  </div>`;
+
+// Forrás-státusz → állapotszín (rendben / figyelmeztetés / hiba / semleges).
+const statusTone = (c, hasRelevantFresh) => {
+  if (c.status === "OK_UJ") return hasRelevantFresh ? "ok" : "neutral";
+  if (c.status === "RESZLEGES") return "warn";
+  if (c.status === "SKIPPED_VALIDATION" || /HIBA/.test(c.status)) return "err";
+  return "neutral";
+};
+
 // A „📊 Kulcsszámok ma" szekció HTML-je (vagy "" ha nincs szám-tartalmú tétel — üres dobozt nem
 // renderelünk). A friss (UJ_24H) tételek közül a szám/százalék-tartalmú címek, jelentőség szerint,
 // max 8, VERBATIM (a cím a szám kontextusával). A honlap és az email KÖZÖS helpere.
@@ -367,7 +540,8 @@ export function renderReport(run) {
     const label = c.status === "OK_UJ"
       ? (freshVisibleBySource[c.source_id] ? "✅ új – releváns" : "⚪ új – nem releváns")
       : (CHECK[c.status] ?? c.status);
-    return `<td class="nowrap">${esc(label)}</td>`;
+    const tone = statusTone(c, Boolean(freshVisibleBySource[c.source_id]));
+    return `<td class="nowrap"><span class="st st-${tone}">${esc(label)}</span></td>`;
   };
   // Kutatások/hivatalos altábla: Forrás | Státusz | Új tétel (link a friss tételre) | Gyűjtött link
   // (a forrás összes gyűjtő-URL-je, user 2026-09-01).
@@ -409,21 +583,47 @@ export function renderReport(run) {
     ? `<p class="synth">${esc(run.synthesisText)}</p>`
     : `<p>${uj24.length} tétel az elmúlt 24 órában.${run.triageDegraded ? "" : ' <span class="empty">Szintézis nem készült.</span>'}</p>`;
 
+  // Honlap-keret (csak megjelenítés): állapot-pill + az oldalsáv szekció-ugrói (badge = a szekció
+  // már kiírt darabszáma). A Kulcsszámok menüpont csak akkor, ha a szekció renderelődik.
+  const statusPill = run.triageDegraded
+    ? `<span class="status-pill warn">NYERS LISTA – TRIÁZS KIHAGYVA</span>`
+    : `<span class="status-pill ok">NAPI ELEMZÉS KÉSZ</span>`;
+  const keyNumbers = keyNumbersSection(uj24, sourceNames);
+  const navSections = [
+    { href: "#fejlec", ico: "overview", label: "Áttekintés" },
+    { href: "#24h", ico: "narrative", label: "Napi narratíva" },
+    ...(keyNumbers ? [{ href: "#kulcsszamok", ico: "numbers", label: "Kulcsszámok" }] : []),
+    { href: "#tablak", ico: "items", label: "Kapuzott tételek", badge: uj24.length },
+    { href: "#forrasok", ico: "sources", label: "Forrás-ellenőrzés", badge: checks.length },
+  ];
+
   return endash(`<!doctype html>
 <html lang="hu">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Monitor — ${esc(run.runId)}</title>
-<style>${STYLE}</style>
+<style>${WEB_STYLE}</style>
 </head>
 <body>
+<div class="layout">
+${sidebarHtml("report", navSections)}
+<div class="shell">
+${topbarHtml("#", run.runId, run.generatedAt ? `${run.generatedAt} (Budapest)` : "")}
 <main>
-  <header>
+  <header class="page-head">
+    <div class="eyebrow">${statusPill}<span class="pill-date">${esc(run.runId)}</span></div>
     <h1>📊 Magyar közéleti kutatás- és adatmonitor</h1>
     <div class="meta">futás: ${esc(run.runId)} · generálva: ${esc(run.generatedAt)} (Budapest)</div>
     <nav class="topnav"><a href="info.html"${LINK_ATTR}>ℹ️ Az oldalról – hogyan gyűjtünk és mit látunk →</a></nav>
   </header>
+
+  <div class="stats">
+    <div class="stat"><span class="stat-label">Friss tétel (24 óra)</span><span class="stat-value">${uj24.length}</span></div>
+    <div class="stat"><span class="stat-label">${KUTATAS_LABEL}</span><span class="stat-value">${kutatasFresh.length}</span></div>
+    <div class="stat"><span class="stat-label">${SAJTO_LABEL}</span><span class="stat-value">${sajtoFresh.length}</span></div>
+    <div class="stat"><span class="stat-label">Ellenőrzött forrás</span><span class="stat-value">${checks.length}</span></div>
+  </div>
 
   <section id="fejlec">
     <div class="headline"><span>🕒</span><span class="label">UTOLSÓ ÚJ KUTATÁS:</span>
@@ -437,7 +637,7 @@ export function renderReport(run) {
     ${synth}${degradedNote}
   </section>
 
-  ${keyNumbersSection(uj24, sourceNames)}
+  ${keyNumbers}
 
   <section id="tablak">
     <h2>📊 Adatjelentőség szerint, kapuzott</h2>
@@ -458,6 +658,8 @@ export function renderReport(run) {
     · LLM: ${esc(summarizeProviders(run.providersUsed))} · survey-monitor v0.1 (F2)
   </footer>
 </main>
+</div>
+</div>
 </body>
 </html>
 `);
@@ -474,11 +676,15 @@ export function renderInfoPage() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Az oldalról — Magyar közéleti kutatás- és adatmonitor</title>
-<style>${STYLE}</style>
+<style>${WEB_STYLE}</style>
 </head>
 <body>
+<div class="layout">
+${sidebarHtml("info")}
+<div class="shell">
+${topbarHtml("index.html", "Az oldalról", "")}
 <main>
-  <header>
+  <header class="page-head">
     <h1>ℹ️ Az oldalról</h1>
     <div class="meta">Hogyan gyűjtjük az adatokat, hogyan vonjuk össze a cikkeket, és mit látunk a honlapon.</div>
     <nav class="topnav"><a href="index.html"${LINK_ATTR}>← Vissza a napi jelentéshez</a></nav>
@@ -576,6 +782,8 @@ export function renderInfoPage() {
 
   <nav class="topnav"><a href="index.html"${LINK_ATTR}>← Vissza a napi jelentéshez</a></nav>
 </main>
+</div>
+</div>
 </body>
 </html>
 `);
